@@ -1,0 +1,12 @@
+# Force LF line endings for shell scripts (Linux execution required)
+*.sh text eol=lf
+.claude/*.sh text eol=lf
+
+# JSON configs — LF for cross-platform consistency
+*.json text eol=lf
+
+# Markdown — let git handle (Windows devs can edit natively)
+*.md text
+
+# Default — auto-detect text vs binary
+* text=auto
