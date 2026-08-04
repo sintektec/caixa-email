@@ -1,1 +1,51 @@
 .claude/skills/
+
+# --- .NET ---
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Aa][Rr][Mm]64/
+*.user
+*.suo
+*.userprefs
+*.binlog
+artifacts/
+TestResults/
+[Cc]overage*/
+*.coverage
+*.trx
+project.lock.json
+.vs/
+.vscode/
+.idea/
+
+# --- MSIX / empacotamento ---
+AppPackages/
+BundleArtifacts/
+*.appx
+*.appxbundle
+*.appxupload
+*.msix
+*.msixbundle
+*.msixupload
+Generated Files/
+
+# Certificados de assinatura NUNCA entram no repositório.
+*.pfx
+*.snk
+*.p12
+
+# --- Dados locais do cliente de e-mail ---
+# A base local é criptografada com SQLCipher, mas nem ela nem os anexos baixados
+# podem ser versionados: contêm mensagens reais dos usuários.
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+Attachments/
+appsettings.Local.json
+oauth-clients.json

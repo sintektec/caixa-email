@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Camada de Domínio. Regra arquitetural: este projeto NÃO referencia nenhum outro
+    projeto nem pacote NuGet. Toda a regra de Diretório de Domínio vive aqui, o que a
+    torna testável sem banco, sem rede e em qualquer sistema operacional.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Sintek.Mail.Domain</RootNamespace>
+  </PropertyGroup>
+
+</Project>

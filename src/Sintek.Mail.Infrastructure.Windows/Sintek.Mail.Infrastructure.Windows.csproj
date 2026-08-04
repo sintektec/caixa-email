@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Adaptadores exclusivos do Windows: Credential Manager (CredRead/CredWrite via
+    CsWin32). Só compila em Windows — por isso está FORA do solution filter
+    Sintek.Mail.CrossPlatform.slnf usado pelo CI Linux.
+
+    Optamos por CredRead/CredWrite em vez de Windows.Security.Credentials.PasswordVault
+    porque o PasswordVault exige identidade de pacote (MSIX) e a aplicação também roda
+    unpackaged; a API do Credential Manager funciona nos dois modos.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
+    <RootNamespace>Sintek.Mail.Infrastructure.Windows</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Sintek.Mail.Domain\Sintek.Mail.Domain.csproj" />
+    <ProjectReference Include="..\Sintek.Mail.Application\Sintek.Mail.Application.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Windows.CsWin32">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
+</Project>
