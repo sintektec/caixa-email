@@ -128,9 +128,19 @@ public sealed class WindowsCredentialStore : ICredentialStore
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var deleted = PInvoke.CredDelete(key, (uint)CRED_TYPE.CRED_TYPE_GENERIC, 0);
+        // CredDelete não ganha a sobrecarga amigável que o CsWin32 gera para CredRead:
+        // é preciso montar o PCWSTR à mão e passar o CRED_TYPE tipado.
+        bool deleted;
 
-        return Task.FromResult((bool)deleted);
+        unsafe
+        {
+            fixed (char* targetPointer = key)
+            {
+                deleted = PInvoke.CredDelete(new PCWSTR(targetPointer), CRED_TYPE.CRED_TYPE_GENERIC, 0);
+            }
+        }
+
+        return Task.FromResult(deleted);
     }
 
     /// <inheritdoc />
