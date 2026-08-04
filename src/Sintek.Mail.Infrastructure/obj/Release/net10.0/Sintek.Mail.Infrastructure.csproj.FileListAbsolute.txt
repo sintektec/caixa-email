@@ -1,0 +1,6 @@
+C:\DESENVOLVIMENTO\projetos-sintek\caixa-email\src\Sintek.Mail.Infrastructure\obj\Release\net10.0\Sintek.Mail.Infrastructure.csproj.AssemblyReference.cache
+C:\DESENVOLVIMENTO\projetos-sintek\caixa-email\src\Sintek.Mail.Infrastructure\obj\Release\net10.0\Sintek.Mail.Infrastructure.GeneratedMSBuildEditorConfig.editorconfig
+C:\DESENVOLVIMENTO\projetos-sintek\caixa-email\src\Sintek.Mail.Infrastructure\obj\Release\net10.0\Sintek.Mail.Infrastructure.AssemblyInfoInputs.cache
+C:\DESENVOLVIMENTO\projetos-sintek\caixa-email\src\Sintek.Mail.Infrastructure\obj\Release\net10.0\Sintek.Mail.Infrastructure.AssemblyInfo.cs
+C:\DESENVOLVIMENTO\projetos-sintek\caixa-email\src\Sintek.Mail.Infrastructure\obj\Release\net10.0\Sintek.Mail.Infrastructure.csproj.CoreCompileInputs.cache
+C:\DESENVOLVIMENTO\projetos-sintek\caixa-email\src\Sintek.Mail.Infrastructure\obj\Release\net10.0\Sintek.Mail.Infrastructure.sourcelink.json

@@ -1,34 +1,90 @@
-# STATUS — Sintek.Mail
+# STATUS.md — Sintek.Mail
 
-> Atualizado em: 2026-08-03
+> Última atualização: 2026-08-03 18:20
+
+---
 
 ## Fase atual
 
-**F0 — Fundação** (pré-código)
+**Fase 1 — Fundação (em andamento)**
 
-## Último marco concluído
+## Marco atual
 
-- Especificação unificada e plano de implementação aprovados e commitados em `spec/` (commit `a83581b`)
-- Harness criado (este diretório + `AGENTS.md`)
+Build falhou com 54 erros. Corrigindo erros de compilação.
+
+## O que foi feito
+
+- [x] Especificação unificada (`spec/01-especificacao-unificada.md`)
+- [x] Plano de implementação (`spec/02-plano-sintek-mail.md`)
+- [x] Harness de memória (AGENTS.md + harness/)
+- [x] Solution `Sintek.Mail.sln` com 6 projetos src + 4 testes
+- [x] **Domain** — completo:
+  - 17 enums (ValidationMode, InvalidEmailAction, AuthenticationType, FolderType, SyncState, Importance, AddressKind, AccountSyncStatus, BodyDownloadPolicy, OAuthProvider, SecurityProtocol, OutboxOperationType, OutboxOperationStatus, RuleMatchType, RuleActionType)
+  - 2 VOs (EmailAddress, EmailDomain) com parsing, normalização, subdomain matching
+  - 6 exceções (DomainException, InvalidEmailAddressException, InvalidEmailDomainException, DomainMismatchException, MessageDomainViolationException, FolderAlreadyRestrictedException)
+  - 20 entidades (Entity base, DomainDirectory, DomainAlias, Account, Folder, Message, MessageAddress, MessageBody, Attachment, Category, MessageCategory, Rule, RuleCondition, RuleAction, OutboxOperation, SavedSearch, Signature, MessageTemplate, AppSettings, AuditLog)
+  - 2 serviços de domínio (DomainMembershipEvaluator, FolderDomainValidator)
+- [x] **Application** — completo:
+  - 6 portas (IMailRepository, IMailTransport, ICredentialStore, ISyncQueue, IHtmlSanitizer, IOAuthProvider)
+  - 8 DTOs (AccountDto, DomainDirectoryDto, FolderDto, MessageDto, MessageAddressDto, MessageBodyDto, AttachmentDto, OutboxOperationDto)
+  - 6 handlers (CreateDomainDirectoryHandler, AddAccountHandler, MoveMessageHandler, ChangeDomainNameHandler, SendMessageHandler, SyncAccountHandler)
+- [x] **Persistence** — completo:
+  - MailDbContext com 19 DbSets
+  - 15 configurations (DomainDirectory, Account, Folder, Message, MessageAddress, OutboxOperation, + 9 em RemainingConfigurations)
+  - SqlCipherInterceptor (PRAGMA key)
+  - MailRepository (implementa IMailRepository)
+  - SyncQueue (implementa ISyncQueue com exponential backoff)
+  - DependencyInjection (AddPersistence)
+- [x] **Infrastructure** — completo:
+  - MailKitTransport (IMAP/SMTP com MailKit, fetch folders/messages, send, move, delete, flags)
+  - HtmlSanitizerService (remove tags/attrs perigosos, detecta remote content, extrai texto)
+  - MsalOAuthProvider (Microsoft OAuth com MSAL.NET)
+  - GoogleOAuthProvider (Google OAuth com Google.Apis.Auth)
+  - DependencyInjection (AddInfrastructure)
+- [x] **Infrastructure.Windows** — completo:
+  - CredentialManagerStore (P/Invoke CredWrite/CredRead/CredDelete/CredFree)
+  - DependencyInjection (AddWindowsInfrastructure)
+- [x] **App WinUI 3** — completo:
+  - App.xaml + App.xaml.cs (DI com ServiceCollection, GetOrCreateEncryptionKey)
+  - MainWindow.xaml + MainWindow.xaml.cs (3 colunas: Domains, Messages, ReadingPane)
+  - 5 ViewModels (MainViewModel, DomainListViewModel, AccountListViewModel, MessageListViewModel, ComposeViewModel)
+  - Sintek.Mail.App.csproj (WinUI 3, net10.0-windows, CommunityToolkit.Mvvm)
+- [x] **Testes** — completo:
+  - DomainTests: EmailAddressTests, EmailDomainTests, DomainMembershipEvaluatorTests, FolderDomainValidatorTests
+  - ApplicationTests: CreateDomainDirectoryHandlerTests, AddAccountHandlerTests
+  - PersistenceTests: MailDbContextTests (InMemory)
+  - InfrastructureTests: HtmlSanitizerServiceTests
+- [x] **CI** — completo:
+  - .github/workflows/ci.yml (build + test no Windows)
 
 ## Próximos passos (em ordem)
 
-1. Criar o esqueleto da solution `Sintek.Mail.sln` (6 projetos em `src/` + 4 de testes em `tests/`)
-2. Implementar `Sintek.Mail.Domain` completo (entidades, VOs, `DomainMembershipEvaluator`, validação de contas)
-3. Implementar `Sintek.Mail.Application` (portas, DTOs, handlers)
-4. Implementar `Sintek.Mail.Persistence` (EF Core + SQLCipher, migrations, FTS5)
-5. Implementar `Sintek.Mail.Infrastructure` (MailKit, OAuth, sanitização, sync)
-6. Implementar `Sintek.Mail.Infrastructure.Windows` (Credential Manager)
-7. Implementar `Sintek.Mail.App` (WinUI 3, shell, ViewModels)
-8. Testes + CI (GitHub Actions: ubuntu + windows)
+1. **Corrigir erros de compilação** — 54 erros identificados:
+   - Testes usam APIs incorretas (DomainMembershipEvaluator, FolderDomainValidator, handlers)
+   - Falta Microsoft.Extensions.DependencyInjection em Infrastructure e Infrastructure.Windows
+   - Ambiguidade IMailTransport (MailKit vs Application.Ports)
+   - DbConnectionEventData não encontrado em SqlCipherInterceptor
+2. **Build e validação** — dotnet build, dotnet test
+3. **Commit e push** — sincronizar com GitHub
+4. **Fase 2** — Implementar funcionalidades avançadas (regras, categorias, busca)
 
-Detalhamento completo das fases F2–F9 em `spec/02-plano-sintek-mail.md` (seção "Entrega desta sessão").
+## Bloqueios
 
-## Bloqueios ativos
+Nenhum.
 
-- Nenhum.
+## Notas
 
-## Ambiente / restrições conhecidas
-
-- Container de desenvolvimento é **Linux sem .NET SDK** — WinUI 3 não compila aqui; camadas cross-platform (Domain, Application, Persistence, Infrastructure) são compiladas/testadas no container, e a solution inteira é validada por CI em `windows-latest`.
-- .NET 8 e 9 têm EOL em 10/11/2026 — por isso o projeto usa **.NET 10 LTS** (ver `DECISIONS.md` D-001).
+- Context window em 74% — salvando estado para continuação em nova sessão.
+- Build falhou com 54 erros de compilação.
+- Próxima sessão deve começar por corrigir erros de compilação.
+- Erros principais:
+  1. Testes usam construtores/métodos incorretos (DomainMembershipEvaluator, FolderDomainValidator, handlers)
+  2. Falta package Microsoft.Extensions.DependencyInjection em Infrastructure e Infrastructure.Windows
+  3. Ambiguidade IMailTransport entre MailKit e Application.Ports
+  4. DbConnectionEventData não encontrado em SqlCipherInterceptor
+- TODOs pendentes:
+  - Corrigir 54 erros de compilação
+  - Integrar ICredentialStore no MailKitTransport
+  - Implementar GetOrCreateEncryptionKey com DPAPI
+  - Completar ViewModels com lógica real
+  - Adicionar app.manifest e Package.appxmanifest

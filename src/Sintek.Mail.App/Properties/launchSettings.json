@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "Sintek.Mail.App (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "Sintek.Mail.App (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

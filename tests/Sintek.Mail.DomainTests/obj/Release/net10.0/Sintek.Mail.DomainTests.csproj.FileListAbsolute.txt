@@ -1,0 +1,7 @@
+C:\DESENVOLVIMENTO\projetos-sintek\caixa-email\tests\Sintek.Mail.DomainTests\bin\Release\net10.0\.msCoverageSourceRootsMapping_Sintek.Mail.DomainTests
+C:\DESENVOLVIMENTO\projetos-sintek\caixa-email\tests\Sintek.Mail.DomainTests\obj\Release\net10.0\Sintek.Mail.DomainTests.csproj.AssemblyReference.cache
+C:\DESENVOLVIMENTO\projetos-sintek\caixa-email\tests\Sintek.Mail.DomainTests\obj\Release\net10.0\Sintek.Mail.DomainTests.GeneratedMSBuildEditorConfig.editorconfig
+C:\DESENVOLVIMENTO\projetos-sintek\caixa-email\tests\Sintek.Mail.DomainTests\obj\Release\net10.0\Sintek.Mail.DomainTests.AssemblyInfoInputs.cache
+C:\DESENVOLVIMENTO\projetos-sintek\caixa-email\tests\Sintek.Mail.DomainTests\obj\Release\net10.0\Sintek.Mail.DomainTests.AssemblyInfo.cs
+C:\DESENVOLVIMENTO\projetos-sintek\caixa-email\tests\Sintek.Mail.DomainTests\obj\Release\net10.0\Sintek.Mail.DomainTests.csproj.CoreCompileInputs.cache
+C:\DESENVOLVIMENTO\projetos-sintek\caixa-email\tests\Sintek.Mail.DomainTests\obj\Release\net10.0\Sintek.Mail.DomainTests.sourcelink.json

@@ -1,0 +1,87 @@
+{
+  "version": 2,
+  "dgSpecHash": "s5mvK3ZF06I=",
+  "success": true,
+  "projectFilePath": "c:\\DESENVOLVIMENTO\\projetos-sintek\\caixa-email\\tests\\Sintek.Mail.InfrastructureTests\\Sintek.Mail.InfrastructureTests.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\sinte\\.nuget\\packages\\anglesharp\\0.17.1\\anglesharp.0.17.1.nupkg.sha512",
+    "C:\\Users\\sinte\\.nuget\\packages\\anglesharp.css\\0.17.0\\anglesharp.css.0.17.0.nupkg.sha512",
+    "C:\\Users\\sinte\\.nuget\\packages\\bouncycastle.cryptography\\2.6.1\\bouncycastle.cryptography.2.6.1.nupkg.sha512",
+    "C:\\Users\\sinte\\.nuget\\packages\\google.apis\\1.71.0\\google.apis.1.71.0.nupkg.sha512",
+    "C:\\Users\\sinte\\.nuget\\packages\\google.apis.auth\\1.71.0\\google.apis.auth.1.71.0.nupkg.sha512",
+    "C:\\Users\\sinte\\.nuget\\packages\\google.apis.core\\1.71.0\\google.apis.core.1.71.0.nupkg.sha512",
+    "C:\\Users\\sinte\\.nuget\\packages\\htmlsanitizer\\9.0.886\\htmlsanitizer.9.0.886.nupkg.sha512",
+    "C:\\Users\\sinte\\.nuget\\packages\\mailkit\\4.14.1\\mailkit.4.14.1.nupkg.sha512",
+    "C:\\Users\\sinte\\.nuget\\packages\\microsoft.codecoverage\\17.11.1\\microsoft.codecoverage.17.11.1.nupkg.sha512",
+    "C:\\Users\\sinte\\.nuget\\packages\\microsoft.extensions.dependencyinjection\\10.0.0\\microsoft.extensions.dependencyinjection.10.0.0.nupkg.sha512",
+    "C:\\Users\\sinte\\.nuget\\packages\\microsoft.extensions.dependencyinjection.abstractions\\10.0.0\\microsoft.extensions.dependencyinjection.abstractions.10.0.0.nupkg.sha512",
+    "C:\\Users\\sinte\\.nuget\\packages\\microsoft.identity.client\\4.78.0\\microsoft.identity.client.4.78.0.nupkg.sha512",
+    "C:\\Users\\sinte\\.nuget\\packages\\microsoft.identitymodel.abstractions\\8.14.0\\microsoft.identitymodel.abstractions.8.14.0.nupkg.sha512",
+    "C:\\Users\\sinte\\.nuget\\packages\\microsoft.net.test.sdk\\17.11.1\\microsoft.net.test.sdk.17.11.1.nupkg.sha512",
+    "C:\\Users\\sinte\\.nuget\\packages\\microsoft.testplatform.objectmodel\\17.11.1\\microsoft.testplatform.objectmodel.17.11.1.nupkg.sha512",
+    "C:\\Users\\sinte\\.nuget\\packages\\microsoft.testplatform.testhost\\17.11.1\\microsoft.testplatform.testhost.17.11.1.nupkg.sha512",
+    "C:\\Users\\sinte\\.nuget\\packages\\mimekit\\4.14.0\\mimekit.4.14.0.nupkg.sha512",
+    "C:\\Users\\sinte\\.nuget\\packages\\newtonsoft.json\\13.0.3\\newtonsoft.json.13.0.3.nupkg.sha512",
+    "C:\\Users\\sinte\\.nuget\\packages\\system.codedom\\7.0.0\\system.codedom.7.0.0.nupkg.sha512",
+    "C:\\Users\\sinte\\.nuget\\packages\\system.management\\7.0.2\\system.management.7.0.2.nupkg.sha512",
+    "C:\\Users\\sinte\\.nuget\\packages\\system.security.cryptography.pkcs\\8.0.1\\system.security.cryptography.pkcs.8.0.1.nupkg.sha512",
+    "C:\\Users\\sinte\\.nuget\\packages\\xunit\\2.9.2\\xunit.2.9.2.nupkg.sha512",
+    "C:\\Users\\sinte\\.nuget\\packages\\xunit.abstractions\\2.0.3\\xunit.abstractions.2.0.3.nupkg.sha512",
+    "C:\\Users\\sinte\\.nuget\\packages\\xunit.analyzers\\1.16.0\\xunit.analyzers.1.16.0.nupkg.sha512",
+    "C:\\Users\\sinte\\.nuget\\packages\\xunit.assert\\2.9.2\\xunit.assert.2.9.2.nupkg.sha512",
+    "C:\\Users\\sinte\\.nuget\\packages\\xunit.core\\2.9.2\\xunit.core.2.9.2.nupkg.sha512",
+    "C:\\Users\\sinte\\.nuget\\packages\\xunit.extensibility.core\\2.9.2\\xunit.extensibility.core.2.9.2.nupkg.sha512",
+    "C:\\Users\\sinte\\.nuget\\packages\\xunit.extensibility.execution\\2.9.2\\xunit.extensibility.execution.2.9.2.nupkg.sha512",
+    "C:\\Users\\sinte\\.nuget\\packages\\xunit.runner.visualstudio\\2.8.2\\xunit.runner.visualstudio.2.8.2.nupkg.sha512"
+  ],
+  "logs": [
+    {
+      "code": "NU1902",
+      "level": "Warning",
+      "message": "O pacote 'AngleSharp' 0.17.1 tem uma moderado vulnerabilidade de gravidade conhecida, https://github.com/advisories/GHSA-pgww-w46g-26qg",
+      "projectPath": "c:\\DESENVOLVIMENTO\\projetos-sintek\\caixa-email\\tests\\Sintek.Mail.InfrastructureTests\\Sintek.Mail.InfrastructureTests.csproj",
+      "warningLevel": 1,
+      "filePath": "c:\\DESENVOLVIMENTO\\projetos-sintek\\caixa-email\\tests\\Sintek.Mail.InfrastructureTests\\Sintek.Mail.InfrastructureTests.csproj",
+      "libraryId": "AngleSharp",
+      "targetGraphs": [
+        "net10.0"
+      ]
+    },
+    {
+      "code": "NU1902",
+      "level": "Warning",
+      "message": "O pacote 'HtmlSanitizer' 9.0.886 tem uma moderado vulnerabilidade de gravidade conhecida, https://github.com/advisories/GHSA-j92c-7v7g-gj3f",
+      "projectPath": "c:\\DESENVOLVIMENTO\\projetos-sintek\\caixa-email\\tests\\Sintek.Mail.InfrastructureTests\\Sintek.Mail.InfrastructureTests.csproj",
+      "warningLevel": 1,
+      "filePath": "c:\\DESENVOLVIMENTO\\projetos-sintek\\caixa-email\\tests\\Sintek.Mail.InfrastructureTests\\Sintek.Mail.InfrastructureTests.csproj",
+      "libraryId": "HtmlSanitizer",
+      "targetGraphs": [
+        "net10.0"
+      ]
+    },
+    {
+      "code": "NU1902",
+      "level": "Warning",
+      "message": "O pacote 'MailKit' 4.14.1 tem uma moderado vulnerabilidade de gravidade conhecida, https://github.com/advisories/GHSA-9j88-vvj5-vhgr",
+      "projectPath": "c:\\DESENVOLVIMENTO\\projetos-sintek\\caixa-email\\tests\\Sintek.Mail.InfrastructureTests\\Sintek.Mail.InfrastructureTests.csproj",
+      "warningLevel": 1,
+      "filePath": "c:\\DESENVOLVIMENTO\\projetos-sintek\\caixa-email\\tests\\Sintek.Mail.InfrastructureTests\\Sintek.Mail.InfrastructureTests.csproj",
+      "libraryId": "MailKit",
+      "targetGraphs": [
+        "net10.0"
+      ]
+    },
+    {
+      "code": "NU1902",
+      "level": "Warning",
+      "message": "O pacote 'MimeKit' 4.14.0 tem uma moderado vulnerabilidade de gravidade conhecida, https://github.com/advisories/GHSA-g7hc-96xr-gvvx",
+      "projectPath": "c:\\DESENVOLVIMENTO\\projetos-sintek\\caixa-email\\tests\\Sintek.Mail.InfrastructureTests\\Sintek.Mail.InfrastructureTests.csproj",
+      "warningLevel": 1,
+      "filePath": "c:\\DESENVOLVIMENTO\\projetos-sintek\\caixa-email\\tests\\Sintek.Mail.InfrastructureTests\\Sintek.Mail.InfrastructureTests.csproj",
+      "libraryId": "MimeKit",
+      "targetGraphs": [
+        "net10.0"
+      ]
+    }
+  ]
+}
