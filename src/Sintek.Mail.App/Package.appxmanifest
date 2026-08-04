@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap rescap">
+
+  <Identity
+    Name="SintekTecnologia.SintekMail"
+    Publisher="CN=SINTECH Tecnologia e Seguranca da Informacao LTDA"
+    Version="0.1.0.0" />
+
+  <Properties>
+    <DisplayName>Sintek Mail</DisplayName>
+    <PublisherDisplayName>SINTEK Tecnologia</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="pt-BR" />
+  </Resources>
+
+  <Applications>
+    <Application Id="App" Executable="$targetnametoken$.exe" EntryPoint="$targetentrypoint$">
+      <uap:VisualElements
+        DisplayName="Sintek Mail"
+        Description="Cliente de e-mail corporativo com organização por Diretório de Domínio"
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" />
+        <uap:SplashScreen Image="Assets\SplashScreen.png" />
+      </uap:VisualElements>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <!--
+      Apenas o necessário: acesso à internet como cliente, para falar IMAP e SMTP.
+      Nenhuma capacidade de acesso amplo a arquivos, câmera, microfone ou localização —
+      um cliente de e-mail não precisa delas, e pedi-las levantaria suspeita justificada
+      na revisão de segurança de qualquer cliente corporativo.
+    -->
+    <Capability Name="internetClient" />
+    <uap:Capability Name="enterpriseAuthentication" />
+  </Capabilities>
+
+</Package>

@@ -1,0 +1,119 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  DOTNET_NOLOGO: 1
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
+
+jobs:
+  # Compila e testa as camadas multiplataforma. Roda em Linux porque é mais rápido e
+  # barato, e porque provar que Domain, Application, Persistence e Infrastructure não
+  # dependem do Windows é uma verificação arquitetural em si: se alguém introduzir uma
+  # chamada Windows-only nessas camadas, este job quebra.
+  core:
+    name: Núcleo multiplataforma (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Instalar .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restaurar
+        run: dotnet restore Sintek.Mail.CrossPlatform.slnf
+
+      - name: Compilar
+        run: dotnet build Sintek.Mail.CrossPlatform.slnf --configuration Release --no-restore
+
+      - name: Testar
+        # Inclui a criação real de um banco SQLCipher e a aplicação das migrações, o que
+        # verifica de fato a exigência de criptografia da especificação.
+        run: >
+          dotnet test Sintek.Mail.CrossPlatform.slnf
+          --configuration Release
+          --no-build
+          --logger "trx;LogFileName=test-results.trx"
+          --results-directory ./TestResults
+
+      - name: Publicar resultados
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-linux
+          path: ./TestResults
+          retention-days: 7
+
+  # Compila a solution inteira, incluindo a camada Windows-only e o aplicativo WinUI 3.
+  # É a única forma de validar a interface: WinUI 3 não compila fora do Windows.
+  windows:
+    name: Solution completa (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Instalar .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restaurar
+        run: dotnet restore Sintek.Mail.sln
+
+      - name: Compilar solution completa
+        run: dotnet build Sintek.Mail.sln --configuration Release --no-restore
+
+      - name: Testar
+        run: dotnet test Sintek.Mail.CrossPlatform.slnf --configuration Release --no-build
+
+  # Gera o pacote MSIX. Separado do job anterior para que uma falha de empacotamento não
+  # se confunda com uma falha de compilação — os diagnósticos e os responsáveis diferem.
+  package:
+    name: Pacote MSIX
+    runs-on: windows-latest
+    needs: windows
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Instalar .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Adicionar MSBuild ao PATH
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Restaurar
+        run: dotnet restore src/Sintek.Mail.App/Sintek.Mail.App.csproj -r win-x64
+
+      - name: Gerar MSIX
+        # Sem assinatura: o certificado de code signing é segredo de implantação e não
+        # entra no repositório. O pacote gerado aqui serve para verificar que o
+        # empacotamento funciona; a assinatura acontece no pipeline de release.
+        run: >
+          msbuild src/Sintek.Mail.App/Sintek.Mail.App.csproj
+          /p:Configuration=Release
+          /p:Platform=x64
+          /p:RuntimeIdentifier=win-x64
+          /p:Packaged=true
+          /p:AppxPackageSigningEnabled=false
+          /p:UapAppxPackageBuildMode=SideloadOnly
+          /p:AppxBundle=Never
+
+      - name: Publicar pacote
+        uses: actions/upload-artifact@v4
+        with:
+          name: sintek-mail-msix
+          path: src/Sintek.Mail.App/AppPackages/**
+          retention-days: 14
+          if-no-files-found: warn

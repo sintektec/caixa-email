@@ -25,6 +25,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sintek.Mail.Infrastructure.
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sintek.Mail.Persistence.Tests", "tests\Sintek.Mail.Persistence.Tests\Sintek.Mail.Persistence.Tests.csproj", "{AE6F6CD9-AAB4-49D1-B838-D102EAF5AFBD}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sintek.Mail.App", "src\Sintek.Mail.App\Sintek.Mail.App.csproj", "{0FEA1190-6874-4328-8FD4-28F9F87AF01A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -143,6 +145,18 @@ Global
 		{AE6F6CD9-AAB4-49D1-B838-D102EAF5AFBD}.Release|x64.Build.0 = Release|Any CPU
 		{AE6F6CD9-AAB4-49D1-B838-D102EAF5AFBD}.Release|x86.ActiveCfg = Release|Any CPU
 		{AE6F6CD9-AAB4-49D1-B838-D102EAF5AFBD}.Release|x86.Build.0 = Release|Any CPU
+		{0FEA1190-6874-4328-8FD4-28F9F87AF01A}.Debug|Any CPU.ActiveCfg = Debug|x86
+		{0FEA1190-6874-4328-8FD4-28F9F87AF01A}.Debug|Any CPU.Build.0 = Debug|x86
+		{0FEA1190-6874-4328-8FD4-28F9F87AF01A}.Debug|x64.ActiveCfg = Debug|x64
+		{0FEA1190-6874-4328-8FD4-28F9F87AF01A}.Debug|x64.Build.0 = Debug|x64
+		{0FEA1190-6874-4328-8FD4-28F9F87AF01A}.Debug|x86.ActiveCfg = Debug|x86
+		{0FEA1190-6874-4328-8FD4-28F9F87AF01A}.Debug|x86.Build.0 = Debug|x86
+		{0FEA1190-6874-4328-8FD4-28F9F87AF01A}.Release|Any CPU.ActiveCfg = Release|x86
+		{0FEA1190-6874-4328-8FD4-28F9F87AF01A}.Release|Any CPU.Build.0 = Release|x86
+		{0FEA1190-6874-4328-8FD4-28F9F87AF01A}.Release|x64.ActiveCfg = Release|x64
+		{0FEA1190-6874-4328-8FD4-28F9F87AF01A}.Release|x64.Build.0 = Release|x64
+		{0FEA1190-6874-4328-8FD4-28F9F87AF01A}.Release|x86.ActiveCfg = Release|x86
+		{0FEA1190-6874-4328-8FD4-28F9F87AF01A}.Release|x86.Build.0 = Release|x86
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -157,5 +171,6 @@ Global
 		{34EB3D5C-DCB9-426C-82F8-5558158E9379} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{0298B206-4EE8-4AB1-8E21-DEEDA0D29C55} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{AE6F6CD9-AAB4-49D1-B838-D102EAF5AFBD} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{0FEA1190-6874-4328-8FD4-28F9F87AF01A} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal
