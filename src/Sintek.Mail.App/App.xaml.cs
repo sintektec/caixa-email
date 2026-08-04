@@ -5,7 +5,13 @@ using Sintek.Mail.App.Services;
 namespace Sintek.Mail.App;
 
 /// <summary>Ponto de entrada da aplicação.</summary>
-public partial class App : Application
+/// <remarks>
+/// A classe base é qualificada por inteiro de propósito. Dentro do namespace
+/// <c>Sintek.Mail.App</c>, o nome curto <c>Application</c> resolve para o nosso próprio
+/// namespace <c>Sintek.Mail.Application</c> — a camada de casos de uso — e não para o
+/// tipo do WinUI.
+/// </remarks>
+public partial class App : Microsoft.UI.Xaml.Application
 {
     private Window? _window;
 

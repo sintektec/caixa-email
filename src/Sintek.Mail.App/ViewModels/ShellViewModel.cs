@@ -211,7 +211,11 @@ public sealed partial class ShellViewModel : ObservableObject
     /// para as duas versões divergirem e a interface acabar permitindo o que o domínio
     /// proíbe.
     /// </remarks>
-    [RelayCommand]
+    /// <remarks>
+    /// Sem <c>[RelayCommand]</c>: o gerador do MVVM Toolkit aceita no máximo um parâmetro,
+    /// e este método precisa de três. O arrastar e soltar chama o método diretamente do
+    /// code-behind, que é onde a mensagem e a pasta de destino são conhecidas.
+    /// </remarks>
     public async Task<bool> MoveMessageAsync(Guid messageId, Guid targetFolderId, bool userConfirmed = false)
     {
         try
