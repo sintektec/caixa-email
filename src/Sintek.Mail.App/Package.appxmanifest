@@ -40,13 +40,18 @@
 
   <Capabilities>
     <!--
-      Apenas o necessário: acesso à internet como cliente, para falar IMAP e SMTP.
-      Nenhuma capacidade de acesso amplo a arquivos, câmera, microfone ou localização —
-      um cliente de e-mail não precisa delas, e pedi-las levantaria suspeita justificada
-      na revisão de segurança de qualquer cliente corporativo.
+      runFullTrust é obrigatório para qualquer aplicativo desktop empacotado em MSIX —
+      WinUI 3 inclusive. Sem ela o MakeAppx recusa o manifesto com o erro 80080204. É
+      "restrita" no sentido de exigir justificativa na Store, não no de conceder algo além
+      do que um executável desktop comum já faz.
+
+      Fora isso, apenas acesso à internet como cliente, para falar IMAP e SMTP. Nenhuma
+      capacidade de acesso amplo a arquivos, câmera, microfone ou localização — um cliente
+      de e-mail não precisa delas, e pedi-las levantaria suspeita justificada na revisão de
+      segurança de qualquer cliente corporativo.
     -->
+    <rescap:Capability Name="runFullTrust" />
     <Capability Name="internetClient" />
-    <uap:Capability Name="enterpriseAuthentication" />
   </Capabilities>
 
 </Package>
