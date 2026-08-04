@@ -101,15 +101,20 @@
                                ItemsSource="{x:Bind Shell.NavigationRoots, Mode=OneWay}"
                                SelectionMode="Single"
                                CanDragItems="False"
-                               AllowDrop="True"
                                AutomationProperties.Name="Contas, diretórios e pastas"
-                               SelectionChanged="OnNavigationSelectionChanged"
-                               DragOver="OnFolderDragOver"
-                               Drop="OnFolderDrop">
+                               SelectionChanged="OnNavigationSelectionChanged">
                 <controls:TreeView.ItemTemplate>
                     <DataTemplate x:DataType="vm:NavigationNode">
+                        <!--
+                            AllowDrop/DragOver/Drop ficam no ITEM, não na árvore: com eles na
+                            TreeView, o 'sender' do handler seria a árvore inteira e o
+                            DataContext nunca apontaria a pasta sob o cursor.
+                        -->
                         <controls:TreeViewItem ItemsSource="{x:Bind Children}"
                                                IsExpanded="{x:Bind IsExpanded, Mode=TwoWay}"
+                                               AllowDrop="True"
+                                               DragOver="OnFolderDragOver"
+                                               Drop="OnFolderDrop"
                                                AutomationProperties.Name="{x:Bind Title, Mode=OneWay}">
                             <Grid ColumnSpacing="8" Padding="0,2">
                                 <Grid.ColumnDefinitions>
