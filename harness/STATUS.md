@@ -10,8 +10,15 @@
 
 ## Marco atual
 
-Solution compila e **169 testes passam** nas quatro camadas multiplataforma, verificados em
-Linux com .NET 10.0.110. PR #1 aberto.
+**PR #1 com CI inteiramente verde**: núcleo em Linux (169 testes), solution completa em
+Windows — incluindo o app WinUI 3 — e pacote MSIX gerado.
+
+A camada de interface levou seis correções em quatro rodadas até compilar. Todas eram
+erros que só o compilador de destino revela, e estão registradas em `CLAUDE.md` como
+armadilhas: assinaturas geradas pelo CsWin32 diferentes do esperado, `{{` que não é escape
+em raw string interpolada, o nome `Application` colidindo com o nosso próprio namespace,
+o limite de um parâmetro do `[RelayCommand]` e a capacidade `runFullTrust` obrigatória no
+MSIX.
 
 > **Atenção:** houve troca de implementação em 04/08/2026 (ver `DECISIONS.md`, D-007). O que
 > este arquivo descrevia antes — 54 erros de compilação em aberto — pertencia à versão
@@ -44,14 +51,17 @@ Linux com .NET 10.0.110. PR #1 aberto.
 
 ## Próximos passos
 
-1. **Aguardar o CI Windows do PR #1.** Será o primeiro build real da camada WinUI 3 e de
-   `Infrastructure.Windows` — nada disso compila no container Linux onde o núcleo foi
-   desenvolvido. Erros de markup XAML e de P/Invoke do CsWin32 aparecem aí.
+1. **Revisar e integrar o PR #1.**
 2. **Fase 2 — Contas:** assistente de configuração, fluxo interativo de OAuth, autodiscovery
    por SRV/ISPDB.
 3. **Fase 3 — Sincronização:** espelhamento de pastas, sincronização incremental com
    CONDSTORE/QRESYNC, IDLE, e os tipos de operação da fila ainda não tratados
    (`SendMessage`, `AppendDraft`, operações de pasta).
+
+Vale notar: o MSIX compila mas **ainda não foi executado**. Nenhuma sessão automatizada
+consegue fazer isso — exige uma máquina Windows 11 real. A validação funcional da interface
+(árvore de navegação, arrastar e soltar contra a regra de domínio, painel de leitura) segue
+pendente e é o primeiro item de qualquer revisão manual.
 
 ## Bloqueios
 
