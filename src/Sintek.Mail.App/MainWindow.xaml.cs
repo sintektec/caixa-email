@@ -170,8 +170,14 @@ public sealed partial class MainWindow : Window
     /// A CSP é a terceira barreira: mesmo que algo escape do sanitizador, o navegador
     /// recusa executar script e carregar recurso externo.
     /// </remarks>
+    /// <remarks>
+    /// O literal usa <c>$$</c> porque o corpo é CSS, cheio de chaves. Em uma raw string
+    /// interpolada, a quantidade de <c>$</c> define quantas chaves abrem uma interpolação —
+    /// não existe escape por duplicação. Com <c>$$</c>, a chave simples do CSS é literal e a
+    /// interpolação passa a exigir <c>{{ }}</c>.
+    /// </remarks>
     private static string WrapInDocument(string sanitizedHtml) =>
-        $"""
+        $$"""
         <!DOCTYPE html>
         <html lang="pt-BR">
         <head>
@@ -179,12 +185,12 @@ public sealed partial class MainWindow : Window
         <meta http-equiv="Content-Security-Policy"
               content="default-src 'none'; img-src cid: data:; style-src 'unsafe-inline'; font-src 'none'; script-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
         <style>
-          body {{ font-family: 'Segoe UI Variable', 'Segoe UI', sans-serif; font-size: 14px; margin: 16px; }}
-          img {{ max-width: 100%; height: auto; }}
-          blockquote {{ border-left: 3px solid #c8c8c8; margin-left: 0; padding-left: 12px; }}
+          body { font-family: 'Segoe UI Variable', 'Segoe UI', sans-serif; font-size: 14px; margin: 16px; }
+          img { max-width: 100%; height: auto; }
+          blockquote { border-left: 3px solid #c8c8c8; margin-left: 0; padding-left: 12px; }
         </style>
         </head>
-        <body>{sanitizedHtml}</body>
+        <body>{{sanitizedHtml}}</body>
         </html>
         """;
 
