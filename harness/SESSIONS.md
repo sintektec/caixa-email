@@ -100,3 +100,45 @@
 
 **Próxima sessão:**
 - Retomar a Sessão 3: Corrigir 54 erros de compilação da Solution.
+
+---
+
+## 2026-08-04 — Sessão 7: Troca de implementação e Fase 1
+
+**Objetivo:** Integrar a implementação desenvolvida em paralelo, resolvendo a divergência
+com a `main`.
+
+**O que foi feito:**
+- Resolvidos 38 conflitos mantendo `src/` e `tests/` da versão nova e preservando `spec/`,
+  `AGENTS.md`, `harness/`, `.analysis/` e `.continue/` (ver `DECISIONS.md`, D-007).
+- Removidos 1521 arquivos de `bin/`/`obj/` do versionamento (D-008); repositório de 1691
+  para 143 arquivos.
+- PR #1 aberto e levado ao verde em quatro rodadas de CI. As seis correções foram todas de
+  erro que só o compilador de destino revela, e estão registradas em `CLAUDE.md`.
+- 169 testes.
+
+**Observação:** esta entrada foi escrita retroativamente na sessão 8 — a sessão 7 encerrou
+sem cumprir a regra de ouro da seção 3.
+
+---
+
+## 2026-08-04 — Sessão 8: Fase 2 (Contas)
+
+**Objetivo:** Executar a fase 2 do `docs/roadmap.md`.
+
+**O que foi feito:**
+- Descoberta automática completa em cinco etapas, com origem registrada no resultado e três
+  defesas contra documento remoto hostil (D-009).
+- Ciclo de vida completo de contas e Diretórios de Domínio: consentimento OAuth interativo,
+  teste de configuração isolado, edição que testa antes de alterar, remoção em duas etapas
+  com impacto medido.
+- ViewModels movidos para `Sintek.Mail.Presentation`, multiplataforma e coberto pelo job
+  Linux do CI (D-010).
+- Diálogos WinUI: assistente de conta, editor de diretório e tela de configurações.
+- 169 → 272 testes.
+- GitGuardian reprovou o primeiro push por cinco literais de senha em teste. Substituídos
+  por `FakeSecret.For(...)` e os commits fundidos para tirá-los do histórico do PR.
+
+**Próxima sessão:**
+- Aguardar a decisão do usuário entre seguir para a fase 3 (Sincronização) ou parar para
+  validação manual em Windows 11.

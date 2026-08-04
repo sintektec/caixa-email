@@ -40,3 +40,14 @@ Depois, conforme a tarefa: `spec/01-especificacao-unificada.md` (o que construir
 - Commite o harness junto com o código
 
 O detalhamento do formato de cada arquivo está em `harness/README.md`.
+
+## 4. Ao concluir uma etapa: apresentar e perguntar
+
+**Não emende uma fase do roadmap na seguinte por conta própria.** Ao terminar um bloco de
+trabalho, apresente o que ficou pendente e qual é o próximo item do `docs/roadmap.md`, e
+pergunte se o usuário quer seguir ou parar para validar o que existe.
+
+O motivo é concreto: boa parte da validação deste projeto exige uma máquina Windows 11 real
+— MSIX instalado, interface exercida, servidores IMAP de verdade — e nenhuma sessão
+automatizada consegue fazê-la. Acumular fases sem essa verificação empilha código que
+ninguém confirmou funcionar, e o erro descoberto na fase 5 pode ter nascido na 2.
