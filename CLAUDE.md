@@ -83,5 +83,18 @@ Commits e comentários em português; nomes de código em inglês.
 
 ## Referências
 
-- Especificação funcional e decisões: `docs/`
-- Fases seguintes do roadmap: `docs/roadmap.md`
+Este arquivo cobre as regras do **código**. O comportamento esperado de uma sessão de IA
+neste repositório está em `AGENTS.md`, que aponta para o harness de memória:
+
+- `AGENTS.md` — diretrizes de conduta e ordem de leitura no início da sessão
+- `harness/STATUS.md` — onde o projeto está agora
+- `harness/DECISIONS.md` — log append-only de decisões técnicas; não reabrir sem evidência nova
+- `harness/CONTEXT.md`, `harness/GLOSSARY.md`, `harness/SESSIONS.md`
+
+Documentação do projeto:
+
+- `docs/decisoes-arquiteturais.md` — o porquê das escolhas não óbvias e o que quebra se
+  forem revertidas
+- `docs/modelo-de-dados.md` — entidades, índices e o que nunca é persistido
+- `docs/roadmap.md` — fases seguintes
+- `spec/` — especificação funcional original

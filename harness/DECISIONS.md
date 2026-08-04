@@ -85,3 +85,50 @@
 **Alternativas rejeitadas:** Só senha básica (exclui M365/Gmail modernos); só OAuth (exclui servidores corporativos legados).
 
 **Consequências:** `AuthenticationType` enum em `Accounts`; `OAuthProvider?` opcional; dois pacotes de OAuth.
+
+## D-007 — A implementação deste branch substitui a que estava na main (2026-08-04)
+
+**Status:** aceita
+
+**Decisão:** Diante de duas implementações paralelas do mesmo projeto, `src/` e `tests/`
+passam a ser os deste branch. Da main foram preservados `spec/`, `AGENTS.md`, `harness/`,
+`.analysis/` e `.continue/`.
+
+**Motivo:** Três achados verificáveis na versão anterior:
+
+1. CI vermelho — `MainPage.xaml.cs` chamava `InitializeComponent` sem `MainPage.xaml`
+   existir; o XamlCompiler abortava. O `STATUS.md` registrava 54 erros de compilação em
+   aberto.
+2. **A D-004 estava correta na decisão e furada na implementação.** O `.csproj` de
+   Persistence referenciava `Microsoft.EntityFrameworkCore.Sqlite` (o pacote agregador)
+   *junto* com `bundle_e_sqlcipher`. O agregador arrasta `bundle_e_sqlite3`, e o log do CI
+   confirma `SQLitePCLRaw.lib.e_sqlite3` no grafo. Com o provider sem criptografia
+   registrado, o `PRAGMA key` do `SqlCipherInterceptor` vira no-op silencioso: o banco
+   abre, grava e lê normalmente — em texto claro. A referência correta é
+   `Microsoft.EntityFrameworkCore.Sqlite.Core`, que não traz bundle próprio.
+3. Sem migrações do EF Core; projetos de teste duplicados em duas convenções de nome;
+   `Class1.cs` do template ainda presentes.
+
+**Alternativas rejeitadas:** portar as correções para a base da main (descartaria o núcleo
+já testado); fundir arquivo a arquivo (misturaria duas convenções de design).
+
+**Consequências:** 169 testes cobrem as tabelas das seções 5.2–5.4, a máquina de estados
+offline, a criptografia e a sanitização. `SqlCipherDatabaseTests.ArquivoCifrado_NaoExpoeTextoEmClaro`
+varre os bytes crus do arquivo — é a rede de segurança contra a reincidência do item 2.
+Perdemos temporariamente `SendMessageHandler`, `SyncAccountHandler` e `ComposeViewModel`,
+que a versão anterior esboçava: entram nas fases 3 e 4 do `docs/roadmap.md`.
+
+---
+
+## D-008 — Artefatos de build fora do controle de versão (2026-08-04)
+
+**Status:** aceita
+
+**Decisão:** Remover os 1521 arquivos de `bin/` e `obj/` versionados e cobri-los no
+`.gitignore`.
+
+**Motivo:** Eram 90% dos 1691 arquivos do repositório. São regeneráveis pelo build, incham
+cada clone, e produzem conflito em toda alteração de código — inclusive conflitos falsos
+que escondem os reais.
+
+**Consequências:** O repositório caiu para 143 arquivos versionados.
