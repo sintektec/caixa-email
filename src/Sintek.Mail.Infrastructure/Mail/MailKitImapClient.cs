@@ -1,0 +1,574 @@
+using MailKit;
+using MailKit.Net.Imap;
+using MailKit.Search;
+using Microsoft.Extensions.Logging;
+using MimeKit;
+using Sintek.Mail.Application.Abstractions.Mail;
+using Sintek.Mail.Domain.Entities;
+using Sintek.Mail.Domain.Enums;
+
+namespace Sintek.Mail.Infrastructure.Mail;
+
+/// <summary>
+/// Cliente IMAP baseado em MailKit.
+/// </summary>
+/// <remarks>
+/// Uma instância atende uma conta e mantém a conexão aberta enquanto for útil: reconectar
+/// e reautenticar a cada operação multiplicaria a latência de cada sincronização e, em
+/// provedores com limite de conexões, levaria a bloqueio temporário.
+/// </remarks>
+public sealed class MailKitImapClient : Application.Abstractions.Mail.IImapClient
+{
+    private readonly MailKitAuthenticator _authenticator;
+    private readonly ILogger<MailKitImapClient> _logger;
+    private readonly ImapClient _client = new();
+    private readonly SemaphoreSlim _gate = new(1, 1);
+
+    private IMailFolder? _openFolder;
+
+    public MailKitImapClient(MailKitAuthenticator authenticator, ILogger<MailKitImapClient> logger)
+    {
+        _authenticator = authenticator;
+        _logger = logger;
+    }
+
+    /// <inheritdoc />
+    public bool IsConnected => _client.IsConnected && _client.IsAuthenticated;
+
+    /// <inheritdoc />
+    public async Task<ConnectionTestResult> ConnectAsync(
+        Account account, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(account);
+
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (IsConnected)
+            {
+                return ConnectionTestResult.Success();
+            }
+
+            if (_client.IsConnected)
+            {
+                await _client.DisconnectAsync(quit: true, cancellationToken).ConfigureAwait(false);
+            }
+
+            return await _authenticator.ConnectImapAsync(_client, account, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task DisconnectAsync(CancellationToken cancellationToken = default)
+    {
+        if (_client.IsConnected)
+        {
+            await _client.DisconnectAsync(quit: true, cancellationToken).ConfigureAwait(false);
+        }
+
+        _openFolder = null;
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<RemoteFolder>> ListFoldersAsync(CancellationToken cancellationToken = default)
+    {
+        EnsureConnected();
+
+        var folders = new List<RemoteFolder>();
+
+        foreach (var ns in _client.PersonalNamespaces)
+        {
+            var root = await _client.GetFolderAsync(ns.Path, cancellationToken).ConfigureAwait(false);
+
+            foreach (var folder in await root.GetSubfoldersAsync(false, cancellationToken).ConfigureAwait(false))
+            {
+                await CollectFoldersAsync(folder, folders, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        return folders;
+    }
+
+    private static async Task CollectFoldersAsync(
+        IMailFolder folder, List<RemoteFolder> accumulator, CancellationToken cancellationToken)
+    {
+        accumulator.Add(new RemoteFolder(
+            folder.FullName,
+            folder.Name,
+            folder.DirectorySeparator,
+            MapFolderType(folder),
+            folder.IsSubscribed));
+
+        // \Noinferiors avisa que a pasta não pode ter filhas; consultá-las provocaria um
+        // erro do servidor.
+        if (folder.Attributes.HasFlag(FolderAttributes.NoInferiors))
+        {
+            return;
+        }
+
+        foreach (var child in await folder.GetSubfoldersAsync(false, cancellationToken).ConfigureAwait(false))
+        {
+            await CollectFoldersAsync(child, accumulator, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Infere o papel da pasta pelos atributos especiais do IMAP (RFC 6154).
+    /// </summary>
+    /// <remarks>
+    /// Os atributos são o único jeito confiável: o nome varia com o idioma do servidor —
+    /// "Sent", "Itens Enviados", "Enviados" e "Gesendete Objekte" são todos a mesma pasta.
+    /// </remarks>
+    private static FolderType MapFolderType(IMailFolder folder)
+    {
+        if (folder.Attributes.HasFlag(FolderAttributes.Inbox))
+        {
+            return FolderType.Inbox;
+        }
+
+        if (folder.Attributes.HasFlag(FolderAttributes.Sent))
+        {
+            return FolderType.Sent;
+        }
+
+        if (folder.Attributes.HasFlag(FolderAttributes.Drafts))
+        {
+            return FolderType.Drafts;
+        }
+
+        if (folder.Attributes.HasFlag(FolderAttributes.Trash))
+        {
+            return FolderType.Trash;
+        }
+
+        if (folder.Attributes.HasFlag(FolderAttributes.Junk))
+        {
+            return FolderType.Junk;
+        }
+
+        if (folder.Attributes.HasFlag(FolderAttributes.Archive))
+        {
+            return FolderType.Archive;
+        }
+
+        return FolderType.Custom;
+    }
+
+    /// <inheritdoc />
+    public async Task<FolderSyncState> OpenFolderAsync(
+        string remotePath, CancellationToken cancellationToken = default)
+    {
+        var folder = await OpenAsync(remotePath, cancellationToken).ConfigureAwait(false);
+
+        return new FolderSyncState(
+            folder.UidValidity,
+            folder.Supports(FolderFeature.ModSequences) ? (long)folder.HighestModSeq : null,
+            folder.UidNext?.Id ?? 0,
+            folder.Count,
+            folder.Unread);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<FetchedMessage>> FetchHeadersAsync(
+        string remotePath, long sinceUid, int limit, CancellationToken cancellationToken = default)
+    {
+        var folder = await OpenAsync(remotePath, cancellationToken).ConfigureAwait(false);
+
+        // Busca por faixa de UID, não por índice: índices mudam quando qualquer mensagem
+        // é expurgada, e a sincronização perderia o ponto de partida.
+        var range = new UniqueIdRange(new UniqueId((uint)Math.Max(sinceUid + 1, 1)), UniqueId.MaxValue);
+
+        const MessageSummaryItems items =
+            MessageSummaryItems.UniqueId
+            | MessageSummaryItems.Envelope
+            | MessageSummaryItems.Flags
+            | MessageSummaryItems.InternalDate
+            | MessageSummaryItems.Size
+            | MessageSummaryItems.BodyStructure
+            | MessageSummaryItems.Headers;
+
+        var summaries = await folder.FetchAsync(range, items, cancellationToken).ConfigureAwait(false);
+
+        return summaries
+            .OrderBy(s => s.UniqueId.Id)
+            .Take(limit)
+            .Select(ToFetchedMessage)
+            .ToList();
+    }
+
+    private static FetchedMessage ToFetchedMessage(IMessageSummary summary)
+    {
+        var envelope = summary.Envelope;
+        var from = envelope?.From.Mailboxes.FirstOrDefault();
+
+        var addresses = new List<FetchedAddress>();
+        AppendAddresses(addresses, envelope?.From, AddressKind.From);
+        AppendAddresses(addresses, envelope?.Sender, AddressKind.Sender);
+        AppendAddresses(addresses, envelope?.To, AddressKind.To);
+        AppendAddresses(addresses, envelope?.Cc, AddressKind.Cc);
+        AppendAddresses(addresses, envelope?.Bcc, AddressKind.Bcc);
+        AppendAddresses(addresses, envelope?.ReplyTo, AddressKind.ReplyTo);
+
+        return new FetchedMessage
+        {
+            Uid = summary.UniqueId.Id,
+            ModSeq = summary.ModSeq.HasValue ? (long)summary.ModSeq.Value : null,
+
+            // Um Message-ID ausente é raro mas acontece com remetentes malfeitos; sem um
+            // valor estável a deduplicação falharia, então sintetizamos a partir do UID.
+            MessageId = envelope?.MessageId ?? $"<uid-{summary.UniqueId.Id}@sintek.local>",
+            InReplyTo = envelope?.InReplyTo,
+            References = summary.References is { Count: > 0 } ? string.Join(' ', summary.References) : null,
+            Subject = envelope?.Subject ?? string.Empty,
+            FromAddress = from?.Address,
+            FromDisplayName = from?.Name,
+            Addresses = addresses,
+
+            // O cabeçalho Date pode vir ausente ou absurdo; a data interna do servidor é
+            // a referência confiável para ordenar a caixa.
+            SentAt = envelope?.Date ?? summary.InternalDate ?? DateTimeOffset.UnixEpoch,
+            ReceivedAt = summary.InternalDate ?? envelope?.Date ?? DateTimeOffset.UnixEpoch,
+            Size = summary.Size ?? 0,
+            HasAttachments = summary.Attachments.Any(),
+            IsRead = summary.Flags?.HasFlag(MessageFlags.Seen) ?? false,
+            IsFlagged = summary.Flags?.HasFlag(MessageFlags.Flagged) ?? false,
+            IsDraft = summary.Flags?.HasFlag(MessageFlags.Draft) ?? false,
+            IsAnswered = summary.Flags?.HasFlag(MessageFlags.Answered) ?? false,
+            Importance = MapImportance(summary),
+            ReadReceiptRequested = summary.Headers?.Contains(HeaderId.DispositionNotificationTo) ?? false,
+        };
+    }
+
+    private static void AppendAddresses(
+        List<FetchedAddress> accumulator, InternetAddressList? list, AddressKind kind)
+    {
+        if (list is null)
+        {
+            return;
+        }
+
+        foreach (var mailbox in list.Mailboxes)
+        {
+            accumulator.Add(new FetchedAddress(kind, mailbox.Address, mailbox.Name));
+        }
+    }
+
+    private static Domain.Enums.MessageImportance MapImportance(IMessageSummary summary)
+    {
+        var priority = summary.Headers?[HeaderId.Importance] ?? summary.Headers?[HeaderId.XPriority];
+
+        if (string.IsNullOrWhiteSpace(priority))
+        {
+            return Domain.Enums.MessageImportance.Normal;
+        }
+
+        if (priority.Contains("high", StringComparison.OrdinalIgnoreCase) || priority.StartsWith('1'))
+        {
+            return Domain.Enums.MessageImportance.High;
+        }
+
+        if (priority.Contains("low", StringComparison.OrdinalIgnoreCase) || priority.StartsWith('5'))
+        {
+            return Domain.Enums.MessageImportance.Low;
+        }
+
+        return Domain.Enums.MessageImportance.Normal;
+    }
+
+    /// <inheritdoc />
+    public async Task<FetchedBody?> FetchBodyAsync(
+        string remotePath, long uid, CancellationToken cancellationToken = default)
+    {
+        var folder = await OpenAsync(remotePath, cancellationToken).ConfigureAwait(false);
+
+        var message = await folder
+            .GetMessageAsync(new UniqueId((uint)uid), cancellationToken)
+            .ConfigureAwait(false);
+
+        if (message is null)
+        {
+            return null;
+        }
+
+        var attachments = new List<FetchedAttachment>();
+        var index = 0;
+
+        foreach (var part in message.BodyParts.OfType<MimePart>())
+        {
+            index++;
+            var isInline = part.ContentDisposition?.Disposition == ContentDisposition.Inline
+                || !string.IsNullOrEmpty(part.ContentId);
+
+            if (!part.IsAttachment && !isInline)
+            {
+                continue;
+            }
+
+            attachments.Add(new FetchedAttachment(
+                part.FileName ?? $"parte-{index}",
+                part.ContentType.MimeType,
+                part.Content?.Stream?.Length ?? 0,
+                index.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                part.ContentId,
+                isInline));
+        }
+
+        return new FetchedBody
+        {
+            HtmlBody = message.HtmlBody,
+            TextBody = message.TextBody,
+            Attachments = attachments,
+        };
+    }
+
+    /// <inheritdoc />
+    public async Task<Stream?> FetchAttachmentAsync(
+        string remotePath, long uid, string partSpecifier, CancellationToken cancellationToken = default)
+    {
+        var folder = await OpenAsync(remotePath, cancellationToken).ConfigureAwait(false);
+
+        var bodyPart = new BodyPartBasic(new ContentType("application", "octet-stream"), partSpecifier)
+        {
+            PartSpecifier = partSpecifier,
+        };
+
+        var entity = await folder
+            .GetBodyPartAsync(new UniqueId((uint)uid), bodyPart, cancellationToken)
+            .ConfigureAwait(false);
+
+        // Content nulo significa parte sem conteúdo carregado — devolver um fluxo vazio
+        // enganaria quem chama, que gravaria um anexo de zero byte como se fosse válido.
+        if (entity is not MimePart { Content: not null } part)
+        {
+            return null;
+        }
+
+        var buffer = new MemoryStream();
+        await part.Content.DecodeToAsync(buffer, cancellationToken).ConfigureAwait(false);
+        buffer.Position = 0;
+
+        return buffer;
+    }
+
+    /// <inheritdoc />
+    public async Task SetFlagsAsync(
+        string remotePath,
+        IReadOnlyCollection<long> uids,
+        MessageFlagChange change,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(uids);
+
+        if (uids.Count == 0)
+        {
+            return;
+        }
+
+        var folder = await OpenAsync(remotePath, cancellationToken).ConfigureAwait(false);
+        var ids = uids.Select(u => new UniqueId((uint)u)).ToList();
+
+        var toAdd = MessageFlags.None;
+        var toRemove = MessageFlags.None;
+
+        Accumulate(change.Seen, MessageFlags.Seen, ref toAdd, ref toRemove);
+        Accumulate(change.Flagged, MessageFlags.Flagged, ref toAdd, ref toRemove);
+        Accumulate(change.Answered, MessageFlags.Answered, ref toAdd, ref toRemove);
+        Accumulate(change.Deleted, MessageFlags.Deleted, ref toAdd, ref toRemove);
+
+        if (toAdd != MessageFlags.None)
+        {
+            await folder.AddFlagsAsync(ids, toAdd, silent: true, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (toRemove != MessageFlags.None)
+        {
+            await folder.RemoveFlagsAsync(ids, toRemove, silent: true, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private static void Accumulate(
+        bool? desired, MessageFlags flag, ref MessageFlags toAdd, ref MessageFlags toRemove)
+    {
+        switch (desired)
+        {
+            case true:
+                toAdd |= flag;
+                break;
+            case false:
+                toRemove |= flag;
+                break;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyDictionary<long, long>> MoveAsync(
+        string sourcePath,
+        string destinationPath,
+        IReadOnlyCollection<long> uids,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(uids);
+
+        if (uids.Count == 0)
+        {
+            return new Dictionary<long, long>();
+        }
+
+        var source = await OpenAsync(sourcePath, cancellationToken).ConfigureAwait(false);
+        var destination = await _client.GetFolderAsync(destinationPath, cancellationToken).ConfigureAwait(false);
+
+        var ids = uids.Select(u => new UniqueId((uint)u)).ToList();
+        var moved = await source.MoveToAsync(ids, destination, cancellationToken).ConfigureAwait(false);
+
+        // O servidor devolve o mapeamento de UIDs apenas quando suporta UIDPLUS. Sem ele,
+        // as mensagens são localizadas na pasta de destino pelo Message-ID, na próxima
+        // sincronização.
+        var result = new Dictionary<long, long>();
+        foreach (var pair in moved)
+        {
+            result[pair.Key.Id] = pair.Value.Id;
+        }
+
+        return result;
+    }
+
+    /// <inheritdoc />
+    public async Task ExpungeAsync(string remotePath, CancellationToken cancellationToken = default)
+    {
+        var folder = await OpenAsync(remotePath, cancellationToken).ConfigureAwait(false);
+        await folder.ExpungeAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task CreateFolderAsync(string remotePath, CancellationToken cancellationToken = default)
+    {
+        EnsureConnected();
+
+        var separator = _client.PersonalNamespaces[0].DirectorySeparator;
+        var segments = remotePath.Split(separator);
+
+        // O MailKit anota estes retornos como possivelmente nulos. Um namespace pessoal
+        // ausente é uma condição real (servidor fora do padrão) e merece erro explícito,
+        // não um NullReferenceException mais adiante.
+        var current = await _client
+            .GetFolderAsync(_client.PersonalNamespaces[0].Path, cancellationToken)
+            .ConfigureAwait(false)
+            ?? throw new InvalidOperationException(
+                "O servidor IMAP não expôs o namespace pessoal; não é possível criar pastas.");
+
+        // Cria os níveis intermediários que faltarem: o IMAP não cria hierarquia
+        // implicitamente, e uma pasta aninhada falharia se o pai não existisse.
+        foreach (var segment in segments)
+        {
+            IMailFolder? existing = null;
+
+            foreach (var child in await current.GetSubfoldersAsync(false, cancellationToken).ConfigureAwait(false))
+            {
+                if (string.Equals(child.Name, segment, StringComparison.OrdinalIgnoreCase))
+                {
+                    existing = child;
+                    break;
+                }
+            }
+
+            current = existing
+                ?? await current.CreateAsync(segment, true, cancellationToken).ConfigureAwait(false)
+                ?? throw new InvalidOperationException(
+                    $"O servidor recusou a criação da pasta '{segment}'.");
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task RenameFolderAsync(
+        string remotePath, string newRemotePath, CancellationToken cancellationToken = default)
+    {
+        EnsureConnected();
+
+        var folder = await _client.GetFolderAsync(remotePath, cancellationToken).ConfigureAwait(false);
+        var separator = folder.DirectorySeparator;
+        var lastSeparator = newRemotePath.LastIndexOf(separator);
+
+        var parentPath = lastSeparator > 0 ? newRemotePath[..lastSeparator] : _client.PersonalNamespaces[0].Path;
+        var newName = lastSeparator > 0 ? newRemotePath[(lastSeparator + 1)..] : newRemotePath;
+
+        var parent = await _client.GetFolderAsync(parentPath, cancellationToken).ConfigureAwait(false);
+        await folder.RenameAsync(parent, newName, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task DeleteFolderAsync(string remotePath, CancellationToken cancellationToken = default)
+    {
+        EnsureConnected();
+
+        var folder = await _client.GetFolderAsync(remotePath, cancellationToken).ConfigureAwait(false);
+        await folder.DeleteAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task<long?> AppendAsync(
+        string remotePath, Stream messageStream, bool isDraft, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(messageStream);
+
+        EnsureConnected();
+
+        var folder = await _client.GetFolderAsync(remotePath, cancellationToken).ConfigureAwait(false);
+        var message = await MimeMessage.LoadAsync(messageStream, cancellationToken).ConfigureAwait(false);
+
+        var flags = isDraft ? MessageFlags.Draft | MessageFlags.Seen : MessageFlags.Seen;
+        var uid = await folder.AppendAsync(message, flags, cancellationToken).ConfigureAwait(false);
+
+        return uid?.Id;
+    }
+
+    private async Task<IMailFolder> OpenAsync(string remotePath, CancellationToken cancellationToken)
+    {
+        EnsureConnected();
+
+        // Reabrir a pasta já aberta custaria uma ida e volta ao servidor por operação —
+        // caro em um laço de sincronização que processa a mesma pasta muitas vezes.
+        if (_openFolder is not null
+            && string.Equals(_openFolder.FullName, remotePath, StringComparison.Ordinal)
+            && _openFolder.IsOpen)
+        {
+            return _openFolder;
+        }
+
+        var folder = await _client.GetFolderAsync(remotePath, cancellationToken).ConfigureAwait(false);
+        await folder.OpenAsync(FolderAccess.ReadWrite, cancellationToken).ConfigureAwait(false);
+
+        _openFolder = folder;
+        return folder;
+    }
+
+    private void EnsureConnected()
+    {
+        if (!IsConnected)
+        {
+            throw new InvalidOperationException(
+                "O cliente IMAP não está conectado. Chame ConnectAsync antes de qualquer operação.");
+        }
+    }
+
+    /// <inheritdoc />
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await DisconnectAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            // Falha ao desconectar não pode escapar de Dispose e mascarar a exceção real
+            // que levou ao descarte.
+            _logger.LogDebug(ex, "Falha ao desconectar o cliente IMAP durante o descarte.");
+        }
+
+        _client.Dispose();
+        _gate.Dispose();
+    }
+}
