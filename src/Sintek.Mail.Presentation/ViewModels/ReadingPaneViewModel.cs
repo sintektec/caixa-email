@@ -6,7 +6,7 @@ using Sintek.Mail.Application.Abstractions.Security;
 using Sintek.Mail.Domain.Entities;
 using Sintek.Mail.Domain.Enums;
 
-namespace Sintek.Mail.App.ViewModels;
+namespace Sintek.Mail.Presentation.ViewModels;
 
 /// <summary>Um anexo exibido no painel de leitura.</summary>
 public sealed record AttachmentViewModel

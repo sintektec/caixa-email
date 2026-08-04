@@ -13,16 +13,20 @@ CI nos dois sistemas operacionais.
 169 testes cobrem as tabelas de validação das seções 5.2 a 5.4, a máquina de estados
 offline, a criptografia do banco e a sanitização de HTML.
 
-## Fase 2 — Contas
+## Fase 2 — Contas ✅
 
-Assistente de configuração com descoberta automática, fluxo interativo de OAuth para
-Microsoft e Google, teste de credenciais antes de concluir o cadastro, edição e remoção
-de contas com confirmação, e a interface de criação de Diretórios de Domínio com a
-validação estrita já implementada no domínio.
+Assistente de configuração em quatro etapas, descoberta automática completa, fluxo
+interativo de OAuth para Microsoft e Google, teste de credenciais isolado do cadastro,
+edição e remoção de contas e de Diretórios de Domínio com relatório de impacto e
+confirmação.
 
-Descoberta automática pendente: consulta a registros SRV do DNS (RFC 6186) e ao banco
-ISPDB da Mozilla. A estrutura de `IAutodiscoverService` já as acomoda sem mudança de
-contrato.
+A descoberta tenta, nesta ordem: tabela de provedores conhecidos, autoconfig publicado pelo
+próprio domínio, registros SRV do DNS (RFC 6186), banco ISPDB da Mozilla e, por último, as
+convenções usuais. A origem viaja no resultado e aparece na tela — o usuário precisa saber
+a diferença entre "o domínio declarou isto" e "chutamos isto".
+
+Os ViewModels passaram para `Sintek.Mail.Presentation`, multiplataforma, e são testados no
+job Linux junto com o núcleo (ver `DECISIONS.md`, D-010).
 
 ## Fase 3 — Sincronização
 

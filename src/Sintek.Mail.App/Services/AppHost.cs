@@ -2,12 +2,13 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Sintek.Mail.App.ViewModels;
+using Sintek.Mail.Presentation.ViewModels;
 using Sintek.Mail.Application;
 using Sintek.Mail.Application.Abstractions.Security;
 using Sintek.Mail.Infrastructure;
 using Sintek.Mail.Infrastructure.Windows;
 using Sintek.Mail.Persistence;
+using Sintek.Mail.Presentation;
 
 namespace Sintek.Mail.App.Services;
 
@@ -49,10 +50,8 @@ public static class AppHost
         services.AddSintekMailInfrastructure(configuration);
         services.AddSintekMailPersistence(_ => new DatabaseOptions(databasePath, encryptionKey));
 
+        services.AddSintekMailPresentation();
         services.AddSingleton<MainWindow>();
-        services.AddSingleton<ShellViewModel>();
-        services.AddTransient<MessageListViewModel>();
-        services.AddTransient<ReadingPaneViewModel>();
 
         var provider = services.BuildServiceProvider();
 

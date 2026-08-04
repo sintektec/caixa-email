@@ -27,11 +27,21 @@ public static class DependencyInjection
         services.TryAddSingletonTimeProvider();
 
         services.AddScoped<OutboxEnqueuer>();
+        services.AddScoped<AccountCredentialRevoker>();
+        services.AddScoped<AccountRemover>();
 
         services.AddScoped<MoveMessageHandler>();
-        services.AddScoped<AddAccountHandler>();
-        services.AddScoped<ChangeDomainNameHandler>();
         services.AddScoped<SetFolderRestrictionHandler>();
+
+        services.AddScoped<AddAccountHandler>();
+        services.AddScoped<TestAccountConnectionHandler>();
+        services.AddScoped<UpdateAccountHandler>();
+        services.AddScoped<RemoveAccountHandler>();
+
+        services.AddScoped<CreateDomainDirectoryHandler>();
+        services.AddScoped<UpdateDomainDirectoryHandler>();
+        services.AddScoped<RemoveDomainDirectoryHandler>();
+        services.AddScoped<ChangeDomainNameHandler>();
 
         return services;
     }

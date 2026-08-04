@@ -32,6 +32,19 @@ precisa de infraestrutura para ser expressa, ela está no lugar errado.
 compilam e são testadas em Linux, e o job `core` do CI existe para quebrar quando isso
 deixar de ser verdade. O analisador `CA1416` está configurado como erro pelo mesmo motivo.
 
+**ViewModel novo nasce em `Sintek.Mail.Presentation`, não em `App`.** O projeto é
+multiplataforma de propósito: é o que permite testar validação de formulário, etapas de
+assistente e decisão de confirmação no job Linux, em segundos. Em `App` fica só o que
+depende do WinUI — janela, XAML, WebView2 e o encadeamento de `ContentDialog`. Um ViewModel
+colocado em `App` só é verificável no job Windows, e foi assim que a fase 1 gastou quatro
+rodadas de CI com erros que um teste local teria pego.
+
+**Documento de autoconfiguração vindo da rede é lido com DTD desligado.**
+`ClientConfigParser` usa `XmlReaderSettings { DtdProcessing = Prohibit, XmlResolver = null }`
+porque o host que responde é escolhido pelo domínio que o usuário digitou. Um
+`<!ENTITY SYSTEM "file:///...">` transformaria a descoberta de servidores em leitura
+arbitrária de disco. A busca é só por HTTPS e com teto de leitura, pelo mesmo motivo.
+
 **HTML de mensagem nunca é renderizado sem passar por `IHtmlSanitizer`.** O `WebView2`
 recebe apenas `MessageBody.SanitizedHtml`. `HtmlBody` guarda o original só para
 reprocessamento futuro.
@@ -63,6 +76,21 @@ quebra a semântica.
 **FTS5 é criado em SQL puro.** O EF Core não modela tabelas virtuais. Alterações no
 índice de busca vão em migração dedicada com `migrationBuilder.Sql()`.
 
+**Propriedade ligada a `TextBox.Text` ou `PasswordBox.Password` não pode ser nula.** O WinUI
+lança em tempo de execução ao receber `null` nesses controles, e nada disso aparece na
+compilação. Os ViewModels usam `string` com `string.Empty`; os casos de uso já tratam vazio
+como ausente. O mesmo vale para `TextBlock.Text` — daí `DomainNameError` devolver vazio em
+vez de nulo.
+
+**`NumberBox.Value` é `double`.** Ligar uma propriedade `int` de duas vias a ele faz o
+compilador de XAML recusar a conversão. A saída é expor a propriedade em `double` no
+ViewModel (`ImapPortValue`), com a conversão explícita ali.
+
+**Um `ContentDialog` por vez.** Abrir o segundo enquanto o primeiro está aberto não empilha:
+simplesmente não aparece. As telas de configuração se chamam fechando a atual e sinalizando
+a próxima (`SettingsFollowUp`, `RequestedDirectoryCreation`), e o encadeamento acontece em
+laço no `MainWindow`.
+
 ## Convenções
 
 Testes nomeados `Metodo_Cenario_ResultadoEsperado`, em português, refletindo o vocabulário
@@ -71,6 +99,11 @@ regra de domínio: se um deles for alterado, a mudança precisa ser intencional.
 
 Assertions com **AwesomeAssertions**, não FluentAssertions — a v8 do FluentAssertions
 exige licença paga para uso comercial.
+
+Senha em teste vem de `FakeSecret.For("rotulo")`, nunca de um literal ao lado de um campo
+chamado `Password`. O detector de segredos do CI não distingue credencial real de valor de
+teste e reprova o PR; pior que o atraso é o hábito de ignorar o alerta, que um dia estará
+certo.
 
 Entidades recebem o instante como parâmetro (`DateTimeOffset now`) em vez de ler o
 relógio. A camada de Aplicação o obtém de `TimeProvider`.

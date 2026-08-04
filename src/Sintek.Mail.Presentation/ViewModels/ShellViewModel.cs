@@ -8,7 +8,7 @@ using Sintek.Mail.Domain.Entities;
 using Sintek.Mail.Domain.Enums;
 using Sintek.Mail.Domain.Exceptions;
 
-namespace Sintek.Mail.App.ViewModels;
+namespace Sintek.Mail.Presentation.ViewModels;
 
 /// <summary>Estado de conectividade exibido na barra superior.</summary>
 public enum ConnectivityState

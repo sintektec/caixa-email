@@ -24,6 +24,11 @@
   <ItemGroup Label="E-mail">
     <PackageVersion Include="MailKit" Version="4.17.0" />
     <PackageVersion Include="MimeKit" Version="4.17.0" />
+    <!--
+      O .NET não consulta registros SRV: Dns.GetHostEntry resolve apenas A e AAAA. Sem uma
+      biblioteca que fale o protocolo, a descoberta pela RFC 6186 é impossível.
+    -->
+    <PackageVersion Include="DnsClient" Version="1.8.0" />
   </ItemGroup>
 
   <ItemGroup Label="Segurança">
@@ -37,6 +42,7 @@
   <ItemGroup Label="Infraestrutura">
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.10" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.10" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.10" />
     <PackageVersion Include="Microsoft.Extensions.Options" Version="10.0.10" />
     <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.10" />

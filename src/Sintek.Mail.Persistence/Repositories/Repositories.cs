@@ -23,13 +23,21 @@ public sealed class DomainDirectoryRepository : IDomainDirectoryRepository
             .FirstOrDefaultAsync(d => d.Id == id, cancellationToken);
 
     /// <inheritdoc />
+    /// <remarks>
+    /// A busca cobre o domínio principal <b>e</b> os adicionais. Um domínio registrado como
+    /// adicional de um diretório não pode virar o principal de outro: as duas contas do
+    /// mesmo domínio acabariam em diretórios diferentes, e qual delas responde pela regra
+    /// passaria a depender da ordem da consulta.
+    /// </remarks>
     public Task<DomainDirectory?> GetByDomainAsync(EmailDomain domain, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(domain);
 
         return _context.DomainDirectories
             .Include(d => d.Aliases)
-            .FirstOrDefaultAsync(d => d.DomainName == domain, cancellationToken);
+            .FirstOrDefaultAsync(
+                d => d.DomainName == domain || d.Aliases.Any(a => a.DomainName == domain),
+                cancellationToken);
     }
 
     /// <inheritdoc />

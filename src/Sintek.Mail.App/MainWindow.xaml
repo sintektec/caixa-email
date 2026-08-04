@@ -4,7 +4,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:Microsoft.UI.Xaml.Controls"
-    xmlns:vm="using:Sintek.Mail.App.ViewModels"
+    xmlns:vm="using:Sintek.Mail.Presentation.ViewModels"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
@@ -68,8 +68,9 @@
                 </ToggleButton>
 
                 <Button x:Name="SettingsButton"
-                        AutomationProperties.Name="Configurações"
-                        ToolTipService.ToolTip="Configurações">
+                        AutomationProperties.Name="Contas e Diretórios de Domínio"
+                        ToolTipService.ToolTip="Contas e Diretórios de Domínio"
+                        Click="OnSettingsClick">
                     <FontIcon Glyph="&#xE713;" FontSize="16" />
                 </Button>
             </StackPanel>

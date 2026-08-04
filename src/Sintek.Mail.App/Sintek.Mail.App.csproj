@@ -60,6 +60,7 @@
     <ProjectReference Include="..\Sintek.Mail.Persistence\Sintek.Mail.Persistence.csproj" />
     <ProjectReference Include="..\Sintek.Mail.Infrastructure\Sintek.Mail.Infrastructure.csproj" />
     <ProjectReference Include="..\Sintek.Mail.Infrastructure.Windows\Sintek.Mail.Infrastructure.Windows.csproj" />
+    <ProjectReference Include="..\Sintek.Mail.Presentation\Sintek.Mail.Presentation.csproj" />
   </ItemGroup>
 
   <ItemGroup>

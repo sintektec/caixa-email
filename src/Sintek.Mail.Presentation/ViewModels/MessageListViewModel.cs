@@ -5,7 +5,7 @@ using Sintek.Mail.Application.Abstractions.Persistence;
 using Sintek.Mail.Domain.Entities;
 using Sintek.Mail.Domain.Enums;
 
-namespace Sintek.Mail.App.ViewModels;
+namespace Sintek.Mail.Presentation.ViewModels;
 
 /// <summary>Uma linha da lista de mensagens.</summary>
 public sealed partial class MessageListItemViewModel : ObservableObject

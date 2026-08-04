@@ -132,3 +132,64 @@ cada clone, e produzem conflito em toda alteração de código — inclusive con
 que escondem os reais.
 
 **Consequências:** O repositório caiu para 143 arquivos versionados.
+
+---
+
+## D-009 — Descoberta automática em cinco etapas, da mais confiável para a menos (2026-08-04)
+
+**Status:** aceita
+
+**Decisão:** `AutodiscoverService` tenta, nesta ordem: tabela de provedores conhecidos →
+autoconfig publicado pelo próprio domínio (`autoconfig.dominio` e `.well-known`) → registros
+SRV do DNS (RFC 6186) → banco ISPDB da Mozilla → convenção de nomeação. Cada etapa só roda
+quando a anterior não respondeu, e a origem viaja no resultado (`DiscoverySource`).
+
+**Motivo:** As fontes não têm o mesmo peso. Autoconfig e SRV são declarações de quem manda
+no domínio; o ISPDB é banco de terceiros; a convenção é palpite. Sem registrar a origem, o
+assistente não teria como diferenciar "o domínio declarou isto" de "chutamos isto" na hora
+de pedir confirmação ao usuário.
+
+Três decisões de segurança acompanham:
+
+1. **DTD desligado na leitura do XML.** O documento vem de um host escolhido pelo domínio
+   que o usuário digitou. Um `<!ENTITY SYSTEM "file:///...">` transformaria a descoberta de
+   servidores em leitura arbitrária de disco.
+2. **Só HTTPS, e com teto de leitura.** O formato do Thunderbird admite HTTP em claro no
+   arquivo do próprio domínio; aceitá-lo permitiria a quem estivesse no caminho da rede
+   devolver uma configuração apontando para o servidor dele.
+3. **Ao ISPDB vai apenas o domínio, nunca o endereço completo.** Quem responde é um
+   terceiro sem relação com o usuário, e o domínio basta para localizar o registro.
+
+Configuração que aponta para fora do domínio do endereço chega com
+`RequiresUserConfirmation`. Hospedagem terceirizada é legítima e comum — e tem exatamente o
+mesmo formato de um desvio malicioso, então quem decide é o usuário.
+
+**Alternativas rejeitadas:** consultar tudo em paralelo e escolher o "melhor" (tornaria a
+precedência implícita e imprevisível); confiar no ISPDB antes do próprio domínio (inverteria
+a ordem de autoridade).
+
+**Consequências:** dependência nova de `DnsClient` — o .NET não consulta registros SRV — e
+de `Microsoft.Extensions.Http`. `IDnsResolver` isola a consulta para que a ordem das
+estratégias seja verificável sem rede.
+
+---
+
+## D-010 — ViewModels em projeto multiplataforma próprio (2026-08-04)
+
+**Status:** aceita
+
+**Decisão:** Criar `Sintek.Mail.Presentation` (`net10.0`, sem WinUI) e mover para lá os
+ViewModels que estavam em `Sintek.Mail.App`. O projeto entra no filtro
+`Sintek.Mail.CrossPlatform.slnf` e é compilado e testado pelo job Linux do CI.
+
+**Motivo:** Na fase 1, a camada de interface levou seis correções em quatro rodadas de CI
+porque cada erro só aparecia no compilador de destino. Boa parte daquela lógica — validação
+de formulário, etapas do assistente, decisão de quando pedir confirmação — não depende de
+WinUI coisa nenhuma; ficava sem teste apenas por morar no projeto errado.
+
+**Consequências:** 34 testes cobrem o assistente de contas e as telas de configuração,
+executados em segundos no Linux. `Sintek.Mail.App` fica com o que de fato precisa do WinUI:
+janelas, XAML, WebView2 e o vaivém entre `ContentDialog`s.
+
+O limite é honesto: XAML, `x:Bind` e o gerador do MVVM Toolkit continuam só verificáveis no
+job Windows. O que este projeto elimina é a categoria de erro que *não* precisava estar lá.

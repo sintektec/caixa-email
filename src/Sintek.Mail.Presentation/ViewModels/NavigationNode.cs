@@ -2,7 +2,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Sintek.Mail.Domain.Enums;
 
-namespace Sintek.Mail.App.ViewModels;
+namespace Sintek.Mail.Presentation.ViewModels;
 
 /// <summary>Que tipo de item da árvore de navegação um nó representa.</summary>
 public enum NavigationNodeKind

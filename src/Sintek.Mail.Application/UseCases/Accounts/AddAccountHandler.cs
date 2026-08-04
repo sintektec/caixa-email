@@ -83,6 +83,7 @@ public sealed class AddAccountHandler
     private readonly ICredentialStore _credentials;
     private readonly IAutodiscoverService _autodiscover;
     private readonly IImapClient _imapClient;
+    private readonly IOAuthProviderRegistry _oauthProviders;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<AddAccountHandler> _logger;
 
@@ -95,6 +96,7 @@ public sealed class AddAccountHandler
         ICredentialStore credentials,
         IAutodiscoverService autodiscover,
         IImapClient imapClient,
+        IOAuthProviderRegistry oauthProviders,
         TimeProvider timeProvider,
         ILogger<AddAccountHandler> logger)
     {
@@ -106,6 +108,7 @@ public sealed class AddAccountHandler
         _credentials = credentials;
         _autodiscover = autodiscover;
         _imapClient = imapClient;
+        _oauthProviders = oauthProviders;
         _timeProvider = timeProvider;
         _logger = logger;
     }
@@ -176,7 +179,13 @@ public sealed class AddAccountHandler
 
         if (command.AuthenticationType == AuthenticationType.OAuth2)
         {
-            account.UseOAuthAuthentication(command.OAuthProvider, now);
+            var consent = await ObtainConsentAsync(account, command.OAuthProvider, now, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (consent is not null)
+            {
+                return new AddAccountResult(false, null, consent);
+            }
         }
         else
         {
@@ -197,7 +206,7 @@ public sealed class AddAccountHandler
         var test = await _imapClient.ConnectAsync(account, cancellationToken).ConfigureAwait(false);
         if (!test.Succeeded)
         {
-            await _credentials.DeleteSecretAsync(account.CredentialKey, cancellationToken).ConfigureAwait(false);
+            await DiscardCredentialsAsync(account, cancellationToken).ConfigureAwait(false);
             return new AddAccountResult(false, null, test.ErrorMessage);
         }
 
@@ -226,6 +235,91 @@ public sealed class AddAccountHandler
         }, cancellationToken).ConfigureAwait(false);
 
         return new AddAccountResult(true, account.Id, null);
+    }
+
+    /// <summary>
+    /// Conduz o consentimento OAuth, devolvendo a mensagem de erro quando não se conclui.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// O consentimento acontece <b>antes</b> do teste de conexão porque é ele que produz o
+    /// token que o teste vai usar. Sem essa etapa, o cadastro de uma conta OAuth falharia
+    /// com "acesso expirado" na primeira tentativa — mensagem que não descreve o que houve.
+    /// </para>
+    /// <para>
+    /// Provedor sem Client ID recebe explicação própria: a opção existe, falta configurá-la,
+    /// e a ação necessária é do administrador. Tratar isso como falha de autenticação
+    /// mandaria o usuário procurar uma senha que não resolveria nada.
+    /// </para>
+    /// </remarks>
+    private async Task<string?> ObtainConsentAsync(
+        Account account, OAuthProviderKind kind, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var provider = _oauthProviders.Resolve(kind);
+
+        if (provider is null)
+        {
+            return $"Não há suporte a autenticação {kind} nesta versão.";
+        }
+
+        if (!provider.IsConfigured)
+        {
+            return $"A autenticação {kind} ainda não foi configurada nesta instalação. " +
+                   "É preciso registrar o aplicativo no provedor e informar o Client ID.";
+        }
+
+        account.UseOAuthAuthentication(kind, now);
+
+        try
+        {
+            await provider.AuthenticateInteractivelyAsync(account.EmailAddress.Value, cancellationToken)
+                .ConfigureAwait(false);
+
+            return null;
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // Fechar a janela de consentimento é uma decisão do usuário, não um defeito.
+            return "A autorização foi cancelada antes de ser concluída.";
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "Falha no consentimento OAuth de {Provider}.", kind);
+            return $"Não foi possível concluir a autorização com {kind}: {ex.Message}";
+        }
+    }
+
+    /// <summary>Descarta o que foi guardado quando o cadastro não se conclui.</summary>
+    /// <remarks>
+    /// Vale para os dois caminhos. Uma senha que ficasse para trás povoaria o Gerenciador de
+    /// Credenciais com tentativas abandonadas; um consentimento OAuth que ficasse para trás
+    /// deixaria o aplicativo autorizado a ler a caixa de uma conta que o usuário nunca
+    /// chegou a cadastrar.
+    /// </remarks>
+    private async Task DiscardCredentialsAsync(Account account, CancellationToken cancellationToken)
+    {
+        if (account.AuthenticationType == AuthenticationType.OAuth2)
+        {
+            var provider = _oauthProviders.Resolve(account.OAuthProvider);
+
+            if (provider is not null)
+            {
+                try
+                {
+                    await provider.SignOutAsync(account.EmailAddress.Value, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _logger.LogWarning(
+                        ex, "Não foi possível revogar o consentimento após o cadastro malsucedido.");
+                }
+            }
+
+            return;
+        }
+
+        await _credentials.DeleteSecretAsync(account.CredentialKey, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<DiscoveredServerSettings?> ResolveServerSettingsAsync(

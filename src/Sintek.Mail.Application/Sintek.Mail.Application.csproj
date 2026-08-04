@@ -14,4 +14,13 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!--
+      Alguns detalhes internos precisam de teste direto sem virarem API pública: a ordenação
+      de pastas da folha para a raiz, por exemplo, é consequência de uma restrição de chave
+      estrangeira e não algo que outra camada deva chamar.
+    -->
+    <InternalsVisibleTo Include="Sintek.Mail.Application.Tests" />
+  </ItemGroup>
+
 </Project>

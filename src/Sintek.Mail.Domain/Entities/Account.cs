@@ -134,6 +134,28 @@ public sealed class Account : Entity
         return new Account(id ?? Guid.CreateVersion7(), domainDirectoryId, emailAddress, displayName.Trim(), createdAt);
     }
 
+    /// <summary>
+    /// Cria uma conta de validação: não pertence a diretório algum e não é persistida.
+    /// </summary>
+    /// <remarks>
+    /// Serve ao teste de configuração que antecede o cadastro. A chave da credencial é
+    /// própria e efêmera de propósito — usar a chave definitiva faria o teste sobrescrever,
+    /// e depois apagar, a senha de uma conta real já cadastrada com o mesmo endereço.
+    /// </remarks>
+    public static Account CreateProbe(EmailAddress emailAddress, DateTimeOffset createdAt)
+    {
+        ArgumentNullException.ThrowIfNull(emailAddress);
+
+        var probe = new Account(Guid.CreateVersion7(), Guid.Empty, emailAddress, emailAddress.Value, createdAt)
+        {
+            IsActive = false,
+        };
+
+        probe.CredentialKey = $"Sintek.Mail:validacao:{probe.Id:N}";
+
+        return probe;
+    }
+
     /// <summary>Configura os servidores IMAP e SMTP.</summary>
     public void ConfigureServers(
         string imapHost,

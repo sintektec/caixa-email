@@ -256,9 +256,3 @@ public class MoveMessageHandlerTests
         message.SyncState.Should().Be(MessageSyncState.Synced, "não houve alteração a sincronizar");
     }
 }
-
-/// <summary>Relógio fixo, para tornar os testes determinísticos.</summary>
-internal sealed class FakeTimeProvider(DateTimeOffset now) : TimeProvider
-{
-    public override DateTimeOffset GetUtcNow() => now;
-}

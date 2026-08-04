@@ -23,8 +23,10 @@
     <PackageReference Include="HtmlSanitizer" />
     <PackageReference Include="Microsoft.Identity.Client" />
     <PackageReference Include="Google.Apis.Auth" />
+    <PackageReference Include="DnsClient" />
     <PackageReference Include="Polly" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Http" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Options" />
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />

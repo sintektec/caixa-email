@@ -1,7 +1,8 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
-using Sintek.Mail.App.ViewModels;
+using Sintek.Mail.App.Dialogs;
+using Sintek.Mail.Presentation.ViewModels;
 using Windows.ApplicationModel.DataTransfer;
 
 namespace Sintek.Mail.App;
@@ -261,6 +262,58 @@ public sealed partial class MainWindow : Window
         {
             deferral.Complete();
         }
+    }
+
+    /// <summary>
+    /// Abre a tela de contas e diretórios, encadeando o assistente quando ele é pedido de
+    /// lá.
+    /// </summary>
+    /// <remarks>
+    /// O WinUI só mantém um <c>ContentDialog</c> aberto por vez. O encadeamento é feito com
+    /// um laço porque as telas se chamam nos dois sentidos: o assistente pode pedir a
+    /// criação de um diretório, e a tela de configurações pode abrir o assistente. Aninhar
+    /// diálogos, além de proibido, faria o segundo simplesmente não aparecer.
+    /// </remarks>
+    private async void OnSettingsClick(object sender, RoutedEventArgs e)
+    {
+        var next = SettingsFollowUp.None;
+
+        do
+        {
+            switch (next)
+            {
+                case SettingsFollowUp.AccountSetup:
+                    next = await ShowAccountSetupAsync().ConfigureAwait(true);
+                    break;
+
+                case SettingsFollowUp.DomainDirectory:
+                    await DomainDirectoryDialog.Create(RootGrid.XamlRoot).ShowAsync();
+                    next = SettingsFollowUp.None;
+                    break;
+
+                default:
+                    var settings = SettingsDialog.Create(RootGrid.XamlRoot);
+                    await settings.ShowAsync();
+                    next = settings.FollowUp;
+                    break;
+            }
+        }
+        while (next != SettingsFollowUp.None);
+
+        await Shell.LoadNavigationAsync().ConfigureAwait(true);
+    }
+
+    private async Task<SettingsFollowUp> ShowAccountSetupAsync()
+    {
+        var wizard = AccountSetupDialog.Create(RootGrid.XamlRoot);
+        await wizard.ShowAsync();
+
+        // Pedir a criação de um diretório no meio do assistente leva ao editor e, dele, de
+        // volta à tela de configurações — de onde o assistente pode recomeçar já com o
+        // diretório existindo.
+        return wizard.RequestedDirectoryCreation
+            ? SettingsFollowUp.DomainDirectory
+            : SettingsFollowUp.None;
     }
 
     private void OnThemeToggleClick(object sender, RoutedEventArgs e)
