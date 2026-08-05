@@ -111,6 +111,30 @@ public sealed partial class ComposerViewModel : ObservableObject
     [ObservableProperty]
     private bool _requestReadReceipt;
 
+    /// <summary>Se o envio foi agendado para mais tarde.</summary>
+    [ObservableProperty]
+    private bool _isSendScheduled;
+
+    /// <summary>Data escolhida para o envio agendado.</summary>
+    [ObservableProperty]
+    private DateTimeOffset? _scheduledDate;
+
+    /// <summary>Hora escolhida para o envio agendado.</summary>
+    [ObservableProperty]
+    private TimeSpan _scheduledTime = TimeSpan.FromHours(8);
+
+    /// <summary>
+    /// Instante do envio agendado, montado a partir da data e da hora escolhidas.
+    /// </summary>
+    /// <remarks>
+    /// Data e hora vêm de controles separados porque o WinUI não tem um seletor único; a
+    /// composição fica aqui, testável, e não no code-behind.
+    /// </remarks>
+    public DateTimeOffset? ScheduledSendAt
+        => IsSendScheduled && ScheduledDate is { } date
+            ? new DateTimeOffset(date.Date, date.Offset).Add(ScheduledTime)
+            : null;
+
     /// <summary>Mensagem de erro ou aviso.</summary>
     [ObservableProperty]
     private string _statusMessage = string.Empty;
@@ -393,6 +417,7 @@ public sealed partial class ComposerViewModel : ObservableObject
         ThreadId = _threadId,
         Importance = Importance,
         RequestReadReceipt = RequestReadReceipt,
+        ScheduledSendAt = ScheduledSendAt,
     };
 
     private IReadOnlyList<DraftRecipient> ParseAllRecipients()

@@ -16,12 +16,21 @@ internal sealed class InMemoryAttachmentStore : IAttachmentStore
 {
     public List<(Guid MessageId, Guid AttachmentId, string FileName)> Saved { get; } = [];
 
+    /// <summary>Anexos cujo arquivo foi apagado, na ordem.</summary>
+    public List<Guid> Deleted { get; } = [];
+
     public Task<string> SaveAsync(
         Guid messageId, Guid attachmentId, string fileName, Stream content,
         CancellationToken cancellationToken = default)
     {
         Saved.Add((messageId, attachmentId, fileName));
         return Task.FromResult($"/anexos/{messageId:N}/{attachmentId:N}");
+    }
+
+    public Task DeleteAsync(Guid attachmentId, CancellationToken cancellationToken = default)
+    {
+        Deleted.Add(attachmentId);
+        return Task.CompletedTask;
     }
 }
 

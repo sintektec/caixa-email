@@ -53,6 +53,16 @@ public sealed record ComposeMessageCommand
 
     /// <summary>Se pede confirmação de leitura.</summary>
     public bool RequestReadReceipt { get; init; }
+
+    /// <summary>
+    /// Instante do envio agendado. Nulo envia assim que a fila drenar.
+    /// </summary>
+    /// <remarks>
+    /// O agendamento é a data em que a operação da fila fica elegível: a fila já respeita
+    /// <c>NextAttemptAt</c>, então não existe um segundo mecanismo de espera para manter
+    /// em sincronia com o primeiro.
+    /// </remarks>
+    public DateTimeOffset? ScheduledSendAt { get; init; }
 }
 
 /// <summary>Resultado da gravação ou do envio.</summary>
@@ -125,6 +135,14 @@ public sealed class ComposeMessageHandler
         if (!command.Recipients.Any(r => r.Kind is AddressKind.To or AddressKind.Cc or AddressKind.Bcc))
         {
             return new ComposeMessageResult(false, null, "Informe ao menos um destinatário.");
+        }
+
+        // Agendamento no passado é erro de digitação, não intenção: recusar aqui evita a
+        // exceção da entidade e devolve texto que o usuário entende.
+        if (command.ScheduledSendAt is { } sendAt && sendAt <= _timeProvider.GetUtcNow())
+        {
+            return new ComposeMessageResult(
+                false, null, "O horário de envio agendado precisa estar no futuro.");
         }
 
         return await PersistAsync(command, sending: true, cancellationToken).ConfigureAwait(false);
@@ -224,12 +242,18 @@ public sealed class ComposeMessageHandler
 
             if (sending)
             {
+                if (command.ScheduledSendAt is { } sendAt)
+                {
+                    message.ScheduleSend(sendAt, now);
+                }
+
                 await _outbox.EnqueueAsync(
                     account.Id,
                     OutboxOperationType.SendMessage,
                     message.Id,
                     new SendMessagePayload(),
-                    ct).ConfigureAwait(false);
+                    ct,
+                    notBefore: command.ScheduledSendAt).ConfigureAwait(false);
             }
             else
             {

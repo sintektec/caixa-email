@@ -37,12 +37,16 @@ public sealed class OutboxEnqueuer
     /// <remarks>
     /// Precisa ser chamado dentro da mesma transação que grava o efeito local da ação.
     /// </remarks>
+    /// <param name="notBefore">
+    /// Instante antes do qual a operação não deve rodar — o envio agendado passa por aqui.
+    /// </param>
     public async Task<OutboxOperation> EnqueueAsync<TPayload>(
         Guid accountId,
         OutboxOperationType operationType,
         Guid entityId,
         TPayload payload,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        DateTimeOffset? notBefore = null)
     {
         var now = _timeProvider.GetUtcNow();
         var sequence = await _outbox.NextSequenceAsync(accountId, cancellationToken).ConfigureAwait(false);
@@ -53,7 +57,8 @@ public sealed class OutboxEnqueuer
             entityId,
             JsonSerializer.Serialize(payload, PayloadOptions),
             sequence,
-            now);
+            now,
+            notBefore: notBefore);
 
         await _outbox.AddAsync(operation, cancellationToken).ConfigureAwait(false);
         return operation;

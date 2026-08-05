@@ -152,6 +152,15 @@ public sealed class Message : Entity
     /// <summary>Se o remetente pediu confirmação de leitura.</summary>
     public bool ReadReceiptRequested { get; private set; }
 
+    /// <summary>
+    /// Se a confirmação de leitura já foi respondida — enviada ou recusada pelo usuário.
+    /// </summary>
+    /// <remarks>
+    /// Guardado para que a pergunta não reapareça a cada vez que a mensagem é aberta.
+    /// Perguntar de novo depois de um "não" trata a recusa como se não tivesse valido.
+    /// </remarks>
+    public bool ReadReceiptHandled { get; private set; }
+
     /// <summary>Corpo da mensagem, carregado sob demanda.</summary>
     public MessageBody? Body { get; private set; }
 
@@ -404,6 +413,13 @@ public sealed class Message : Entity
             SyncState = MessageSyncState.PendingMove;
         }
 
+        Touch(now);
+    }
+
+    /// <summary>Registra que o pedido de confirmação de leitura já foi decidido.</summary>
+    public void MarkReadReceiptHandled(DateTimeOffset now)
+    {
+        ReadReceiptHandled = true;
         Touch(now);
     }
 

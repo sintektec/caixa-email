@@ -41,6 +41,8 @@ public static class DependencyInjection
         services.AddScoped<DownloadMessageContentHandler>();
         services.AddScoped<ComposeMessageHandler>();
         services.AddScoped<MarkAsSpamHandler>();
+        services.AddScoped<ReadReceiptHandler>();
+        services.AddScoped<MessageFlagsHandler>();
 
         services.AddScoped<FolderMirrorService>();
         services.AddScoped<MessageSyncService>();
@@ -52,6 +54,8 @@ public static class DependencyInjection
         services.AddScoped<RemoveAccountHandler>();
 
         services.AddScoped<SavedSearchesHandler>();
+
+        services.AddScoped<UseCases.Maintenance.CacheMaintenanceHandler>();
 
         services.AddScoped<AssistantGateway>();
         services.AddScoped<AssistantFeaturesHandler>();

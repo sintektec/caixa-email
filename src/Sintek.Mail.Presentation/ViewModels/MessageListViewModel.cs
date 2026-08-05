@@ -22,6 +22,18 @@ public sealed partial class MessageListItemViewModel : ObservableObject
 
     public required DateTimeOffset ReceivedAt { get; init; }
 
+    /// <summary>Conversa à qual a mensagem pertence, quando o servidor a agrupou.</summary>
+    public Guid? ThreadId { get; init; }
+
+    /// <summary>
+    /// Quantas mensagens a conversa tem, quando a linha representa uma conversa inteira.
+    /// </summary>
+    [ObservableProperty]
+    private int _conversationCount = 1;
+
+    /// <summary>Se a linha representa mais de uma mensagem.</summary>
+    public bool IsConversation => ConversationCount > 1;
+
     public bool HasAttachments { get; init; }
 
     [ObservableProperty]
@@ -105,6 +117,8 @@ public sealed partial class MessageListItemViewModel : ObservableObject
     }
 
     partial void OnSyncStateChanged(MessageSyncState value) => OnPropertyChanged(nameof(HasPendingChanges));
+
+    partial void OnConversationCountChanged(int value) => OnPropertyChanged(nameof(IsConversation));
 }
 
 /// <summary>ViewModel do painel central: a lista de mensagens da pasta selecionada.</summary>
@@ -168,13 +182,20 @@ public sealed partial class MessageListViewModel : ObservableObject
 
             var ids = await _messages.ListIdsByFolderAsync(folderId, cancellationToken).ConfigureAwait(true);
 
+            var items = new List<MessageListItemViewModel>();
+
             foreach (var id in ids)
             {
                 var message = await _messages.GetByIdAsync(id, cancellationToken).ConfigureAwait(true);
                 if (message is not null)
                 {
-                    Messages.Add(ToListItem(message));
+                    items.Add(ToListItem(message));
                 }
+            }
+
+            foreach (var item in GroupByConversation ? CollapseConversations(items) : items)
+            {
+                Messages.Add(item);
             }
         }
         finally
@@ -224,6 +245,53 @@ public sealed partial class MessageListViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Reduz a lista a uma linha por conversa, mantendo a mensagem mais recente de cada
+    /// uma e contando quantas ela representa.
+    /// </summary>
+    /// <remarks>
+    /// A entrada já vem ordenada da mais recente para a mais antiga, então a primeira de
+    /// cada conversa é a que fica — e a ordem geral da lista se preserva sem reordenar.
+    /// Mensagem sem <c>ThreadId</c> é a sua própria conversa: agrupá-las todas sob "sem
+    /// conversa" esconderia mensagens não relacionadas umas das outras.
+    /// </remarks>
+    internal static List<MessageListItemViewModel> CollapseConversations(
+        IReadOnlyList<MessageListItemViewModel> items)
+    {
+        var collapsed = new List<MessageListItemViewModel>();
+        var byThread = new Dictionary<Guid, MessageListItemViewModel>();
+
+        foreach (var item in items)
+        {
+            if (item.ThreadId is not { } threadId)
+            {
+                collapsed.Add(item);
+                continue;
+            }
+
+            if (byThread.TryGetValue(threadId, out var head))
+            {
+                head.ConversationCount++;
+                continue;
+            }
+
+            item.ConversationCount = 1;
+            byThread[threadId] = item;
+            collapsed.Add(item);
+        }
+
+        return collapsed;
+    }
+
+    /// <summary>Recarrega a pasta quando o agrupamento é ligado ou desligado.</summary>
+    partial void OnGroupByConversationChanged(bool value)
+    {
+        if (FolderId is { } folderId)
+        {
+            _ = LoadFolderAsync(folderId);
+        }
+    }
+
     private static MessageListItemViewModel ToListItem(Message message) => new()
     {
         MessageId = message.Id,
@@ -236,6 +304,7 @@ public sealed partial class MessageListViewModel : ObservableObject
         IsFlagged = message.IsFlagged,
         Importance = message.Importance,
         SyncState = message.SyncState,
+        ThreadId = message.ThreadId,
         RelatedDomain = message.FromAddress?.Domain.Value,
     };
 }

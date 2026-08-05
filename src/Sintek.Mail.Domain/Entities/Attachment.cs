@@ -121,6 +121,21 @@ public sealed class Attachment : Entity
         Touch(now);
     }
 
+    /// <summary>
+    /// Descarta o conteúdo baixado, mantendo os metadados do anexo.
+    /// </summary>
+    /// <remarks>
+    /// O anexo continua listado na mensagem — nome, tipo e tamanho vieram do
+    /// BODYSTRUCTURE, não do arquivo — e volta a ser baixável sob demanda. É o que faz a
+    /// limpeza de cache não parecer perda de dados.
+    /// </remarks>
+    public void ClearDownload(DateTimeOffset now)
+    {
+        StoragePath = null;
+        IsDownloaded = false;
+        Touch(now);
+    }
+
     /// <summary>Indica se a extensão do arquivo é executável ou interpretável no Windows.</summary>
     public static bool IsDangerousFileName(string? fileName)
     {

@@ -93,6 +93,11 @@ public sealed class OutboxOperation : Entity
     public DateTimeOffset? CompletedAt { get; private set; }
 
     /// <summary>Enfileira uma operação.</summary>
+    /// <param name="notBefore">
+    /// Instante antes do qual a operação não deve ser executada. É o que sustenta o envio
+    /// agendado: a fila já sabe respeitar <see cref="NextAttemptAt"/>, então agendar é
+    /// enfileirar com a data certa — não precisa de um segundo mecanismo de espera.
+    /// </param>
     public static OutboxOperation Enqueue(
         Guid accountId,
         OutboxOperationType operationType,
@@ -102,7 +107,8 @@ public sealed class OutboxOperation : Entity
         DateTimeOffset createdAt,
         Guid? dependsOnId = null,
         int maxAttempts = DefaultMaxAttempts,
-        Guid? id = null)
+        Guid? id = null,
+        DateTimeOffset? notBefore = null)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxAttempts);
 
@@ -115,6 +121,7 @@ public sealed class OutboxOperation : Entity
             sequence,
             createdAt)
         {
+            NextAttemptAt = notBefore ?? createdAt,
             DependsOnId = dependsOnId,
             MaxAttempts = maxAttempts,
         };

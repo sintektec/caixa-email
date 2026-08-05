@@ -262,6 +262,26 @@ public sealed class MessageRepository : IMessageRepository
     }
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<Message>> ListCachedContentAsync(
+        DateTimeOffset downloadedBefore, CancellationToken cancellationToken = default)
+        => await _context.Messages
+            .Include(m => m.Body)
+            .Include(m => m.Attachments)
+            // Uid > 0 é o que prova que o servidor ainda tem a mensagem: sem ele o
+            // download não teria de onde recomeçar.
+            //
+            // A idade do cache é a do corpo: o anexo não guarda instante próprio, e na
+            // prática desce depois do corpo — usar a data do corpo para a mensagem inteira
+            // erra no máximo para o lado de preservar por mais tempo.
+            .Where(m => m.Uid != null && m.Uid > 0
+                && m.SyncState == MessageSyncState.Synced
+                && m.Body != null
+                && m.Body.DownloadedAt != null
+                && m.Body.DownloadedAt < downloadedBefore)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+    /// <inheritdoc />
     public async Task<IReadOnlyList<Message>> ListInRestrictedFoldersAsync(
         Guid domainDirectoryId, CancellationToken cancellationToken = default)
         => await _context.Messages

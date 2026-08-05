@@ -39,6 +39,7 @@ public sealed partial class ShellViewModel : ObservableObject
     private readonly ISavedSearchRepository _savedSearches;
     private readonly MoveMessageHandler _moveMessage;
     private readonly MarkAsSpamHandler _markAsSpam;
+    private readonly MessageFlagsHandler _messageFlags;
     private readonly SyncAccountHandler _syncAccount;
     private readonly ILogger<ShellViewModel> _logger;
 
@@ -50,6 +51,7 @@ public sealed partial class ShellViewModel : ObservableObject
         ISavedSearchRepository savedSearches,
         MoveMessageHandler moveMessage,
         MarkAsSpamHandler markAsSpam,
+        MessageFlagsHandler messageFlags,
         SyncAccountHandler syncAccount,
         ILogger<ShellViewModel> logger)
     {
@@ -60,6 +62,7 @@ public sealed partial class ShellViewModel : ObservableObject
         _savedSearches = savedSearches;
         _moveMessage = moveMessage;
         _markAsSpam = markAsSpam;
+        _messageFlags = messageFlags;
         _syncAccount = syncAccount;
         _logger = logger;
     }
@@ -358,6 +361,44 @@ public sealed partial class ShellViewModel : ObservableObject
         Guid messageId, bool isSpam, CancellationToken cancellationToken = default)
     {
         var result = await _markAsSpam.HandleAsync(messageId, isSpam, cancellationToken).ConfigureAwait(true);
+
+        StatusMessage = result.ErrorMessage;
+
+        if (result.Succeeded)
+        {
+            await RefreshPendingCountAsync(cancellationToken).ConfigureAwait(true);
+        }
+
+        return result.Succeeded;
+    }
+
+    /// <summary>
+    /// Marca uma mensagem como lida ou não lida, propagando pela fila.
+    /// </summary>
+    /// <remarks>
+    /// A gravação local e o enfileiramento acontecem no mesmo caso de uso; aqui só se
+    /// traduz o gesto da interface.
+    /// </remarks>
+    public async Task<bool> SetMessageReadAsync(
+        Guid messageId, bool isRead, CancellationToken cancellationToken = default)
+    {
+        var changed = await _messageFlags.SetReadAsync(messageId, isRead, cancellationToken)
+            .ConfigureAwait(true);
+
+        if (changed)
+        {
+            await RefreshPendingCountAsync(cancellationToken).ConfigureAwait(true);
+        }
+
+        return changed;
+    }
+
+    /// <summary>Move uma mensagem para a lixeira.</summary>
+    public async Task<bool> DeleteMessageAsync(
+        Guid messageId, CancellationToken cancellationToken = default)
+    {
+        var result = await _messageFlags.MoveToTrashAsync(messageId, cancellationToken)
+            .ConfigureAwait(true);
 
         StatusMessage = result.ErrorMessage;
 

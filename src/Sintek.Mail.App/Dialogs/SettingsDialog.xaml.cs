@@ -13,9 +13,10 @@ namespace Sintek.Mail.App.Dialogs;
 /// </remarks>
 public sealed partial class SettingsDialog : ContentDialog
 {
-    public SettingsDialog(AccountsViewModel viewModel)
+    public SettingsDialog(AccountsViewModel viewModel, MaintenanceViewModel maintenance)
     {
         ViewModel = viewModel;
+        Maintenance = maintenance;
 
         InitializeComponent();
 
@@ -24,6 +25,12 @@ public sealed partial class SettingsDialog : ContentDialog
 
     /// <summary>ViewModel da lista de contas.</summary>
     public AccountsViewModel ViewModel { get; }
+
+    /// <summary>ViewModel da manutenção do cache local.</summary>
+    public MaintenanceViewModel Maintenance { get; }
+
+    private async void OnConfirmCleanupClick(object sender, RoutedEventArgs e)
+        => await Maintenance.ConfirmAsync().ConfigureAwait(true);
 
     /// <summary>Qual tela deve ser aberta depois que esta fechar.</summary>
     public SettingsFollowUp FollowUp { get; private set; }
@@ -63,7 +70,9 @@ public sealed partial class SettingsDialog : ContentDialog
 
     /// <summary>Cria o diálogo com as dependências do contêiner.</summary>
     public static SettingsDialog Create(XamlRoot xamlRoot)
-        => new(App.Services.GetRequiredService<AccountsViewModel>())
+        => new(
+            App.Services.GetRequiredService<AccountsViewModel>(),
+            App.Services.GetRequiredService<MaintenanceViewModel>())
         {
             XamlRoot = xamlRoot,
         };

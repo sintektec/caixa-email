@@ -192,11 +192,33 @@ Recursos entregues: resumo de mensagem, sugestão de resposta e reescrita no com
 corpo é cortado em 12 mil caracteres antes de sair e vai como texto puro — marcação não
 ajuda o modelo e infla o que deixa a máquina; endereços de participantes ficam de fora.
 
-## Fase 9 — Acabamento
+## Fase 9 — Acabamento ✅
 
 Envio agendado, confirmação de leitura, agrupamento por conversa, atalhos completos no
-padrão Outlook, revisão de acessibilidade com leitor de tela e navegação apenas por
-teclado, limpeza segura de cache e confirmações antes de operações destrutivas.
+padrão Outlook, limpeza segura de cache e confirmações antes de operações destrutivas.
+
+O **envio agendado** não ganhou mecanismo próprio de espera: a fila já respeita
+`NextAttemptAt`, então agendar é enfileirar com a data certa. Um segundo relógio teria de
+ser mantido em sincronia com o primeiro, e não estaria.
+
+A **confirmação de leitura** nunca sai sozinha. O cabeçalho `Disposition-Notification-To`
+é um pedido, não uma ordem: enviar sem perguntar entregaria ao remetente a informação de
+que a mensagem foi aberta — que é exatamente o que um remetente hostil quer confirmar.
+Recusar também é decisão registrada (`Message.ReadReceiptHandled`), para que a pergunta
+não reapareça a cada abertura.
+
+O **agrupamento por conversa** colapsa a lista mantendo a mensagem mais recente de cada
+conversa. Mensagem sem `ThreadId` é a sua própria conversa: juntá-las todas sob uma linha
+esconderia mensagens que nada têm a ver umas com as outras.
+
+Os **atalhos** seguem o Outlook, inclusive onde ele contraria o hábito geral — Ctrl+F é
+encaminhar, não localizar. Ctrl+Shift+A lista todos, porque descobri-los precisa ser
+possível sem consultar documentação.
+
+A **limpeza de cache** é segura por construção: só descarta o que o servidor ainda tem
+(mensagem com UID e sincronizada), preserva os metadados do anexo e a autorização de
+conteúdo remoto, e mede o impacto antes de apagar — o mesmo desenho de duas etapas da
+remoção de conta, de diretório e de pasta.
 
 ## Fase 10 — Distribuição
 

@@ -67,6 +67,38 @@ public sealed class FileAttachmentStore : IAttachmentStore
         return path;
     }
 
+    /// <inheritdoc />
+    public Task DeleteAsync(Guid attachmentId, CancellationToken cancellationToken = default)
+    {
+        // O nome físico começa pelo identificador do anexo, então a busca por padrão
+        // encontra o arquivo sem precisar saber a extensão nem a mensagem de origem.
+        var pattern = attachmentId.ToString("N") + ".*";
+
+        if (!Directory.Exists(_root))
+        {
+            return Task.CompletedTask;
+        }
+
+        foreach (var path in Directory.EnumerateFiles(_root, pattern, SearchOption.AllDirectories))
+        {
+            try
+            {
+                File.Delete(path);
+            }
+            catch (IOException)
+            {
+                // Arquivo em uso por um visualizador aberto: fica para a próxima limpeza.
+                // Falhar aqui abortaria a limpeza inteira por causa de um arquivo.
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // Mesma razão.
+            }
+        }
+
+        return Task.CompletedTask;
+    }
+
     /// <summary>
     /// Extrai a extensão do nome declarado, recusando o que não for um sufixo simples.
     /// </summary>

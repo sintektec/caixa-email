@@ -87,6 +87,106 @@ public sealed partial class MainWindow : Window
 
         AddShortcut(Windows.System.VirtualKey.F5, Windows.System.VirtualKeyModifiers.None,
             () => _ = Shell.LoadNavigationAsync());
+
+        // O resto do conjunto do Outlook, que é o vocabulário que o usuário corporativo
+        // já tem nos dedos. Ctrl+F é encaminhar, não localizar: no Outlook é assim, e
+        // trocar isso é o tipo de "melhoria" que faz encaminhar sem querer.
+        AddShortcut(Windows.System.VirtualKey.F, Windows.System.VirtualKeyModifiers.Control,
+            () => _ = OpenComposerAsync(DraftKind.Forward, Reading.MessageId));
+
+        AddShortcut(Windows.System.VirtualKey.M, Windows.System.VirtualKeyModifiers.Control
+            | Windows.System.VirtualKeyModifiers.Shift,
+            () => _ = Shell.SyncNowAsync());
+
+        AddShortcut(Windows.System.VirtualKey.Q, Windows.System.VirtualKeyModifiers.Control,
+            () => _ = SetSelectedReadAsync(isRead: true));
+
+        AddShortcut(Windows.System.VirtualKey.U, Windows.System.VirtualKeyModifiers.Control,
+            () => _ = SetSelectedReadAsync(isRead: false));
+
+        AddShortcut(Windows.System.VirtualKey.Delete, Windows.System.VirtualKeyModifiers.None,
+            () => _ = DeleteSelectedAsync());
+
+        AddShortcut(Windows.System.VirtualKey.J, Windows.System.VirtualKeyModifiers.Control,
+            () => _ = MarkSelectedAsSpamAsync());
+
+        // Ctrl+Shift+A abre a lista de atalhos: descobri-los precisa ser possível sem
+        // consultar documentação.
+        AddShortcut(Windows.System.VirtualKey.A, Windows.System.VirtualKeyModifiers.Control
+            | Windows.System.VirtualKeyModifiers.Shift,
+            () => _ = ShowShortcutsAsync());
+    }
+
+    /// <summary>Marca a mensagem selecionada como lida ou não lida.</summary>
+    private async Task SetSelectedReadAsync(bool isRead)
+    {
+        if (MessageList.SelectedMessage is { } item)
+        {
+            await Shell.SetMessageReadAsync(item.MessageId, isRead).ConfigureAwait(true);
+            item.IsRead = isRead;
+        }
+    }
+
+    /// <summary>Move a mensagem selecionada para a lixeira.</summary>
+    private async Task DeleteSelectedAsync()
+    {
+        if (MessageList.SelectedMessage is not { } item)
+        {
+            return;
+        }
+
+        await Shell.DeleteMessageAsync(item.MessageId).ConfigureAwait(true);
+
+        if (MessageList.FolderId is { } folderId)
+        {
+            await MessageList.LoadFolderAsync(folderId).ConfigureAwait(true);
+        }
+    }
+
+    private async Task MarkSelectedAsSpamAsync()
+    {
+        if (MessageList.SelectedMessage is not { } item)
+        {
+            return;
+        }
+
+        await Shell.MarkAsSpamAsync(item.MessageId, isSpam: true).ConfigureAwait(true);
+
+        if (MessageList.FolderId is { } folderId)
+        {
+            await MessageList.LoadFolderAsync(folderId).ConfigureAwait(true);
+        }
+    }
+
+    /// <summary>Lista os atalhos disponíveis.</summary>
+    private async Task ShowShortcutsAsync()
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = RootGrid.XamlRoot,
+            Title = "Atalhos de teclado",
+            CloseButtonText = "Fechar",
+            Content = new TextBlock
+            {
+                TextWrapping = TextWrapping.Wrap,
+                Text = """
+                    Ctrl+N — Nova mensagem
+                    Ctrl+R — Responder
+                    Ctrl+Shift+R — Responder a todos
+                    Ctrl+F — Encaminhar
+                    Ctrl+E — Pesquisar
+                    Ctrl+Q — Marcar como lida
+                    Ctrl+U — Marcar como não lida
+                    Ctrl+J — Marcar como spam
+                    Delete — Mover para a lixeira
+                    Ctrl+Shift+M — Sincronizar agora
+                    F5 — Recarregar a árvore
+                    Ctrl+Shift+A — Esta lista
+                    """,
+            },
+        };
+
+        await dialog.ShowAsync();
     }
 
     private void AddShortcut(

@@ -33,6 +33,7 @@ public static class DependencyInjection
         services.AddTransient<RulesViewModel>();
         services.AddTransient<OrganizationViewModel>();
         services.AddTransient<AssistantViewModel>();
+        services.AddTransient<MaintenanceViewModel>();
 
         return services;
     }

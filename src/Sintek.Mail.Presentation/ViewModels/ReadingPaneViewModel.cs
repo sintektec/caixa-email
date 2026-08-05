@@ -47,17 +47,58 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
     private readonly IHtmlSanitizer _sanitizer;
     private readonly DownloadMessageContentHandler _download;
     private readonly Application.UseCases.Organization.ManageSenderReputationHandler _reputation;
+    private readonly ReadReceiptHandler _readReceipt;
 
     public ReadingPaneViewModel(
         IMessageRepository messages,
         IHtmlSanitizer sanitizer,
         DownloadMessageContentHandler download,
-        Application.UseCases.Organization.ManageSenderReputationHandler reputation)
+        Application.UseCases.Organization.ManageSenderReputationHandler reputation,
+        ReadReceiptHandler readReceipt)
     {
         _messages = messages;
         _sanitizer = sanitizer;
         _download = download;
         _reputation = reputation;
+        _readReceipt = readReceipt;
+    }
+
+    /// <summary>
+    /// Se o remetente pediu confirmação de leitura e o usuário ainda não decidiu.
+    /// </summary>
+    /// <remarks>
+    /// A confirmação nunca sai sozinha: o cabeçalho é um pedido, e enviar sem perguntar
+    /// entregaria ao remetente a informação de que a mensagem foi aberta — que é
+    /// exatamente o que um remetente hostil quer confirmar.
+    /// </remarks>
+    [ObservableProperty]
+    private bool _showReadReceiptPrompt;
+
+    /// <summary>Envia a confirmação de leitura pedida pelo remetente.</summary>
+    [RelayCommand]
+    public async Task SendReadReceiptAsync(CancellationToken cancellationToken = default)
+    {
+        if (MessageId is not { } messageId)
+        {
+            return;
+        }
+
+        var result = await _readReceipt.SendAsync(messageId, cancellationToken).ConfigureAwait(true);
+
+        ShowReadReceiptPrompt = false;
+        DownloadError = result.Succeeded ? string.Empty : result.ErrorMessage ?? string.Empty;
+    }
+
+    /// <summary>Recusa enviar a confirmação — decisão registrada, não adiada.</summary>
+    [RelayCommand]
+    public async Task DeclineReadReceiptAsync(CancellationToken cancellationToken = default)
+    {
+        if (MessageId is { } messageId)
+        {
+            await _readReceipt.DeclineAsync(messageId, cancellationToken).ConfigureAwait(true);
+        }
+
+        ShowReadReceiptPrompt = false;
     }
 
     [ObservableProperty]
@@ -166,6 +207,10 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
             To = FormatAddresses(message, AddressKind.To);
             Cc = FormatAddresses(message, AddressKind.Cc);
             SentAt = message.SentAt;
+
+            // A pergunta só aparece uma vez por mensagem: repeti-la depois de um "não"
+            // trataria a recusa como se não tivesse valido.
+            ShowReadReceiptPrompt = message.ReadReceiptRequested && !message.ReadReceiptHandled;
 
             // Sempre parte do original: reaproveitar o HTML já higienizado impediria que
             // uma atualização das regras de sanitização valesse para mensagens antigas.
@@ -294,6 +339,7 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
         TrustLevel = SenderTrustLevel.Neutral;
         TrustMessage = string.Empty;
         DownloadError = string.Empty;
+        ShowReadReceiptPrompt = false;
         MessageId = null;
         Subject = string.Empty;
         From = string.Empty;

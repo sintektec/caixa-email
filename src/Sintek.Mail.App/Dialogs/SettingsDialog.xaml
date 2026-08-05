@@ -29,6 +29,32 @@
                 <Button Content="Regras automáticas" Click="OnRulesClick" />
                 <Button Content="Categorias, modelos e remetentes" Click="OnOrganizationClick" />
             </StackPanel>
+
+            <!--
+                Limpeza de cache em duas etapas, como as demais operações destrutivas:
+                o impacto é medido e exibido antes de qualquer coisa ser apagada.
+            -->
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <ComboBox MinWidth="220"
+                          ItemsSource="{x:Bind Maintenance.AgeOptions}"
+                          DisplayMemberPath="Label"
+                          SelectedItem="{x:Bind Maintenance.SelectedAge, Mode=TwoWay}"
+                          AutomationProperties.Name="Idade do conteúdo a descartar" />
+
+                <Button Content="Analisar cache"
+                        Command="{x:Bind Maintenance.AnalyzeCommand}"
+                        AutomationProperties.Name="Analisar o conteúdo em cache" />
+            </StackPanel>
+
+            <InfoBar IsOpen="{x:Bind Maintenance.HasPendingCleanup, Mode=OneWay}"
+                     Severity="Warning"
+                     Title="Confirmar limpeza"
+                     Message="{x:Bind Maintenance.ImpactSummary, Mode=OneWay}"
+                     IsClosable="False">
+                <InfoBar.ActionButton>
+                    <Button Content="Limpar agora" Click="OnConfirmCleanupClick" />
+                </InfoBar.ActionButton>
+            </InfoBar>
         </StackPanel>
 
         <InfoBar Grid.Row="1"

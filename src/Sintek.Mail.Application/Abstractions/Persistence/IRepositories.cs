@@ -139,6 +139,18 @@ public interface IMessageRepository
     Task<IReadOnlyList<KnownCorrespondent>> ListKnownCorrespondentsAsync(
         Guid accountId, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Lista as mensagens cujo conteúdo baixado pode ser descartado — as que ainda existem
+    /// no servidor e cujo download é anterior ao corte.
+    /// </summary>
+    /// <remarks>
+    /// Mensagem sem contrapartida no servidor fica de fora: rascunho, item da Caixa de
+    /// Saída e mensagem sem UID não podem ser baixados de novo, e para elas o "cache" é o
+    /// original.
+    /// </remarks>
+    Task<IReadOnlyList<Message>> ListCachedContentAsync(
+        DateTimeOffset downloadedBefore, CancellationToken cancellationToken = default);
+
     /// <summary>Lista as mensagens presentes em pastas restritas por um diretório.</summary>
     Task<IReadOnlyList<Message>> ListInRestrictedFoldersAsync(
         Guid domainDirectoryId, CancellationToken cancellationToken = default);

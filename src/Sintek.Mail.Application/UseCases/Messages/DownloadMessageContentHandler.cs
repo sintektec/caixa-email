@@ -21,6 +21,15 @@ public interface IAttachmentStore
     Task<string> SaveAsync(
         Guid messageId, Guid attachmentId, string fileName, Stream content,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Apaga o arquivo de um anexo, se existir.
+    /// </summary>
+    /// <remarks>
+    /// Arquivo já ausente não é erro: a limpeza precisa ser idempotente para que uma
+    /// execução interrompida possa ser repetida sem susto.
+    /// </remarks>
+    Task DeleteAsync(Guid attachmentId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>Resultado do download de corpo.</summary>

@@ -111,6 +111,10 @@
                 <CheckBox Content="Confirmação de leitura"
                           IsChecked="{x:Bind ViewModel.RequestReadReceipt, Mode=TwoWay}" />
 
+                <CheckBox Content="Agendar envio"
+                          IsChecked="{x:Bind ViewModel.IsSendScheduled, Mode=TwoWay}"
+                          AutomationProperties.Name="Agendar o envio para mais tarde" />
+
                 <ComboBox x:Name="TemplatePicker"
                           PlaceholderText="Modelo de mensagem"
                           MinWidth="180"
@@ -132,6 +136,25 @@
                      Severity="Informational"
                      Message="{x:Bind Assistant.StatusMessage, Mode=OneWay}"
                      IsClosable="True" />
+
+            <Grid ColumnSpacing="8" Visibility="{x:Bind ViewModel.IsSendScheduled, Mode=OneWay}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <CalendarDatePicker Grid.Column="0"
+                                    Header="Data do envio"
+                                    HorizontalAlignment="Stretch"
+                                    Date="{x:Bind ViewModel.ScheduledDate, Mode=TwoWay}"
+                                    AutomationProperties.Name="Data do envio agendado" />
+
+                <TimePicker Grid.Column="1"
+                            Header="Hora"
+                            HorizontalAlignment="Stretch"
+                            Time="{x:Bind ViewModel.ScheduledTime, Mode=TwoWay}"
+                            AutomationProperties.Name="Hora do envio agendado" />
+            </Grid>
 
             <ItemsControl ItemsSource="{x:Bind ViewModel.Attachments, Mode=OneWay}">
                 <ItemsControl.ItemTemplate>

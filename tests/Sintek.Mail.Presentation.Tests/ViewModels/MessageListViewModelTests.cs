@@ -80,4 +80,76 @@ public class MessageListViewModelTests
 
         viewModel.Messages.Should().ContainSingle();
     }
+
+    // ----- Agrupamento por conversa ----------------------------------------------------
+
+    [Fact]
+    public void AgruparPorConversa_MantemAMaisRecenteEContaAsDemais()
+    {
+        var threadId = Guid.CreateVersion7();
+
+        var items = new List<MessageListItemViewModel>
+        {
+            Item("Terceira resposta", threadId, Now),
+            Item("Segunda resposta", threadId, Now.AddHours(-1)),
+            Item("Mensagem original", threadId, Now.AddHours(-2)),
+        };
+
+        var collapsed = MessageListViewModel.CollapseConversations(items);
+
+        collapsed.Should().ContainSingle();
+        collapsed[0].Subject.Should().Be("Terceira resposta", "a lista já vem da mais recente para a mais antiga");
+        collapsed[0].ConversationCount.Should().Be(3);
+        collapsed[0].IsConversation.Should().BeTrue();
+    }
+
+    [Fact]
+    public void AgruparPorConversa_MensagemSemConversa_ContinuaSozinha()
+    {
+        // Agrupar todas as sem-ThreadId sob uma linha esconderia mensagens que nada têm a
+        // ver umas com as outras.
+        var items = new List<MessageListItemViewModel>
+        {
+            Item("Avulsa A", null, Now),
+            Item("Avulsa B", null, Now.AddHours(-1)),
+        };
+
+        var collapsed = MessageListViewModel.CollapseConversations(items);
+
+        collapsed.Should().HaveCount(2);
+        collapsed.Should().OnlyContain(i => !i.IsConversation);
+    }
+
+    [Fact]
+    public void AgruparPorConversa_ConversasDiferentes_PreservamAOrdem()
+    {
+        var primeira = Guid.CreateVersion7();
+        var segunda = Guid.CreateVersion7();
+
+        var items = new List<MessageListItemViewModel>
+        {
+            Item("Recente da primeira", primeira, Now),
+            Item("Recente da segunda", segunda, Now.AddMinutes(-30)),
+            Item("Antiga da primeira", primeira, Now.AddHours(-2)),
+        };
+
+        var collapsed = MessageListViewModel.CollapseConversations(items);
+
+        collapsed.Should().HaveCount(2);
+        collapsed[0].Subject.Should().Be("Recente da primeira");
+        collapsed[1].Subject.Should().Be("Recente da segunda");
+        collapsed[0].ConversationCount.Should().Be(2);
+        collapsed[1].ConversationCount.Should().Be(1);
+    }
+
+    private static MessageListItemViewModel Item(string subject, Guid? threadId, DateTimeOffset receivedAt)
+        => new()
+        {
+            MessageId = Guid.CreateVersion7(),
+            From = "Cliente",
+            Subject = subject,
+            Preview = string.Empty,
+            ReceivedAt = receivedAt,
+            ThreadId = threadId,
+        };
 }

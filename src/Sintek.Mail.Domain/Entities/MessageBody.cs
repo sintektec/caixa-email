@@ -70,6 +70,24 @@ public sealed class MessageBody : Entity
         Touch(now);
     }
 
+    /// <summary>
+    /// Descarta o conteúdo baixado, devolvendo a mensagem ao estado "só cabeçalhos".
+    /// </summary>
+    /// <remarks>
+    /// A autorização de conteúdo remoto é preservada: ela é uma decisão do usuário sobre
+    /// aquele remetente, não um pedaço do cache, e refazê-la a cada limpeza seria pedir a
+    /// mesma permissão duas vezes.
+    /// </remarks>
+    public void ClearContent(DateTimeOffset now)
+    {
+        HtmlBody = null;
+        TextBody = null;
+        SanitizedHtml = null;
+        HasRemoteContent = false;
+        DownloadedAt = null;
+        Touch(now);
+    }
+
     /// <summary>Registra a autorização do usuário para carregar o conteúdo remoto.</summary>
     public void AllowRemoteContent(DateTimeOffset now)
     {
