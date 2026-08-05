@@ -66,6 +66,21 @@ docs/                                 decisões, modelo de dados, roadmap
 
 ## Compilar e testar
 
+### O que precisa estar instalado
+
+| Para compilar | Requisito |
+|---|---|
+| O núcleo multiplataforma | **.NET 10 SDK** — <https://dotnet.microsoft.com/download/dotnet/10.0> |
+| A interface WinUI 3 | .NET 10 SDK **e** o SDK do Windows 11 (10.0.19041 ou superior) |
+
+O SDK do Windows vem com o **Visual Studio 2022 17.14+** na carga de trabalho
+*Desenvolvimento para desktop com .NET*. Não é preciso instalar mais nada: os pacotes do
+Windows App SDK trazem os alvos de MSBuild, e é por isso que o job do CI usa apenas o
+`setup-dotnet`.
+
+Confira o que já existe na máquina com `dotnet --info`. Se ele responder *"No .NET SDKs were
+found"*, nenhum SDK está instalado — o `dotnet` que existe é só o runtime, ou nem isso.
+
 O núcleo compila em qualquer sistema operacional; a interface exige Windows.
 
 ```bash
