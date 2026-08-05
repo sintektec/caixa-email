@@ -188,3 +188,25 @@ eletrônico e IA) registradas no roadmap.
 
 **Próxima sessão:**
 - Aguardar decisão do usuário: fase 5, validação manual em Windows, ou revisão do PR #1.
+
+---
+
+## 2026-08-05 — Sessão 9 (continuação): Fase 5 (Pastas e regras na interface)
+
+**O que foi feito:**
+- `ManageFolderHandler`: criar (com caminho montado pelo delimitador da mãe e herança de
+  restrição), renomear (propagando os caminhos das descendentes — o RENAME do IMAP renomeia
+  a subárvore), excluir em duas etapas com impacto, favoritos.
+- `MarkAsSpamHandler`: mover + `$Junk`/`$NotJunk`, com a palavra-chave enfileirada ANTES da
+  movimentação (a fila é sequencial; depois do MOVE o UID antigo não aponta para nada).
+  "Não é spam" passa pelo `MoveMessageHandler` — Caixa de Entrada restrita desvia para
+  pendências, como a regra manda.
+- Troca de domínio na interface: analisar impacto → exibir relatório → confirmar, sobre o
+  `ChangeDomainNameHandler` da fase 1.
+- WinUI: diálogo de pasta com vínculo a diretório, menus de contexto na árvore e na lista
+  de mensagens, seção de troca de domínio no diálogo de diretório.
+- 426 → 441 testes.
+
+**Próxima sessão:**
+- Aguardar decisão do usuário: fase 6 (Pesquisa), validação manual em Windows, ou revisão
+  do PR #1.

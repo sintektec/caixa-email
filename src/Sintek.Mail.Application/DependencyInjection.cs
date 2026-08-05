@@ -33,8 +33,10 @@ public static class DependencyInjection
 
         services.AddScoped<MoveMessageHandler>();
         services.AddScoped<SetFolderRestrictionHandler>();
+        services.AddScoped<ManageFolderHandler>();
         services.AddScoped<DownloadMessageContentHandler>();
         services.AddScoped<ComposeMessageHandler>();
+        services.AddScoped<MarkAsSpamHandler>();
 
         services.AddScoped<FolderMirrorService>();
         services.AddScoped<MessageSyncService>();

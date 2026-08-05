@@ -60,6 +60,9 @@ public sealed partial class NavigationNode : ObservableObject
     /// <summary>Identificador da entidade correspondente (conta, pasta, diretório).</summary>
     public Guid EntityId { get; init; }
 
+    /// <summary>Se a pasta está entre os favoritos — alimenta o menu de contexto.</summary>
+    public bool IsFavorite { get; set; }
+
     /// <summary>Conta à qual o nó pertence, quando aplicável.</summary>
     public Guid? AccountId { get; init; }
 

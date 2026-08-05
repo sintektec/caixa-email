@@ -53,6 +53,9 @@ public sealed partial class DomainDirectoryDialog : ContentDialog
         }
     }
 
+    private async void OnConfirmDomainChangeClick(object sender, RoutedEventArgs e)
+        => await ViewModel.ConfirmDomainChangeAsync().ConfigureAwait(true);
+
     private async void OnPrepareRemovalClick(object sender, RoutedEventArgs e)
         => await ViewModel.PrepareRemovalAsync().ConfigureAwait(true);
 

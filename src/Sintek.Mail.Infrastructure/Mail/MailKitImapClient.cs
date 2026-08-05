@@ -402,6 +402,19 @@ public sealed class MailKitImapClient : Application.Abstractions.Mail.IImapClien
         Accumulate(change.Answered, MessageFlags.Answered, ref toAdd, ref toRemove);
         Accumulate(change.Deleted, MessageFlags.Deleted, ref toAdd, ref toRemove);
 
+        if (change.Junk is { } junk)
+        {
+            // $Junk/$NotJunk são mutuamente exclusivas: aplicar uma sem remover a outra
+            // deixaria a mensagem com os dois vereditos ao mesmo tempo.
+            var toApply = new HashSet<string> { junk ? "$Junk" : "$NotJunk" };
+            var toClear = new HashSet<string> { junk ? "$NotJunk" : "$Junk" };
+
+            await folder.AddFlagsAsync(ids, MessageFlags.None, toApply, silent: true, cancellationToken)
+                .ConfigureAwait(false);
+            await folder.RemoveFlagsAsync(ids, MessageFlags.None, toClear, silent: true, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         if (toAdd != MessageFlags.None)
         {
             await folder.AddFlagsAsync(ids, toAdd, silent: true, cancellationToken).ConfigureAwait(false);

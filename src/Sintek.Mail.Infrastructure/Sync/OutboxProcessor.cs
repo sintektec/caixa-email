@@ -197,7 +197,7 @@ public sealed class OutboxProcessor : IOutboxDrainer
         await _imapClient.SetFlagsAsync(
             folder.RemotePath,
             [message.Uid.Value],
-            new MessageFlagChange(payload.Seen, payload.Flagged, payload.Answered),
+            new MessageFlagChange(payload.Seen, payload.Flagged, payload.Answered, Junk: payload.Junk),
             cancellationToken).ConfigureAwait(false);
 
         message.MarkSynced(_timeProvider.GetUtcNow());

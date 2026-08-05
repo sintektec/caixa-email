@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
@@ -375,6 +376,69 @@ public sealed partial class MainWindow : Window
 
         var file = await Windows.Storage.StorageFile.GetFileFromPathAsync(path);
         _ = await Windows.System.Launcher.LaunchFileAsync(file);
+    }
+
+    private async void OnNewSubfolderClick(object sender, RoutedEventArgs e)
+        => await OpenFolderDialogAsync(sender, edit: false).ConfigureAwait(true);
+
+    private async void OnEditFolderClick(object sender, RoutedEventArgs e)
+        => await OpenFolderDialogAsync(sender, edit: true).ConfigureAwait(true);
+
+    private async Task OpenFolderDialogAsync(object sender, bool edit)
+    {
+        if ((sender as FrameworkElement)?.Tag is not NavigationNode node || node.AccountId is not { } accountId)
+        {
+            return;
+        }
+
+        if (edit && node.Kind != NavigationNodeKind.Folder)
+        {
+            return;
+        }
+
+        var dialog = FolderDialog.Create(RootGrid.XamlRoot);
+
+        await dialog.InitializeAsync(
+            accountId,
+            edit ? node.EntityId : null,
+            edit ? null : (node.Kind == NavigationNodeKind.Folder ? node.EntityId : null))
+            .ConfigureAwait(true);
+
+        await dialog.ShowAsync();
+        await Shell.LoadNavigationAsync().ConfigureAwait(true);
+    }
+
+    private async void OnToggleFavoriteClick(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not NavigationNode { Kind: NavigationNodeKind.Folder } node)
+        {
+            return;
+        }
+
+        var actions = App.Services.GetRequiredService<FolderActionsViewModel>();
+        await actions.ToggleFavoriteAsync(node.EntityId, !node.IsFavorite).ConfigureAwait(true);
+        await Shell.LoadNavigationAsync().ConfigureAwait(true);
+    }
+
+    private async void OnMarkAsSpamClick(object sender, RoutedEventArgs e)
+        => await MarkSpamAsync(sender, isSpam: true).ConfigureAwait(true);
+
+    private async void OnMarkAsNotSpamClick(object sender, RoutedEventArgs e)
+        => await MarkSpamAsync(sender, isSpam: false).ConfigureAwait(true);
+
+    private async Task MarkSpamAsync(object sender, bool isSpam)
+    {
+        if ((sender as FrameworkElement)?.Tag is not MessageListItemViewModel item)
+        {
+            return;
+        }
+
+        await Shell.MarkAsSpamAsync(item.MessageId, isSpam).ConfigureAwait(true);
+
+        if (MessageList.FolderId is { } folderId)
+        {
+            await MessageList.LoadFolderAsync(folderId).ConfigureAwait(true);
+        }
     }
 
     private async void OnOutboxClick(object sender, RoutedEventArgs e)

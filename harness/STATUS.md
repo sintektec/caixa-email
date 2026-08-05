@@ -6,17 +6,18 @@
 
 ## Fase atual
 
-**Fase 4 — Leitura e composição: concluída.** Ver `docs/roadmap.md` para as fases 5 a 10.
+**Fase 5 — Pastas e regras de domínio na interface: concluída.** Ver `docs/roadmap.md` para as fases 6 a 10.
 
 ## Marco atual
 
-**426 testes verdes no núcleo multiplataforma** (169 na fase 1, 272 na 2, 336 na 3, 408 no
-meio da 4).
+**441 testes verdes no núcleo multiplataforma** (169 → 272 → 336 → 426 → 441 ao longo das
+fases).
 
-A fase 4 trouxe o veredito do servidor sobre cada mensagem (SPF, DKIM, DMARC e classificação
-de spam), a detecção de remetente disfarçado, o download sob demanda de corpo e anexos com
-armazenamento fora do banco, e o compositor completo: resposta, resposta a todos,
-encaminhamento, rascunho, envio pela fila e aviso de anexo esquecido. O motor de sincronização inteiro é testável sem servidor: espelhamento de pastas,
+A fase 5 levou a regra de domínio à interface de pastas: criação, renomeação e exclusão em
+duas etapas (com o RENAME propagando os caminhos das descendentes), vínculo de pasta a
+Diretório de Domínio com herança pela subárvore, troca de domínio com relatório de impacto e
+confirmação, favoritos, e "Marcar como spam"/"Não é spam" com os marcadores $Junk/$NotJunk
+enfileirados antes da movimentação. O motor de sincronização inteiro é testável sem servidor: espelhamento de pastas,
 sincronização incremental, troca de UIDVALIDITY, reconciliação de exclusões e a política de
 agendamento.
 
@@ -62,8 +63,8 @@ Distribuição: Domain 130, Application 95, Infrastructure 61, Presentation 41, 
 ## Próximos passos
 
 1. **Revisar e integrar o PR #1.**
-2. **Fase 5 — Pastas e regras de domínio na interface**, incluindo "Marcar como spam" com os
-   marcadores $Junk/$NotJunk.
+2. **Fase 6 — Pesquisa:** FTS5 com os filtros da seção 6.4, pesquisa avançada e pesquisas
+   salvas. Requer estender os gatilhos do índice para corpo, participantes e anexos.
 3. Pendências pontuais da fase 4: editor rico no compositor e rascunho automático por
    intervalo de digitação.
 

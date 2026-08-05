@@ -123,6 +123,14 @@
                                                DragOver="OnFolderDragOver"
                                                Drop="OnFolderDrop"
                                                AutomationProperties.Name="{x:Bind Title, Mode=OneWay}">
+                            <controls:TreeViewItem.ContextFlyout>
+                                <MenuFlyout>
+                                    <MenuFlyoutItem Text="Nova subpasta" Click="OnNewSubfolderClick" Tag="{x:Bind}" />
+                                    <MenuFlyoutItem Text="Editar pasta" Click="OnEditFolderClick" Tag="{x:Bind}" />
+                                    <MenuFlyoutItem Text="Favoritar / remover dos favoritos"
+                                                    Click="OnToggleFavoriteClick" Tag="{x:Bind}" />
+                                </MenuFlyout>
+                            </controls:TreeViewItem.ContextFlyout>
                             <Grid ColumnSpacing="8" Padding="0,2">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
@@ -189,6 +197,14 @@
                         <DataTemplate x:DataType="vm:MessageListItemViewModel">
                             <Grid Padding="4,6" RowSpacing="2"
                                   AutomationProperties.Name="{x:Bind AccessibleDescription}">
+                                <Grid.ContextFlyout>
+                                    <MenuFlyout>
+                                        <MenuFlyoutItem Text="Marcar como spam"
+                                                        Click="OnMarkAsSpamClick" Tag="{x:Bind}" />
+                                        <MenuFlyoutItem Text="Não é spam"
+                                                        Click="OnMarkAsNotSpamClick" Tag="{x:Bind}" />
+                                    </MenuFlyout>
+                                </Grid.ContextFlyout>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />

@@ -3,6 +3,7 @@ using NSubstitute;
 using Sintek.Mail.Application.Abstractions.Persistence;
 using Sintek.Mail.Application.Abstractions.Security;
 using Sintek.Mail.Application.Services;
+using Sintek.Mail.Application.UseCases.Messages;
 using Sintek.Mail.Application.UseCases.Accounts;
 using Sintek.Mail.Application.UseCases.Domains;
 using Sintek.Mail.Domain.Entities;
@@ -44,6 +45,17 @@ public class ConfigurationViewModelsTests
             .Returns(Array.Empty<OutboxOperation>());
     }
 
+    private ChangeDomainNameHandler ChangeDomain() => new(
+        _directories,
+        _accounts,
+        _folders,
+        Substitute.For<IMessageRepository>(),
+        _audit,
+        _unitOfWork,
+        new OutboxEnqueuer(_outbox, _clock),
+        _clock,
+        NullLogger<ChangeDomainNameHandler>.Instance);
+
     private AccountRemover Remover() => new(
         _accounts,
         _folders,
@@ -58,7 +70,8 @@ public class ConfigurationViewModelsTests
             _directories, _audit, _unitOfWork, _clock, NullLogger<UpdateDomainDirectoryHandler>.Instance),
         new RemoveDomainDirectoryHandler(
             _directories, _accounts, _audit, _unitOfWork, Remover(), _clock,
-            NullLogger<RemoveDomainDirectoryHandler>.Instance));
+            NullLogger<RemoveDomainDirectoryHandler>.Instance),
+        ChangeDomain());
 
     private AccountsViewModel AccountsList() => new(
         _accounts,

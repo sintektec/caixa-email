@@ -64,7 +64,7 @@ acontece quando a fila drenar (D-014). O botão funciona num avião. Ainda pende
 fase: editor de texto rico no compositor (hoje o corpo é texto puro) e o rascunho automático
 por intervalo de digitação — o rascunho manual existe.
 
-## Fase 5 — Pastas e regras de domínio na interface
+## Fase 5 — Pastas e regras de domínio na interface ✅
 
 Criação, renomeação e exclusão de pastas, favoritos, arrastar e soltar ligado ao
 `MoveMessageHandler`, interface de vínculo de pasta a Diretório de Domínio com a
@@ -73,8 +73,13 @@ impacto e confirmação.
 
 Inclui as ações **"Marcar como spam"** e **"Não é spam"**, com propagação correta: mover para
 a pasta de lixo eletrônico *e* aplicar os marcadores `$Junk`/`$NotJunk`, que é como
-servidores modernos recebem o treinamento. Mover a mensagem sem o marcador faz o servidor
-continuar classificando errado indefinidamente.
+servidores modernos recebem o treinamento. A palavra-chave é enfileirada **antes** da
+movimentação — a fila é sequencial e o marcador precisa ser aplicado enquanto o servidor
+ainda encontra a mensagem na pasta de origem.
+
+"Não é spam" passa pelo `MoveMessageHandler` como qualquer movimentação: se a Caixa de
+Entrada for restrita e a mensagem não pertencer ao domínio, ela vai para pendências — que é
+o que a regra manda fazer com ela.
 
 ## Fase 6 — Pesquisa
 

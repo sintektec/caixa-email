@@ -69,7 +69,9 @@ public readonly record struct MoveMessagePayload(Guid SourceFolderId, Guid Targe
 /// <param name="Seen">Marcador de lida, quando alterado.</param>
 /// <param name="Flagged">Sinalizador, quando alterado.</param>
 /// <param name="Answered">Marcador de respondida, quando alterado.</param>
-public readonly record struct FlagChangePayload(bool? Seen, bool? Flagged, bool? Answered);
+/// <param name="Junk">Classificação de lixo eletrônico, quando alterada.</param>
+public readonly record struct FlagChangePayload(
+    bool? Seen, bool? Flagged, bool? Answered, bool? Junk = null);
 
 /// <summary>Payload da exclusão de mensagem.</summary>
 /// <param name="FolderId">Pasta em que a mensagem estava.</param>

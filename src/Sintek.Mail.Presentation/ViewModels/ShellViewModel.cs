@@ -37,6 +37,7 @@ public sealed partial class ShellViewModel : ObservableObject
     private readonly IFolderRepository _folders;
     private readonly IOutboxRepository _outbox;
     private readonly MoveMessageHandler _moveMessage;
+    private readonly MarkAsSpamHandler _markAsSpam;
     private readonly SyncAccountHandler _syncAccount;
     private readonly ILogger<ShellViewModel> _logger;
 
@@ -46,6 +47,7 @@ public sealed partial class ShellViewModel : ObservableObject
         IFolderRepository folders,
         IOutboxRepository outbox,
         MoveMessageHandler moveMessage,
+        MarkAsSpamHandler markAsSpam,
         SyncAccountHandler syncAccount,
         ILogger<ShellViewModel> logger)
     {
@@ -54,6 +56,7 @@ public sealed partial class ShellViewModel : ObservableObject
         _folders = folders;
         _outbox = outbox;
         _moveMessage = moveMessage;
+        _markAsSpam = markAsSpam;
         _syncAccount = syncAccount;
         _logger = logger;
     }
@@ -169,6 +172,7 @@ public sealed partial class ShellViewModel : ObservableObject
                 TotalCount = folder.TotalCount,
                 IsDomainRestricted = folder.IsDomainRestricted,
                 IsRestrictionInherited = folder.IsRestrictionInherited,
+                IsFavorite = folder.IsFavorite,
             };
         }
 
@@ -320,6 +324,29 @@ public sealed partial class ShellViewModel : ObservableObject
         {
             IsBusy = false;
         }
+    }
+
+    /// <summary>
+    /// Marca ou desmarca uma mensagem como spam.
+    /// </summary>
+    /// <remarks>
+    /// As duas metades acontecem juntas: mover para a pasta de lixo eletrônico e aplicar a
+    /// palavra-chave $Junk/$NotJunk que treina o filtro do servidor. Só mover deixaria o
+    /// servidor classificando errado para sempre.
+    /// </remarks>
+    public async Task<bool> MarkAsSpamAsync(
+        Guid messageId, bool isSpam, CancellationToken cancellationToken = default)
+    {
+        var result = await _markAsSpam.HandleAsync(messageId, isSpam, cancellationToken).ConfigureAwait(true);
+
+        StatusMessage = result.ErrorMessage;
+
+        if (result.Succeeded)
+        {
+            await RefreshPendingCountAsync(cancellationToken).ConfigureAwait(true);
+        }
+
+        return result.Succeeded;
     }
 
     /// <summary>Descrição textual do estado de conectividade, para leitores de tela.</summary>

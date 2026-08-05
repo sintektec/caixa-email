@@ -22,17 +22,20 @@ public sealed partial class DomainDirectoryEditorViewModel : ObservableObject
     private readonly CreateDomainDirectoryHandler _create;
     private readonly UpdateDomainDirectoryHandler _update;
     private readonly RemoveDomainDirectoryHandler _remove;
+    private readonly ChangeDomainNameHandler _changeDomain;
 
     public DomainDirectoryEditorViewModel(
         IDomainDirectoryRepository directories,
         CreateDomainDirectoryHandler create,
         UpdateDomainDirectoryHandler update,
-        RemoveDomainDirectoryHandler remove)
+        RemoveDomainDirectoryHandler remove,
+        ChangeDomainNameHandler changeDomain)
     {
         _directories = directories;
         _create = create;
         _update = update;
         _remove = remove;
+        _changeDomain = changeDomain;
     }
 
     /// <summary>Diretório em edição, ou <see langword="null"/> quando é criação.</summary>
@@ -84,6 +87,18 @@ public sealed partial class DomainDirectoryEditorViewModel : ObservableObject
     /// <summary>Impacto medido da remoção, exibido no pedido de confirmação.</summary>
     [ObservableProperty]
     private RemoveDomainDirectoryImpact? _pendingRemovalImpact;
+
+    /// <summary>Novo domínio digitado no fluxo de troca.</summary>
+    [ObservableProperty]
+    private string _newDomainName = string.Empty;
+
+    /// <summary>Relatório do que a troca de domínio provocaria.</summary>
+    [ObservableProperty]
+    private ChangeDomainNameImpact? _domainChangeImpact;
+
+    /// <summary>Se as mensagens incompatíveis devem ser desviadas para pendências na troca.</summary>
+    [ObservableProperty]
+    private bool _moveIncompatibleToPending = true;
 
     /// <summary>Domínios adicionais aceitos.</summary>
     public ObservableCollection<string> Aliases { get; } = [];
@@ -327,6 +342,99 @@ public sealed partial class DomainDirectoryEditorViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(HasPendingRemoval));
         OnPropertyChanged(nameof(RemovalSummary));
+    }
+
+    /// <summary>Se há um relatório de troca de domínio aguardando confirmação.</summary>
+    public bool HasDomainChangeImpact => DomainChangeImpact is not null;
+
+    /// <summary>Resumo do impacto da troca, para a tela de confirmação.</summary>
+    public string DomainChangeSummary => DomainChangeImpact is { } impact
+        ? impact.IsClean
+            ? $"Trocar '{impact.CurrentDomain}' por '{impact.NewDomain}' não afeta nenhuma conta nem mensagem."
+            : $"Trocar '{impact.CurrentDomain}' por '{impact.NewDomain}' deixará " +
+              $"{impact.IncompatibleAccounts.Count} conta(s) e {impact.IncompatibleMessages.Count} " +
+              "mensagem(ns) incompatíveis. As contas serão desativadas."
+        : string.Empty;
+
+    /// <summary>
+    /// Simula a troca de domínio e exibe o impacto. Não altera nada.
+    /// </summary>
+    /// <remarks>
+    /// A especificação exige o roteiro completo: revalidar contas e mensagens, listar as
+    /// incompatíveis e só trocar mediante confirmação. Este comando é a primeira metade.
+    /// </remarks>
+    [RelayCommand]
+    public async Task AnalyzeDomainChangeAsync(CancellationToken cancellationToken = default)
+    {
+        if (DomainDirectoryId is not { } id)
+        {
+            return;
+        }
+
+        if (!EmailDomain.TryParse(NewDomainName, out _, out var error))
+        {
+            StatusMessage = error;
+            return;
+        }
+
+        IsBusy = true;
+        StatusMessage = null;
+
+        try
+        {
+            DomainChangeImpact = await _changeDomain.AnalyzeAsync(id, NewDomainName, cancellationToken)
+                .ConfigureAwait(true);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>Aplica a troca de domínio já analisada e confirmada.</summary>
+    [RelayCommand]
+    public async Task<bool> ConfirmDomainChangeAsync(CancellationToken cancellationToken = default)
+    {
+        if (DomainDirectoryId is not { } id)
+        {
+            return false;
+        }
+
+        if (DomainChangeImpact is null)
+        {
+            StatusMessage = "Analise o impacto da troca antes de confirmar.";
+            return false;
+        }
+
+        IsBusy = true;
+
+        try
+        {
+            await _changeDomain.ApplyAsync(
+                id, NewDomainName, confirmed: true, MoveIncompatibleToPending, cancellationToken)
+                .ConfigureAwait(true);
+
+            DomainName = EmailDomain.Parse(NewDomainName).Value;
+            DomainChangeImpact = null;
+            NewDomainName = string.Empty;
+            StatusMessage = null;
+            return true;
+        }
+        catch (InvalidOperationException ex)
+        {
+            StatusMessage = ex.Message;
+            return false;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    partial void OnDomainChangeImpactChanged(ChangeDomainNameImpact? value)
+    {
+        OnPropertyChanged(nameof(HasDomainChangeImpact));
+        OnPropertyChanged(nameof(DomainChangeSummary));
     }
 
     partial void OnValidationModeChanged(DomainValidationMode value)

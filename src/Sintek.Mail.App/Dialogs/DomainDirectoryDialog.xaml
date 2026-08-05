@@ -91,6 +91,46 @@
 
             <Button Content="Remover domínio adicional selecionado" Click="OnRemoveAliasClick" />
 
+            <!--
+                Troca de domínio: o roteiro da especificação — analisar impacto, exibir o
+                relatório e só aplicar mediante confirmação.
+            -->
+            <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.IsEditing, Mode=OneWay}">
+                <TextBlock Text="Trocar o domínio do diretório"
+                           Style="{ThemeResource BodyStrongTextBlockStyle}" />
+
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <TextBox Grid.Column="0"
+                             PlaceholderText="novo-dominio.com.br"
+                             Text="{x:Bind ViewModel.NewDomainName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             AutomationProperties.Name="Novo domínio" />
+
+                    <Button Grid.Column="1"
+                            Content="Analisar impacto"
+                            Command="{x:Bind ViewModel.AnalyzeDomainChangeCommand}"
+                            VerticalAlignment="Bottom" />
+                </Grid>
+
+                <InfoBar IsOpen="{x:Bind ViewModel.HasDomainChangeImpact, Mode=OneWay}"
+                         Severity="Warning"
+                         Title="Confirmar troca de domínio"
+                         Message="{x:Bind ViewModel.DomainChangeSummary, Mode=OneWay}"
+                         IsClosable="False">
+                    <InfoBar.Content>
+                        <CheckBox Content="Desviar as mensagens incompatíveis para a pasta de pendências"
+                                  IsChecked="{x:Bind ViewModel.MoveIncompatibleToPending, Mode=TwoWay}" />
+                    </InfoBar.Content>
+                    <InfoBar.ActionButton>
+                        <Button Content="Aplicar a troca" Click="OnConfirmDomainChangeClick" />
+                    </InfoBar.ActionButton>
+                </InfoBar>
+            </StackPanel>
+
             <!-- Remoção: sempre em duas etapas, com o impacto medido antes da confirmação -->
             <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.IsEditing, Mode=OneWay}">
                 <Button Content="Remover este Diretório de Domínio"

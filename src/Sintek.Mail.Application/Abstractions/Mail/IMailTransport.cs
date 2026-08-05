@@ -152,11 +152,18 @@ public readonly record struct FolderSyncState(
 /// <param name="Flagged">Sinalizador, quando informado.</param>
 /// <param name="Answered">Marcador de respondida, quando informado.</param>
 /// <param name="Deleted">Marcador de exclusão, quando informado.</param>
+/// <param name="Junk">
+/// Classificação de lixo eletrônico, quando informada. Vira as palavras-chave
+/// <c>$Junk</c>/<c>$NotJunk</c> no servidor — é como servidores modernos recebem o
+/// treinamento do filtro. Mover a mensagem de pasta sem o marcador faria o servidor
+/// continuar classificando errado indefinidamente.
+/// </param>
 public readonly record struct MessageFlagChange(
     bool? Seen = null,
     bool? Flagged = null,
     bool? Answered = null,
-    bool? Deleted = null);
+    bool? Deleted = null,
+    bool? Junk = null);
 
 /// <summary>Cabeçalhos de uma mensagem trazidos do servidor.</summary>
 public sealed record FetchedMessage
