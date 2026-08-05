@@ -89,9 +89,7 @@ public class ApplyArrivalRulesHandlerTests
             new DownloadMessageContentHandler(
                 _messages, _folders, _unitOfWork, _imap, _sanitizer, _attachments, _clock,
                 NullLogger<DownloadMessageContentHandler>.Instance),
-            new ComposeMessageHandler(
-                _messages, _folders, _accounts, _unitOfWork, enqueuer, _clock,
-                NullLogger<ComposeMessageHandler>.Instance),
+            TestFactories.Compose(_messages, _folders, _accounts, _unitOfWork, enqueuer, _clock),
             enqueuer,
             _clock,
             NullLogger<ApplyArrivalRulesHandler>.Instance);

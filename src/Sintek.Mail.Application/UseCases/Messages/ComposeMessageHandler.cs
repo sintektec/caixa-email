@@ -93,6 +93,7 @@ public sealed class ComposeMessageHandler
     private readonly IAccountRepository _accounts;
     private readonly IUnitOfWork _unitOfWork;
     private readonly OutboxEnqueuer _outbox;
+    private readonly UseCases.Contacts.RecipientHistoryHandler _recipientHistory;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<ComposeMessageHandler> _logger;
 
@@ -102,6 +103,7 @@ public sealed class ComposeMessageHandler
         IAccountRepository accounts,
         IUnitOfWork unitOfWork,
         OutboxEnqueuer outbox,
+        UseCases.Contacts.RecipientHistoryHandler recipientHistory,
         TimeProvider timeProvider,
         ILogger<ComposeMessageHandler> logger)
     {
@@ -110,6 +112,7 @@ public sealed class ComposeMessageHandler
         _accounts = accounts;
         _unitOfWork = unitOfWork;
         _outbox = outbox;
+        _recipientHistory = recipientHistory;
         _timeProvider = timeProvider;
         _logger = logger;
     }
@@ -275,6 +278,21 @@ public sealed class ComposeMessageHandler
                 ? "Mensagem {MessageId} entregue à fila de envio."
                 : "Rascunho {MessageId} gravado.",
             result.MessageId);
+
+        // O histórico é alimentado depois da transação, e só no envio. Depois porque o
+        // autocompletar é conveniência e não pode desfazer uma mensagem já enfileirada;
+        // só no envio porque um rascunho abandonado não é intenção de escrever para
+        // ninguém.
+        if (sending && result.Succeeded)
+        {
+            await _recipientHistory.RecordUseAsync(
+                account.Id,
+                command.Recipients
+                    .Where(r => r.Kind is AddressKind.To or AddressKind.Cc or AddressKind.Bcc)
+                    .Select(r => new UseCases.Contacts.UsedRecipient(r.Address, r.DisplayName))
+                    .ToList(),
+                cancellationToken).ConfigureAwait(false);
+        }
 
         return result;
     }

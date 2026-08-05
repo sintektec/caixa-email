@@ -25,16 +25,27 @@ public class ComposerViewModelTests
     private readonly IUnitOfWork _unitOfWork = Substitute.For<IUnitOfWork>();
     private readonly FakeTimeProvider _clock = new(Now);
 
-    private readonly Account _account = Account.Create(
-        Guid.CreateVersion7(), EmailAddress.Parse("contato@sintek.com.br"), "Contato", Now);
+    private readonly DomainDirectory _directory =
+        DomainDirectory.Create(EmailDomain.Parse("sintek.com.br"), Now);
+
+    private readonly Account _account;
 
     public ComposerViewModelTests()
     {
+        _account = Account.Create(
+            _directory.Id, EmailAddress.Parse("contato@sintek.com.br"), "Contato", Now);
+
         _unitOfWork
             .ExecuteInTransactionAsync(Arg.Any<Func<CancellationToken, Task>>(), Arg.Any<CancellationToken>())
             .Returns(call => call.Arg<Func<CancellationToken, Task>>()(CancellationToken.None));
 
         _accounts.GetByIdAsync(_account.Id, Arg.Any<CancellationToken>()).Returns(_account);
+        _directories.GetByIdAsync(_directory.Id, Arg.Any<CancellationToken>()).Returns(_directory);
+        _contacts.ListAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns(Array.Empty<Contact>());
+        _recipientHistory
+            .ListForSuggestionAsync(Arg.Any<Guid>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(Array.Empty<RecipientHistory>());
 
         _folders.GetByTypeAsync(_account.Id, FolderType.Drafts, Arg.Any<CancellationToken>())
             .Returns(Folder.Create(_account.Id, "Rascunhos", FolderType.Drafts, Now, remotePath: "Drafts"));
@@ -45,20 +56,32 @@ public class ComposerViewModelTests
     private readonly Sintek.Mail.Application.Abstractions.Persistence.IMessageTemplateRepository _templates =
         Substitute.For<Sintek.Mail.Application.Abstractions.Persistence.IMessageTemplateRepository>();
 
+    private readonly IRecipientHistoryRepository _recipientHistory =
+        Substitute.For<IRecipientHistoryRepository>();
+
+    private readonly IContactRepository _contacts = Substitute.For<IContactRepository>();
+
+    private readonly IDomainDirectoryRepository _directories =
+        Substitute.For<IDomainDirectoryRepository>();
+
     private ComposerViewModel CreateViewModel(TimeProvider? clock = null)
     {
         _templates.ListAsync(Arg.Any<Guid?>(), Arg.Any<CancellationToken>())
             .Returns(Array.Empty<MessageTemplate>());
 
+        var recipients = ComposeFactory.RecipientHistory(
+            _recipientHistory, _contacts, _accounts, _directories, _unitOfWork, _clock);
+
         return new ComposerViewModel(
             _messages,
             _accounts,
-            new ComposeMessageHandler(
+            ComposeFactory.Create(
                 _messages, _folders, _accounts, _unitOfWork,
-                new OutboxEnqueuer(_outbox, _clock), _clock,
-                NullLogger<ComposeMessageHandler>.Instance),
+                new OutboxEnqueuer(_outbox, _clock), ComposeFactory.InertRecipientHistory(_unitOfWork, _clock),
+                _clock),
             new Sintek.Mail.Application.UseCases.Organization.ManageTemplatesHandler(
                 _templates, _unitOfWork, _clock),
+            recipients,
             clock ?? _clock);
     }
 
@@ -275,5 +298,150 @@ public class ComposerViewModelTests
 
         viewModel.DraftId.Should().NotBeNull();
         viewModel.IsCompleted.Should().BeFalse("salvar rascunho não fecha o compositor");
+    }
+
+    private void ArrangeHistory(params (string Address, string? Name)[] entries)
+        => _recipientHistory
+            .ListForSuggestionAsync(_account.Id, Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(entries
+                .Select(e => RecipientHistory.Create(
+                    _account.Id, EmailAddress.Parse(e.Address), Now, e.Name))
+                .ToList());
+
+    [Theory]
+    [InlineData("ana@x.com; jo", "jo")]
+    [InlineData("ana@x.com, jo", "jo")]
+    [InlineData("jo", "jo")]
+    [InlineData("ana@x.com; ", "")]
+    public void LastToken_CampoComVariosEnderecos_DevolveOTrechoEmDigitacao(string raw, string esperado)
+        => ComposerViewModel.LastToken(raw).Should().Be(esperado);
+
+    [Fact]
+    public void ReplaceLastToken_CampoComEnderecoAnterior_PreservaOQueJaEstavaLa()
+        => ComposerViewModel.ReplaceLastToken("ana@x.com; jo", "joao@y.com")
+            .Should().Be("ana@x.com; joao@y.com; ");
+
+    [Fact]
+    public void ReplaceLastToken_CampoComUmUnicoTrecho_TrocaTudo()
+        => ComposerViewModel.ReplaceLastToken("jo", "joao@y.com").Should().Be("joao@y.com; ");
+
+    [Fact]
+    public async Task Sugestoes_TrechoDigitado_ListaOsCandidatos()
+    {
+        ArrangeHistory(("ana@cliente.com.br", "Ana Souza"), ("bruno@cliente.com.br", "Bruno"));
+
+        var viewModel = CreateViewModel();
+        await viewModel.InitializeAsync(_account.Id);
+        viewModel.To = "ana";
+
+        await viewModel.UpdateRecipientSuggestionsAsync(RecipientField.To);
+
+        viewModel.RecipientSuggestions.Should().ContainSingle()
+            .Which.Address.Should().Be("ana@cliente.com.br");
+        viewModel.HasRecipientSuggestions.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Sugestoes_CampoVazio_NaoAbreALista()
+    {
+        ArrangeHistory(("ana@cliente.com.br", "Ana Souza"));
+
+        var viewModel = CreateViewModel();
+        await viewModel.InitializeAsync(_account.Id);
+        viewModel.To = string.Empty;
+
+        await viewModel.UpdateRecipientSuggestionsAsync(RecipientField.To);
+
+        viewModel.RecipientSuggestions.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Sugestoes_EnderecoJaPresenteNoCampo_NaoESugeridoDeNovo()
+    {
+        ArrangeHistory(("ana@cliente.com.br", "Ana Souza"));
+
+        var viewModel = CreateViewModel();
+        await viewModel.InitializeAsync(_account.Id);
+        viewModel.To = "ana@cliente.com.br; ana";
+
+        await viewModel.UpdateRecipientSuggestionsAsync(RecipientField.To);
+
+        viewModel.RecipientSuggestions.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Sugestoes_EnderecoForaDoDominioDaConta_ApareceMarcado()
+    {
+        // Marcar, não esconder: e-mail externo legítimo é a maior parte do trabalho de quem
+        // atende clientes, mas um domínio sósia precisa ser visível antes do envio.
+        ArrangeHistory(("cobranca@sintek-com.br", "Cobrança"));
+
+        var viewModel = CreateViewModel();
+        await viewModel.InitializeAsync(_account.Id);
+        viewModel.To = "cobranca";
+
+        await viewModel.UpdateRecipientSuggestionsAsync(RecipientField.To);
+
+        var sugestao = viewModel.RecipientSuggestions.Should().ContainSingle().Subject;
+        sugestao.IsOutsideAccountDomain.Should().BeTrue();
+        sugestao.DomainWarning.Should().NotBeEmpty();
+    }
+
+    [Fact]
+    public async Task Sugestoes_EnderecoDoDominioDaConta_NaoRecebeAviso()
+    {
+        ArrangeHistory(("colega@sintek.com.br", "Colega"));
+
+        var viewModel = CreateViewModel();
+        await viewModel.InitializeAsync(_account.Id);
+        viewModel.To = "colega";
+
+        await viewModel.UpdateRecipientSuggestionsAsync(RecipientField.To);
+
+        viewModel.RecipientSuggestions[0].DomainWarning.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task AplicarSugestao_CampoComEnderecoAnterior_AcrescentaSemApagar()
+    {
+        ArrangeHistory(("bruno@cliente.com.br", "Bruno"));
+
+        var viewModel = CreateViewModel();
+        await viewModel.InitializeAsync(_account.Id);
+        viewModel.To = "ana@cliente.com.br; bru";
+
+        await viewModel.UpdateRecipientSuggestionsAsync(RecipientField.To);
+        viewModel.ApplyRecipientSuggestion(RecipientField.To, viewModel.RecipientSuggestions[0]);
+
+        viewModel.To.Should().Be("ana@cliente.com.br; bruno@cliente.com.br; ");
+        viewModel.RecipientSuggestions.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task AplicarSugestao_EmCopiaOculta_MexeSoNaqueleCampo()
+    {
+        ArrangeHistory(("bruno@cliente.com.br", "Bruno"));
+
+        var viewModel = CreateViewModel();
+        await viewModel.InitializeAsync(_account.Id);
+        viewModel.To = "ana@cliente.com.br";
+        viewModel.Bcc = "bru";
+
+        await viewModel.UpdateRecipientSuggestionsAsync(RecipientField.Bcc);
+        viewModel.ApplyRecipientSuggestion(RecipientField.Bcc, viewModel.RecipientSuggestions[0]);
+
+        viewModel.Bcc.Should().Be("bruno@cliente.com.br; ");
+        viewModel.To.Should().Be("ana@cliente.com.br");
+    }
+
+    [Fact]
+    public async Task Sugestoes_SemContaDefinida_NaoConsultaNada()
+    {
+        var viewModel = CreateViewModel();
+        viewModel.To = "ana";
+
+        await viewModel.UpdateRecipientSuggestionsAsync(RecipientField.To);
+
+        viewModel.RecipientSuggestions.Should().BeEmpty();
     }
 }

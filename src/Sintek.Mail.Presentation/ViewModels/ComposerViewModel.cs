@@ -16,6 +16,40 @@ namespace Sintek.Mail.Presentation.ViewModels;
 public sealed record ComposerAttachmentItem(
     string FileName, string FilePath, string ContentType, long Size);
 
+/// <summary>Qual campo de endereçamento está recebendo sugestões.</summary>
+public enum RecipientField
+{
+    /// <summary>Para.</summary>
+    To = 0,
+
+    /// <summary>Cópia.</summary>
+    Cc = 1,
+
+    /// <summary>Cópia oculta.</summary>
+    Bcc = 2,
+}
+
+/// <summary>Uma sugestão de destinatário exibida no compositor.</summary>
+/// <param name="Address">Endereço que será inserido.</param>
+/// <param name="DisplayText">Texto da linha.</param>
+/// <param name="IsOutsideAccountDomain">Se o endereço está fora do domínio da conta.</param>
+/// <param name="IsFromContacts">Se veio do catálogo, e não do histórico.</param>
+public sealed record RecipientSuggestionItem(
+    string Address, string DisplayText, bool IsOutsideAccountDomain, bool IsFromContacts)
+{
+    /// <summary>
+    /// Aviso exibido ao lado da sugestão, vazio quando o endereço é do domínio da conta.
+    /// </summary>
+    /// <remarks>
+    /// Devolve vazio em vez de nulo porque <c>TextBlock.Text</c> lança ao receber nulo no
+    /// WinUI — a mesma armadilha que <c>DomainNameError</c> já contorna.
+    /// </remarks>
+    public string DomainWarning => IsOutsideAccountDomain ? "fora do domínio da conta" : string.Empty;
+
+    /// <summary>Origem da sugestão, para o usuário saber por que ela apareceu.</summary>
+    public string SourceLabel => IsFromContacts ? "Contato" : "Histórico";
+}
+
 /// <summary>
 /// Compositor de mensagens: nova, resposta, resposta a todos e encaminhamento.
 /// </summary>
@@ -47,6 +81,7 @@ public sealed partial class ComposerViewModel : ObservableObject
     private readonly IAccountRepository _accounts;
     private readonly ComposeMessageHandler _compose;
     private readonly Application.UseCases.Organization.ManageTemplatesHandler _templates;
+    private readonly Application.UseCases.Contacts.RecipientHistoryHandler _recipients;
     private readonly TimeProvider _timeProvider;
 
     private DateTimeOffset? _lastEditAt;
@@ -58,12 +93,14 @@ public sealed partial class ComposerViewModel : ObservableObject
         IAccountRepository accounts,
         ComposeMessageHandler compose,
         Application.UseCases.Organization.ManageTemplatesHandler templates,
+        Application.UseCases.Contacts.RecipientHistoryHandler recipients,
         TimeProvider timeProvider)
     {
         _messages = messages;
         _accounts = accounts;
         _compose = compose;
         _templates = templates;
+        _recipients = recipients;
         _timeProvider = timeProvider;
     }
 
@@ -167,6 +204,12 @@ public sealed partial class ComposerViewModel : ObservableObject
 
     /// <summary>Modelos de mensagem disponíveis.</summary>
     public ObservableCollection<ScopeFilterOption> TemplateOptions { get; } = [];
+
+    /// <summary>Sugestões de destinatário para o campo que está sendo digitado.</summary>
+    public ObservableCollection<RecipientSuggestionItem> RecipientSuggestions { get; } = [];
+
+    /// <summary>Se há sugestões a exibir.</summary>
+    public bool HasRecipientSuggestions => RecipientSuggestions.Count > 0;
 
     /// <summary>Se há mensagem a exibir na faixa de aviso.</summary>
     public bool HasStatusMessage => StatusMessage.Length > 0;
@@ -319,6 +362,122 @@ public sealed partial class ComposerViewModel : ObservableObject
 
     /// <summary>Remove um anexo da lista.</summary>
     public void RemoveAttachment(ComposerAttachmentItem item) => Attachments.Remove(item);
+
+    /// <summary>
+    /// Atualiza as sugestões a partir do que está sendo digitado no campo informado.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// O campo carrega vários endereços separados por ponto e vírgula, e o que interessa é
+    /// só o último — quem já digitou "ana@x.com; jo" está procurando por "jo", não pela
+    /// linha inteira.
+    /// </para>
+    /// <para>
+    /// Endereço já presente no campo é retirado da lista: sugerir de novo quem já está lá
+    /// gasta a lista com o que não acrescenta nada.
+    /// </para>
+    /// </remarks>
+    public async Task UpdateRecipientSuggestionsAsync(
+        RecipientField field, CancellationToken cancellationToken = default)
+    {
+        RecipientSuggestions.Clear();
+        OnPropertyChanged(nameof(HasRecipientSuggestions));
+
+        if (AccountId is not { } accountId)
+        {
+            return;
+        }
+
+        var raw = ValueOf(field);
+        var term = LastToken(raw);
+
+        // Campo vazio não abre a lista sozinho: o painel apareceria ao clicar em Para,
+        // antes de o usuário pedir qualquer coisa.
+        if (term.Length == 0)
+        {
+            return;
+        }
+
+        var alreadyThere = new HashSet<string>(
+            SplitAddresses(To).Concat(SplitAddresses(Cc)).Concat(SplitAddresses(Bcc)),
+            StringComparer.OrdinalIgnoreCase);
+
+        var suggestions = await _recipients
+            .SuggestAsync(accountId, term, cancellationToken: cancellationToken)
+            .ConfigureAwait(true);
+
+        foreach (var suggestion in suggestions)
+        {
+            if (alreadyThere.Contains(suggestion.Address.Value))
+            {
+                continue;
+            }
+
+            RecipientSuggestions.Add(new RecipientSuggestionItem(
+                suggestion.Address.Value,
+                suggestion.DisplayText,
+                !suggestion.BelongsToAccountDomain,
+                suggestion.Source == Domain.Services.RecipientSuggestionSource.Contact));
+        }
+
+        OnPropertyChanged(nameof(HasRecipientSuggestions));
+    }
+
+    /// <summary>
+    /// Insere a sugestão escolhida no lugar do trecho que estava sendo digitado.
+    /// </summary>
+    /// <remarks>
+    /// O ponto e vírgula final fica: quem escolheu um destinatário costuma digitar o
+    /// próximo, e obrigá-lo a lembrar do separador é atrito à toa.
+    /// </remarks>
+    public void ApplyRecipientSuggestion(RecipientField field, RecipientSuggestionItem suggestion)
+    {
+        ArgumentNullException.ThrowIfNull(suggestion);
+
+        var updated = ReplaceLastToken(ValueOf(field), suggestion.Address);
+
+        switch (field)
+        {
+            case RecipientField.To:
+                To = updated;
+                break;
+            case RecipientField.Cc:
+                Cc = updated;
+                break;
+            case RecipientField.Bcc:
+                Bcc = updated;
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(field));
+        }
+
+        RecipientSuggestions.Clear();
+        OnPropertyChanged(nameof(HasRecipientSuggestions));
+    }
+
+    private string ValueOf(RecipientField field) => field switch
+    {
+        RecipientField.To => To,
+        RecipientField.Cc => Cc,
+        RecipientField.Bcc => Bcc,
+        _ => throw new ArgumentOutOfRangeException(nameof(field)),
+    };
+
+    /// <summary>O trecho depois do último separador — o que o usuário está digitando agora.</summary>
+    internal static string LastToken(string raw)
+    {
+        var cut = raw.LastIndexOfAny([';', ',']);
+        return (cut < 0 ? raw : raw[(cut + 1)..]).Trim();
+    }
+
+    /// <summary>Troca o trecho em digitação pelo endereço escolhido.</summary>
+    internal static string ReplaceLastToken(string raw, string address)
+    {
+        var cut = raw.LastIndexOfAny([';', ',']);
+        var prefix = cut < 0 ? string.Empty : raw[..(cut + 1)] + " ";
+
+        return prefix + address + "; ";
+    }
 
     /// <summary>Grava o rascunho agora.</summary>
     [RelayCommand]

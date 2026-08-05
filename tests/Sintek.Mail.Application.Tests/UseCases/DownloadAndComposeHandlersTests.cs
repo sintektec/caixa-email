@@ -67,10 +67,9 @@ public class DownloadAndComposeHandlersTests
         _messages, _folders, _unitOfWork, _imap, _sanitizer, _store, _clock,
         NullLogger<DownloadMessageContentHandler>.Instance);
 
-    private ComposeMessageHandler ComposeHandler() => new(
+    private ComposeMessageHandler ComposeHandler() => TestFactories.Compose(
         _messages, _folders, _accounts, _unitOfWork,
-        new OutboxEnqueuer(_outbox, _clock), _clock,
-        NullLogger<ComposeMessageHandler>.Instance);
+        new OutboxEnqueuer(_outbox, _clock), _clock);
 
     private (Message Message, Folder Folder) ArrangeSyncedMessage()
     {
@@ -321,5 +320,80 @@ public class DownloadAndComposeHandlersTests
         var attachment = stored!.Attachments.Single();
         attachment.IsDownloaded.Should().BeTrue();
         attachment.StoragePath.Should().Be("/docs/contrato.pdf");
+    }
+
+    /// <summary>
+    /// Compositor com um histórico de destinatários de verdade, para verificar o que ele
+    /// grava no envio.
+    /// </summary>
+    private ComposeMessageHandler ComposeHandlerWith(
+        InMemoryRecipientHistoryRepository history)
+        => new(
+            _messages, _folders, _accounts, _unitOfWork,
+            new OutboxEnqueuer(_outbox, _clock),
+            new Sintek.Mail.Application.UseCases.Contacts.RecipientHistoryHandler(
+                history,
+                Substitute.For<IContactRepository>(),
+                _accounts,
+                Substitute.For<IDomainDirectoryRepository>(),
+                _unitOfWork,
+                _clock,
+                NullLogger<Sintek.Mail.Application.UseCases.Contacts.RecipientHistoryHandler>.Instance),
+            _clock,
+            NullLogger<ComposeMessageHandler>.Instance);
+
+    [Fact]
+    public async Task Enviar_MensagemValida_RegistraOsDestinatariosNoHistorico()
+    {
+        var account = ArrangeAccount(out _, out _);
+        var history = new InMemoryRecipientHistoryRepository();
+
+        await ComposeHandlerWith(history).SendAsync(new ComposeMessageCommand
+        {
+            AccountId = account.Id,
+            Subject = "Proposta",
+            Recipients =
+            [
+                To("cliente@externo.com"),
+                new DraftRecipient(AddressKind.Cc, EmailAddress.Parse("copia@externo.com"), null),
+            ],
+        });
+
+        history.Entries.Select(e => e.Address.Value)
+            .Should().BeEquivalentTo(["cliente@externo.com", "copia@externo.com"]);
+    }
+
+    [Fact]
+    public async Task GravarRascunho_ComDestinatarios_NaoAlimentaOHistorico()
+    {
+        // Rascunho abandonado não é intenção de escrever para ninguém. Registrar aqui
+        // encheria o autocompletar de endereços que o usuário desistiu de usar.
+        var account = ArrangeAccount(out _, out _);
+        var history = new InMemoryRecipientHistoryRepository();
+
+        await ComposeHandlerWith(history).SaveDraftAsync(new ComposeMessageCommand
+        {
+            AccountId = account.Id,
+            Subject = "Rascunho",
+            Recipients = [To("cliente@externo.com")],
+        });
+
+        history.Entries.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Enviar_SemDestinatario_NaoTocaNoHistorico()
+    {
+        var account = ArrangeAccount(out _, out _);
+        var history = new InMemoryRecipientHistoryRepository();
+
+        await ComposeHandlerWith(history).SendAsync(new ComposeMessageCommand
+        {
+            AccountId = account.Id,
+            Subject = "Sem ninguém",
+            Recipients = [],
+        });
+
+        history.Entries.Should().BeEmpty();
     }
 }

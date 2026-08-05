@@ -293,6 +293,64 @@ public interface ISavedSearchRepository
     void Remove(SavedSearch search);
 }
 
+/// <summary>Acesso ao histórico de destinatários.</summary>
+public interface IRecipientHistoryRepository
+{
+    /// <summary>Carrega uma entrada.</summary>
+    Task<RecipientHistory?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>Busca a entrada de um endereço dentro da conta.</summary>
+    Task<RecipientHistory?> GetByAddressAsync(
+        Guid accountId, EmailAddress address, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lista as entradas candidatas a sugestão, das mais usadas para as menos.
+    /// </summary>
+    /// <remarks>
+    /// O recorte é feito no banco por uso bruto e o peso final — que combina uso e
+    /// recência — é calculado em memória pelo <see cref="RecipientSuggestionRanker"/>.
+    /// Reproduzir o decaimento exponencial em SQL faria a ordem depender do que o SQLite
+    /// implementa, e tiraria do teste a única coisa que o usuário percebe.
+    /// </remarks>
+    Task<IReadOnlyList<RecipientHistory>> ListForSuggestionAsync(
+        Guid accountId, int limit, CancellationToken cancellationToken = default);
+
+    /// <summary>Lista todas as entradas da conta, para a tela de gestão.</summary>
+    Task<IReadOnlyList<RecipientHistory>> ListAsync(
+        Guid accountId, CancellationToken cancellationToken = default);
+
+    /// <summary>Registra uma entrada.</summary>
+    Task AddAsync(RecipientHistory entry, CancellationToken cancellationToken = default);
+
+    /// <summary>Remove uma entrada.</summary>
+    void Remove(RecipientHistory entry);
+}
+
+/// <summary>Acesso ao catálogo de contatos.</summary>
+public interface IContactRepository
+{
+    /// <summary>Carrega um contato com seus endereços.</summary>
+    Task<Contact?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>Busca um contato pelo identificador de origem da importação.</summary>
+    Task<Contact?> GetByExternalIdAsync(
+        Guid accountId, string externalId, CancellationToken cancellationToken = default);
+
+    /// <summary>Busca o contato da conta que tem o endereço informado.</summary>
+    Task<Contact?> GetByEmailAsync(
+        Guid accountId, EmailAddress address, CancellationToken cancellationToken = default);
+
+    /// <summary>Lista os contatos da conta, com endereços, em ordem de nome exibido.</summary>
+    Task<IReadOnlyList<Contact>> ListAsync(
+        Guid accountId, CancellationToken cancellationToken = default);
+
+    /// <summary>Registra um contato.</summary>
+    Task AddAsync(Contact contact, CancellationToken cancellationToken = default);
+
+    /// <summary>Remove um contato.</summary>
+    void Remove(Contact contact);
+}
+
 /// <summary>Registro de auditoria.</summary>
 /// <remarks>
 /// As implementações nunca podem gravar conteúdo de mensagem: apenas identificadores,

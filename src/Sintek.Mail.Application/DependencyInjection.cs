@@ -55,6 +55,9 @@ public static class DependencyInjection
 
         services.AddScoped<SavedSearchesHandler>();
 
+        services.AddScoped<UseCases.Contacts.RecipientHistoryHandler>();
+        services.AddScoped<UseCases.Contacts.ManageContactsHandler>();
+
         services.AddScoped<UseCases.Maintenance.CacheMaintenanceHandler>();
 
         services.AddScoped<AssistantGateway>();

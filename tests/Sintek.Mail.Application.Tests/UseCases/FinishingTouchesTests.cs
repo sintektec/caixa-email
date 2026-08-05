@@ -53,9 +53,8 @@ public class FinishingTouchesTests
         _messages, _folders, _directories, _audit, _unitOfWork,
         Enqueuer(), _clock, NullLogger<MoveMessageHandler>.Instance);
 
-    private ComposeMessageHandler ComposeHandler() => new(
-        _messages, _folders, _accounts, _unitOfWork, Enqueuer(), _clock,
-        NullLogger<ComposeMessageHandler>.Instance);
+    private ComposeMessageHandler ComposeHandler() => TestFactories.Compose(
+        _messages, _folders, _accounts, _unitOfWork, Enqueuer(), _clock);
 
     private Message CreateMessage(bool readReceiptRequested = false)
     {

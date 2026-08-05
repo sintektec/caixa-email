@@ -74,6 +74,15 @@ public sealed class MailDbContext : DbContext
     /// <summary>Modelos de mensagem.</summary>
     public DbSet<MessageTemplate> MessageTemplates => Set<MessageTemplate>();
 
+    /// <summary>Histórico de destinatários, que alimenta o autocompletar.</summary>
+    public DbSet<RecipientHistory> RecipientHistory => Set<RecipientHistory>();
+
+    /// <summary>Catálogo de contatos.</summary>
+    public DbSet<Contact> Contacts => Set<Contact>();
+
+    /// <summary>Endereços dos contatos.</summary>
+    public DbSet<ContactEmail> ContactEmails => Set<ContactEmail>();
+
     /// <summary>Registro de auditoria.</summary>
     public DbSet<AuditLogEntry> AuditLog => Set<AuditLogEntry>();
 
@@ -85,6 +94,13 @@ public sealed class MailDbContext : DbContext
         ArgumentNullException.ThrowIfNull(modelBuilder);
 
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(MailDbContext).Assembly);
+
+        // Ordenar por DateTimeOffset é recusado pelo provedor do SQLite; esta é a saída.
+        // Ver SqliteFunctions.
+        modelBuilder
+            .HasDbFunction(typeof(SqliteFunctions).GetMethod(nameof(SqliteFunctions.DateTimeText))!)
+            .HasName("datetime")
+            .IsBuiltIn();
 
         base.OnModelCreating(modelBuilder);
     }

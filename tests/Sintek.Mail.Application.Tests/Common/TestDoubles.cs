@@ -14,6 +14,39 @@ namespace Sintek.Mail.Application.Tests;
 internal static class TestFactories
 {
     /// <summary>
+    /// Histórico de destinatários inerte, para os testes que não o verificam.
+    /// </summary>
+    /// <remarks>
+    /// O compositor alimenta o histórico no envio. Nos testes que verificam o envio em si,
+    /// substituir os repositórios por dublês mantém o histórico fora do caminho sem
+    /// remover o encadeamento real — que é o que quebraria se ele fosse opcional.
+    /// </remarks>
+    public static Sintek.Mail.Application.UseCases.Contacts.RecipientHistoryHandler InertRecipientHistory(
+        IUnitOfWork unitOfWork, TimeProvider clock)
+        => new(
+            Substitute.For<IRecipientHistoryRepository>(),
+            Substitute.For<IContactRepository>(),
+            Substitute.For<IAccountRepository>(),
+            Substitute.For<IDomainDirectoryRepository>(),
+            unitOfWork,
+            clock,
+            NullLogger<Sintek.Mail.Application.UseCases.Contacts.RecipientHistoryHandler>.Instance);
+
+    /// <summary>Compositor com o histórico de destinatários inerte.</summary>
+    public static ComposeMessageHandler Compose(
+        IMessageRepository messages,
+        IFolderRepository folders,
+        IAccountRepository accounts,
+        IUnitOfWork unitOfWork,
+        OutboxEnqueuer outbox,
+        TimeProvider clock)
+        => new(
+            messages, folders, accounts, unitOfWork, outbox,
+            InertRecipientHistory(unitOfWork, clock),
+            clock,
+            NullLogger<ComposeMessageHandler>.Instance);
+
+    /// <summary>
     /// Motor de chegada neutro: sem regras e sem remetentes bloqueados. É o que os testes
     /// de sincronização precisam para que a filtragem local não interfira no que eles
     /// verificam.
@@ -56,9 +89,7 @@ internal static class TestFactories
                 Substitute.For<IAttachmentStore>(),
                 clock,
                 NullLogger<DownloadMessageContentHandler>.Instance),
-            new ComposeMessageHandler(
-                messages, folders, accounts, unitOfWork, outbox, clock,
-                NullLogger<ComposeMessageHandler>.Instance),
+            Compose(messages, folders, accounts, unitOfWork, outbox, clock),
             outbox,
             clock,
             NullLogger<ApplyArrivalRulesHandler>.Instance);

@@ -201,7 +201,9 @@ public sealed class MessageRepository : IMessageRepository
         Guid folderId, CancellationToken cancellationToken = default)
         => await _context.Messages
             .Where(m => m.FolderId == folderId && !m.IsDeleted)
-            .OrderByDescending(m => m.ReceivedAt)
+            // datetime() e desempate por Id: ver SqliteFunctions.
+            .OrderByDescending(m => SqliteFunctions.DateTimeText(m.ReceivedAt))
+            .ThenByDescending(m => m.Id)
             .Select(m => m.Id)
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
@@ -562,8 +564,115 @@ public sealed class AuditLogRepository : IAuditLogRepository
     public async Task<IReadOnlyList<AuditLogEntry>> ListRecentAsync(
         int limit, CancellationToken cancellationToken = default)
         => await _context.AuditLog
-            .OrderByDescending(e => e.OccurredAt)
+            .OrderByDescending(e => SqliteFunctions.DateTimeText(e.OccurredAt))
+            .ThenByDescending(e => e.Id)
             .Take(limit)
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
+}
+
+/// <inheritdoc cref="IRecipientHistoryRepository" />
+public sealed class RecipientHistoryRepository : IRecipientHistoryRepository
+{
+    private readonly MailDbContext _context;
+
+    public RecipientHistoryRepository(MailDbContext context) => _context = context;
+
+    /// <inheritdoc />
+    public Task<RecipientHistory?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+        => _context.RecipientHistory.FirstOrDefaultAsync(h => h.Id == id, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<RecipientHistory?> GetByAddressAsync(
+        Guid accountId, EmailAddress address, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(address);
+
+        return _context.RecipientHistory.FirstOrDefaultAsync(
+            h => h.AccountId == accountId && h.Address == address, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<RecipientHistory>> ListForSuggestionAsync(
+        Guid accountId, int limit, CancellationToken cancellationToken = default)
+        => await _context.RecipientHistory
+            .Where(h => h.AccountId == accountId)
+            .OrderByDescending(h => SqliteFunctions.DateTimeText(h.LastUsedAt))
+            .ThenByDescending(h => h.UseCount)
+            .Take(Math.Max(limit, 1))
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<RecipientHistory>> ListAsync(
+        Guid accountId, CancellationToken cancellationToken = default)
+        => await _context.RecipientHistory
+            .Where(h => h.AccountId == accountId)
+            .OrderByDescending(h => SqliteFunctions.DateTimeText(h.LastUsedAt))
+            .ThenByDescending(h => h.UseCount)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+    /// <inheritdoc />
+    public async Task AddAsync(RecipientHistory entry, CancellationToken cancellationToken = default)
+        => await _context.RecipientHistory.AddAsync(entry, cancellationToken).ConfigureAwait(false);
+
+    /// <inheritdoc />
+    public void Remove(RecipientHistory entry) => _context.RecipientHistory.Remove(entry);
+}
+
+/// <inheritdoc cref="IContactRepository" />
+public sealed class ContactRepository : IContactRepository
+{
+    private readonly MailDbContext _context;
+
+    public ContactRepository(MailDbContext context) => _context = context;
+
+    /// <inheritdoc />
+    public Task<Contact?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+        => _context.Contacts
+            .Include(c => c.Emails)
+            .FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<Contact?> GetByExternalIdAsync(
+        Guid accountId, string externalId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(externalId);
+
+        return _context.Contacts
+            .Include(c => c.Emails)
+            .FirstOrDefaultAsync(
+                c => c.AccountId == accountId && c.ExternalId == externalId, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<Contact?> GetByEmailAsync(
+        Guid accountId, EmailAddress address, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(address);
+
+        return _context.Contacts
+            .Include(c => c.Emails)
+            .FirstOrDefaultAsync(
+                c => c.AccountId == accountId && c.Emails.Any(e => e.Address == address),
+                cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<Contact>> ListAsync(
+        Guid accountId, CancellationToken cancellationToken = default)
+        => await _context.Contacts
+            .Include(c => c.Emails)
+            .Where(c => c.AccountId == accountId)
+            .OrderBy(c => c.DisplayName)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+    /// <inheritdoc />
+    public async Task AddAsync(Contact contact, CancellationToken cancellationToken = default)
+        => await _context.Contacts.AddAsync(contact, cancellationToken).ConfigureAwait(false);
+
+    /// <inheritdoc />
+    public void Remove(Contact contact) => _context.Contacts.Remove(contact);
 }
