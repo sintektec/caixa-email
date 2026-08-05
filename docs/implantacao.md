@@ -194,8 +194,23 @@ de que o fluxo foi confundido com o de daemon.
 
 ### Onde colocar
 
-Crie `appsettings.Local.json` ao lado do executável — ele fica fora do controle de versão
-e sobrevive às atualizações do modo sem pacote:
+Há um modelo pronto no repositório. Na pasta `src/Sintek.Mail.App`:
+
+```
+copy appsettings.Local.example.json appsettings.Local.json
+```
+
+Depois preencha o valor no arquivo copiado. Só o `appsettings.Local.json` está no
+`.gitignore` — o modelo é versionado justamente por não ter segredo dentro.
+
+> **Nunca preencha o `ClientSecret` no `appsettings.json`.** A proteção contra segredos do
+> GitHub detecta o **par** Client ID + Client secret e recusa o envio; o Client ID sozinho
+> nunca dispara nada, porque não é segredo — ele aparece na URL de consentimento. Se o
+> bloqueio aparecer, a saída é tirar a chave do arquivo, não liberar a exceção: liberada, ela
+> fica no histórico do git para sempre e precisa ser revogada no Google Cloud.
+
+O arquivo completo, para referência — o `ClientSecret` só existe no bloco Google, e nenhum
+dos outros valores precisa ser repetido se já estiver no `appsettings.json`:
 
 ```json
 {
