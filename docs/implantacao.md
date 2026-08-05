@@ -100,20 +100,37 @@ de Credenciais é o **token de atualização**, esse sim equivalente à senha de
    `http://localhost`.
 4. Em **Autenticação**, confirme que *Allow public client flows* está **habilitado**. Sem
    isso o MSAL falha.
-5. Em **Permissões de API**, adicione as delegadas — **atenção, elas vivem em duas APIs
-   diferentes**:
+5. Em **Permissões de API**, adicione as **delegadas** — todas em **Microsoft Graph**:
 
-   | Permissão | Onde encontrá-la no portal |
+   | Permissão | Para quê |
    |---|---|
-   | `IMAP.AccessAsUser.All` | *APIs que minha organização usa* → **Office 365 Exchange Online** |
-   | `SMTP.Send` | *APIs que minha organização usa* → **Office 365 Exchange Online** |
-   | `Calendars.ReadWrite` | **Microsoft Graph** |
-   | `offline_access` | **Microsoft Graph** |
+   | `IMAP.AccessAsUser.All` | leitura da caixa por IMAP |
+   | `SMTP.Send` | envio por SMTP |
+   | `Calendars.ReadWrite` | agenda pelo Graph |
+   | `offline_access` | token de atualização |
+   | `User.Read` | vem por padrão; pode ficar |
 
-   Procurar as duas primeiras dentro do Microsoft Graph é o erro mais comum aqui — elas não
-   estão lá.
 6. Conceda consentimento do administrador se a organização exigir.
 7. Copie o **ID do aplicativo (cliente)** e o **ID do diretório (locatário)**.
+
+> **Nunca marque `IMAP.AccessAsApp` nem `SMTP.SendAsApp`.** São as permissões de *aplicativo*
+> do **Office 365 Exchange Online**, e é fácil cair nelas: ao procurar "IMAP" no portal, a
+> aba *APIs que minha organização usa* → **Office 365 Exchange Online** oferece as duas — mas
+> só sob **Permissões de aplicativo**; a lista **delegada** dessa mesma API não traz IMAP nem
+> SMTP. Elas servem ao fluxo *client credentials*, de daemon sem usuário conectado, que exige
+> client secret e uma concessão por caixa postal via PowerShell do Exchange. O Sintek.Mail
+> nunca usa esse fluxo. Marcá-las não habilita nada e ainda coloca o registro em estado de
+> "consentimento do administrador necessário", que atrapalha quem só quer ligar a própria
+> conta.
+>
+> **E se nem no Graph aparecerem, siga assim mesmo.** O registro é *cliente público*, e o
+> MSAL pede os escopos em tempo de execução (`AcquireTokenInteractive`). Quem resolve
+> `https://outlook.office.com/IMAP.AccessAsUser.All` é o Entra, contra o *service principal*
+> do Exchange Online, mostrando a tela de consentimento para o usuário que está entrando. A
+> lista do portal serve para **pré-declarar** a permissão — para o administrador consentir de
+> uma vez pela organização inteira — e não é o que autoriza a emissão do token. Só volte ao
+> portal se a autenticação falhar com `AADSTS65001` (consentimento ausente), o que acontece
+> em locatário que desliga o consentimento pelo usuário.
 
 > **O consentimento vai pedir duas vezes, e isso não é defeito.** O Entra emite token *por
 > recurso*: um token de `outlook.office.com` não abre o `graph.microsoft.com`, e pedir os
