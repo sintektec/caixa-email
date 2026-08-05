@@ -14,8 +14,8 @@ mexer no `InvariantGlobalization`.
 
 ## Marco atual
 
-**685 testes verdes no núcleo multiplataforma** (169 → 272 → 336 → 426 → 441 → 478 → 485
-→ 530 → 535 → 569 → 584 → 587 → 685 ao longo das onze fases).
+**692 testes verdes no núcleo multiplataforma** (169 → 272 → 336 → 426 → 441 → 478 → 485
+→ 530 → 535 → 569 → 584 → 587 → 692 ao longo das onze fases).
 
 A fase 7 entregou a filtragem local inteira: `RuleEvaluator` puro no Domain (campos,
 operadores e combinação E/OU da seção 6.5), `ApplyArrivalRulesHandler` aplicando bloqueio
@@ -45,8 +45,8 @@ A fase 11 trouxe o autocompletar de destinatários, que o produto não tinha e o
 `RecipientHistory` alimentado no envio, `Contact`/`ContactEmail` como catálogo curado,
 `RecipientSuggestionRanker` combinando os dois com decaimento por recência, importação e
 exportação em vCard 3.0/4.0 escritas à mão, `AutoSuggestBox` em Para/CC/CCO e o diálogo de
-contatos com remoção individual do histórico. Sugestão fora do domínio da conta aparece
-marcada, nunca escondida (D-021).
+contatos com remoção individual do histórico, mais o "adicionar aos contatos" no painel de
+leitura. Sugestão fora do domínio da conta aparece marcada, nunca escondida (D-021).
 
 Ela também corrigiu quatro defeitos herdados das fases anteriores: o provedor do SQLite não
 ordena nem compara `DateTimeOffset`, e por isso a listagem de mensagens da pasta (a tela
@@ -54,7 +54,7 @@ principal), o registro de auditoria, a limpeza de cache e a fila de saída quebr
 primeira execução. A fila de saída é a mais grave: o modo offline inteiro depende dela.
 Nenhuma tinha teste contra o banco real. Ver D-022.
 
-Distribuição: Domain 185, Application 259, Infrastructure 94, Presentation 114, Persistence 33.
+Distribuição: Domain 185, Application 259, Infrastructure 94, Presentation 119, Persistence 35.
 
 > **Atenção:** houve troca de implementação em 04/08/2026 (ver `DECISIONS.md`, D-007). O que
 > este arquivo descrevia antes daquela data pertencia à versão anterior, que foi substituída.

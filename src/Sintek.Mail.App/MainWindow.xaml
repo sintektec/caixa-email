@@ -547,9 +547,31 @@
                             </StackPanel>
                         </InfoBar.Content>
                     </InfoBar>
-                    <TextBlock Text="{x:Bind Reading.From, Mode=OneWay}"
-                               Style="{ThemeResource BodyTextBlockStyle}" />
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Grid.Column="0"
+                                   Text="{x:Bind Reading.From, Mode=OneWay}"
+                                   Style="{ThemeResource BodyTextBlockStyle}"
+                                   TextTrimming="CharacterEllipsis"
+                                   VerticalAlignment="Center" />
+
+                        <Button Grid.Column="1"
+                                Command="{x:Bind Reading.AddSenderToContactsCommand}"
+                                AutomationProperties.Name="Adicionar remetente aos contatos"
+                                ToolTipService.ToolTip="Adicionar remetente aos contatos">
+                            <FontIcon Glyph="&#xE8FA;" FontSize="14" />
+                        </Button>
+                    </Grid>
+
                     <TextBlock Text="{x:Bind Reading.To, Mode=OneWay}"
+                               Style="{ThemeResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+
+                    <TextBlock Text="{x:Bind Reading.ContactMessage, Mode=OneWay}"
                                Style="{ThemeResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 </StackPanel>

@@ -101,6 +101,11 @@ public sealed class ManageContactsHandler
     public Task<Contact?> GetAsync(Guid contactId, CancellationToken cancellationToken = default)
         => _contacts.GetByIdAsync(contactId, cancellationToken);
 
+    /// <summary>Busca o contato da conta que tem o endereço informado.</summary>
+    public Task<Contact?> FindByEmailAsync(
+        Guid accountId, EmailAddress address, CancellationToken cancellationToken = default)
+        => _contacts.GetByEmailAsync(accountId, address, cancellationToken);
+
     /// <summary>Cria ou atualiza um contato.</summary>
     public async Task<ContactResult> SaveAsync(
         ContactCommand command, CancellationToken cancellationToken = default)

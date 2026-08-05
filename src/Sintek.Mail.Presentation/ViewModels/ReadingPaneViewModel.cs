@@ -7,6 +7,7 @@ using Sintek.Mail.Application.UseCases.Messages;
 using Sintek.Mail.Domain.Entities;
 using Sintek.Mail.Domain.Enums;
 using Sintek.Mail.Domain.Services;
+using Sintek.Mail.Domain.ValueObjects;
 
 namespace Sintek.Mail.Presentation.ViewModels;
 
@@ -48,19 +49,78 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
     private readonly DownloadMessageContentHandler _download;
     private readonly Application.UseCases.Organization.ManageSenderReputationHandler _reputation;
     private readonly ReadReceiptHandler _readReceipt;
+    private readonly Application.UseCases.Contacts.ManageContactsHandler _contacts;
 
     public ReadingPaneViewModel(
         IMessageRepository messages,
         IHtmlSanitizer sanitizer,
         DownloadMessageContentHandler download,
         Application.UseCases.Organization.ManageSenderReputationHandler reputation,
-        ReadReceiptHandler readReceipt)
+        ReadReceiptHandler readReceipt,
+        Application.UseCases.Contacts.ManageContactsHandler contacts)
     {
         _messages = messages;
         _sanitizer = sanitizer;
         _download = download;
         _reputation = reputation;
         _readReceipt = readReceipt;
+        _contacts = contacts;
+    }
+
+    /// <summary>Conta e remetente da mensagem aberta, para o botão de adicionar aos contatos.</summary>
+    private Guid? _accountId;
+    private EmailAddress? _senderAddress;
+    private string? _senderDisplayName;
+
+    /// <summary>Resultado da última tentativa de adicionar o remetente aos contatos.</summary>
+    [ObservableProperty]
+    private string _contactMessage = string.Empty;
+
+    /// <summary>Se há remetente a acrescentar ao catálogo.</summary>
+    public bool CanAddSenderToContacts => _accountId is not null && _senderAddress is not null;
+
+    /// <summary>
+    /// Acrescenta o remetente da mensagem aberta ao catálogo de contatos.
+    /// </summary>
+    /// <remarks>
+    /// Remetente que já está no catálogo não é duplicado nem sobrescrito: o contato pode ter
+    /// sido editado à mão desde então, e trocar o nome curado pelo que veio no cabeçalho de
+    /// uma mensagem seria perder a edição sem avisar.
+    /// </remarks>
+    [RelayCommand]
+    public async Task AddSenderToContactsAsync(CancellationToken cancellationToken = default)
+    {
+        if (_accountId is not { } accountId || _senderAddress is not { } address)
+        {
+            return;
+        }
+
+        var existing = await _contacts.FindByEmailAsync(accountId, address, cancellationToken)
+            .ConfigureAwait(true);
+
+        if (existing is not null)
+        {
+            ContactMessage = $"{existing.DisplayName} já está nos contatos.";
+            return;
+        }
+
+        var result = await _contacts.SaveAsync(
+            new Application.UseCases.Contacts.ContactCommand
+            {
+                AccountId = accountId,
+                DisplayName = string.IsNullOrWhiteSpace(_senderDisplayName)
+                    ? address.Value
+                    : _senderDisplayName,
+                Emails =
+                [
+                    new Application.UseCases.Contacts.ContactEmailInput(address, null, true),
+                ],
+            },
+            cancellationToken).ConfigureAwait(true);
+
+        ContactMessage = result.Succeeded
+            ? "Remetente adicionado aos contatos."
+            : result.ErrorMessage ?? string.Empty;
     }
 
     /// <summary>
@@ -204,6 +264,12 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
             MessageId = message.Id;
             Subject = string.IsNullOrWhiteSpace(message.Subject) ? "(sem assunto)" : message.Subject;
             From = FormatSender(message);
+
+            _accountId = message.AccountId;
+            _senderAddress = message.FromAddress;
+            _senderDisplayName = message.FromDisplayName;
+            ContactMessage = string.Empty;
+            OnPropertyChanged(nameof(CanAddSenderToContacts));
             To = FormatAddresses(message, AddressKind.To);
             Cc = FormatAddresses(message, AddressKind.Cc);
             SentAt = message.SentAt;
@@ -343,6 +409,11 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
         MessageId = null;
         Subject = string.Empty;
         From = string.Empty;
+        _accountId = null;
+        _senderAddress = null;
+        _senderDisplayName = null;
+        ContactMessage = string.Empty;
+        OnPropertyChanged(nameof(CanAddSenderToContacts));
         To = string.Empty;
         Cc = string.Empty;
         SentAt = null;

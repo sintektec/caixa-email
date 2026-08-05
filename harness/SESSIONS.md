@@ -370,8 +370,10 @@ não commitado.
 - Armadilha nova: o `AutoSuggestBox` escreve o item escolhido na caixa **antes** de avisar
   quem o escolheu; com ligação de duas vias, a propriedade chega destruída em
   `QuerySubmitted`. O ViewModel guarda o texto de base e aplica a troca sobre ele.
-- 685 testes (Domain 185, Application 259, Infrastructure 94, Presentation 114,
-  Persistence 33).
+- "Adicionar aos contatos" no painel de leitura, com o remetente já no catálogo não sendo
+  duplicado nem sobrescrito — o contato pode ter sido editado à mão desde então.
+- 692 testes (Domain 185, Application 259, Infrastructure 94, Presentation 119,
+  Persistence 35).
 
 **Próxima sessão:**
 - Fase 12 — Agenda. O risco de fuso já está medido: ler o `VTIMEZONE` embutido no `.ics` e

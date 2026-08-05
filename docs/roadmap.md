@@ -310,6 +310,11 @@ então o que sumiu de lá ele apagou de propósito.
 **Gravar o histórico nunca derruba o envio.** A falha é registrada e a mensagem segue: o
 autocompletar é conveniência, a mensagem é o trabalho.
 
+**"Adicionar aos contatos" no painel de leitura**, que o plano não previa e o Outlook tem —
+é o caminho pelo qual o catálogo se enche na prática. Remetente já cadastrado não é
+duplicado nem sobrescrito: o contato pode ter sido editado à mão, e trocar o nome curado
+pelo que veio no cabeçalho de uma mensagem seria perder a edição sem avisar.
+
 **Defeito corrigido de passagem, herdado das fases anteriores:** o provedor do SQLite não
 ordena nem compara `DateTimeOffset`, e a quebra só aparece em tempo de execução. Quatro
 consultas caíam nisso desde a fase 1 — a listagem de mensagens da pasta (a tela principal),
