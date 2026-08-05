@@ -49,3 +49,7 @@ Generated Files/
 Attachments/
 appsettings.Local.json
 oauth-clients.json
+
+# Gerado pelo Visual Studio ao abrir o projeto. Traz caminhos e perfis da máquina de
+# quem abriu, que não valem para mais ninguém.
+launchSettings.json
