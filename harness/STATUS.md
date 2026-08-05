@@ -11,8 +11,8 @@
 
 ## Marco atual
 
-**530 testes verdes no núcleo multiplataforma** (169 → 272 → 336 → 426 → 441 → 478 → 485
-→ 530 ao longo das fases).
+**535 testes verdes no núcleo multiplataforma** (169 → 272 → 336 → 426 → 441 → 478 → 485
+→ 530 → 535 ao longo das fases).
 
 A fase 7 entregou a filtragem local inteira: `RuleEvaluator` puro no Domain (campos,
 operadores e combinação E/OU da seção 6.5), `ApplyArrivalRulesHandler` aplicando bloqueio
@@ -25,7 +25,7 @@ silêncio. Antes dela, as pendências das fases 4 e 6 foram fechadas: editor ric
 (WebView2 contenteditable), rascunho automático por período de silêncio e pesquisas salvas
 na barra lateral.
 
-Distribuição: Domain 161, Application 184, Infrastructure 85, Presentation 77, Persistence 23.
+Distribuição: Domain 161, Application 189, Infrastructure 85, Presentation 77, Persistence 23.
 
 > **Atenção:** houve troca de implementação em 04/08/2026 (ver `DECISIONS.md`, D-007). O que
 > este arquivo descrevia antes daquela data pertencia à versão anterior, que foi substituída.
@@ -71,8 +71,11 @@ Distribuição: Domain 161, Application 184, Infrastructure 85, Presentation 77,
 2. **Fase 8 — Assistência por IA:** infraestrutura de privacidade primeiro
    (`IAssistantProvider`, modelo local como padrão, consentimento por Diretório de
    Domínio, auditoria de envios externos), recursos depois.
-3. Pendências pontuais da fase 7: ações de copiar para pasta e encaminhamento automático
-   (hoje auditadas como ignoradas); condições de corpo avaliam sobre a prévia na chegada.
+
+Não há pendência de código nas fases 1 a 7 — copiar para pasta, encaminhamento automático
+e a avaliação de condição sobre o corpo baixado fecharam as últimas. O que resta é
+**pendência humana**, registrada em "Bloqueios": validação manual em Windows 11 e teste
+contra servidores IMAP/SMTP reais com Client IDs de OAuth.
 
 Vale notar: o MSIX compila mas **ainda não foi executado**. Nenhuma sessão automatizada
 consegue fazer isso — exige uma máquina Windows 11 real. A validação funcional da interface

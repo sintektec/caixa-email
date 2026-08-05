@@ -258,6 +258,91 @@ public sealed class MoveMessageHandler
         return new MoveMessageResult(MoveMessageOutcome.MovedToPending, null, pending.Id);
     }
 
+    /// <summary>
+    /// Copia uma mensagem para outra pasta — a cópia é feita pelo servidor quando a fila
+    /// drenar, e aparece localmente na sincronização seguinte da pasta de destino.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Vive aqui, e não em um handler próprio, porque a regra de Diretório de Domínio da
+    /// pasta de destino se aplica à cópia tanto quanto à movimentação, e este é o único
+    /// lugar autorizado a consultar o avaliador de pertencimento.
+    /// </para>
+    /// <para>
+    /// A tabela de decisão é mais simples que a da movimentação: cópia incompatível é
+    /// recusada em qualquer modo. Não existe "desviar a cópia para pendências" — seria
+    /// criar no servidor uma cópia que ninguém pediu em outra pasta — e o chamador
+    /// automático (regra) não tem usuário para confirmar.
+    /// </para>
+    /// </remarks>
+    public async Task<MoveMessageResult> HandleCopyAsync(
+        Guid messageId, Guid targetFolderId, CancellationToken cancellationToken = default)
+    {
+        var message = await _messages.GetByIdAsync(messageId, cancellationToken).ConfigureAwait(false)
+            ?? throw new InvalidOperationException($"Mensagem {messageId} não encontrada.");
+
+        var targetFolder = await _folders.GetByIdAsync(targetFolderId, cancellationToken).ConfigureAwait(false)
+            ?? throw new InvalidOperationException($"Pasta {targetFolderId} não encontrada.");
+
+        if (message.FolderId == targetFolder.Id)
+        {
+            return new MoveMessageResult(MoveMessageOutcome.Moved, null, targetFolder.Id);
+        }
+
+        if (targetFolder.IsLocalOnly)
+        {
+            // O servidor não conhece pastas locais; não há onde criar a cópia.
+            return new MoveMessageResult(
+                MoveMessageOutcome.Blocked, "Não é possível copiar para uma pasta local.", null);
+        }
+
+        if (targetFolder.IsDomainRestricted)
+        {
+            var directoryId = targetFolder.EffectiveRestrictionDomainDirectoryId!.Value;
+            var directory = await _directories.GetByIdAsync(directoryId, cancellationToken)
+                .ConfigureAwait(false)
+                ?? throw new InvalidOperationException(
+                    $"A pasta '{targetFolder.DisplayName}' aponta para o Diretório de Domínio " +
+                    $"{directoryId}, que não existe mais.");
+
+            var participants = await _messages.GetParticipantsAsync(message.Id, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (!DomainMembershipEvaluator.Evaluate(directory, participants).IsMember)
+            {
+                await RecordAuditAsync(
+                    AuditEventType.MessageMoveBlockedByDomainRule,
+                    $"Cópia recusada: a mensagem não pertence ao domínio '{directory.DomainName.Value}' " +
+                    $"exigido pela pasta '{targetFolder.DisplayName}'.",
+                    AuditSeverity.Warning,
+                    message,
+                    directory,
+                    cancellationToken).ConfigureAwait(false);
+
+                return new MoveMessageResult(
+                    MoveMessageOutcome.Blocked,
+                    FolderDomainRestrictionException.RestrictionMessage,
+                    null);
+            }
+        }
+
+        var sourceFolderId = message.FolderId;
+
+        await _unitOfWork.ExecuteInTransactionAsync(async ct =>
+        {
+            await _outbox.EnqueueAsync(
+                message.AccountId,
+                OutboxOperationType.CopyMessage,
+                message.Id,
+                new MoveMessagePayload(sourceFolderId, targetFolder.Id),
+                ct).ConfigureAwait(false);
+
+            await _unitOfWork.SaveChangesAsync(ct).ConfigureAwait(false);
+        }, cancellationToken).ConfigureAwait(false);
+
+        return new MoveMessageResult(MoveMessageOutcome.Moved, null, targetFolder.Id);
+    }
+
     private async Task<MoveMessageResult> CommitMoveAsync(
         Message message, Guid targetFolderId, MoveMessageOutcome outcome, CancellationToken cancellationToken)
     {

@@ -34,12 +34,14 @@ internal static class TestFactories
         reputations.ListAsync(Arg.Any<SenderReputationKind?>(), Arg.Any<CancellationToken>())
             .Returns(Array.Empty<SenderReputation>());
 
+        var accounts = Substitute.For<IAccountRepository>();
+
         return new ApplyArrivalRulesHandler(
             rules,
             reputations,
             messages,
             folders,
-            Substitute.For<IAccountRepository>(),
+            accounts,
             Substitute.For<ICategoryRepository>(),
             Substitute.For<IAuditLogRepository>(),
             unitOfWork,
@@ -47,6 +49,16 @@ internal static class TestFactories
             new MarkAsSpamHandler(
                 messages, folders, moveMessage, outbox, unitOfWork,
                 NullLogger<MarkAsSpamHandler>.Instance),
+            new DownloadMessageContentHandler(
+                messages, folders, unitOfWork,
+                Substitute.For<Abstractions.Mail.IImapClient>(),
+                Substitute.For<IHtmlSanitizer>(),
+                Substitute.For<IAttachmentStore>(),
+                clock,
+                NullLogger<DownloadMessageContentHandler>.Instance),
+            new ComposeMessageHandler(
+                messages, folders, accounts, unitOfWork, outbox, clock,
+                NullLogger<ComposeMessageHandler>.Instance),
             outbox,
             clock,
             NullLogger<ApplyArrivalRulesHandler>.Instance);

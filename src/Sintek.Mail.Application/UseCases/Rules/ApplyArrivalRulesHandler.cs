@@ -31,8 +31,9 @@ public readonly record struct ArrivalRulesResult(bool WasBlocked, int AppliedRul
 /// e a regra de domínio prevalece sobre a regra do usuário.
 /// </para>
 /// <para>
-/// As condições de corpo avaliam sobre a prévia na chegada: o corpo completo ainda não
-/// foi baixado nesse momento.
+/// Quando alguma regra tem condição de corpo, o corpo é baixado antes da avaliação — a
+/// sincronização está conectada nesse momento. Se o download falhar, a avaliação usa a
+/// prévia: casar pelo começo do texto é melhor que não casar nunca.
 /// </para>
 /// </remarks>
 public sealed class ApplyArrivalRulesHandler
@@ -47,6 +48,8 @@ public sealed class ApplyArrivalRulesHandler
     private readonly IUnitOfWork _unitOfWork;
     private readonly MoveMessageHandler _moveMessage;
     private readonly MarkAsSpamHandler _markAsSpam;
+    private readonly DownloadMessageContentHandler _download;
+    private readonly ComposeMessageHandler _compose;
     private readonly OutboxEnqueuer _outbox;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<ApplyArrivalRulesHandler> _logger;
@@ -62,6 +65,8 @@ public sealed class ApplyArrivalRulesHandler
         IUnitOfWork unitOfWork,
         MoveMessageHandler moveMessage,
         MarkAsSpamHandler markAsSpam,
+        DownloadMessageContentHandler download,
+        ComposeMessageHandler compose,
         OutboxEnqueuer outbox,
         TimeProvider timeProvider,
         ILogger<ApplyArrivalRulesHandler> logger)
@@ -76,6 +81,8 @@ public sealed class ApplyArrivalRulesHandler
         _unitOfWork = unitOfWork;
         _moveMessage = moveMessage;
         _markAsSpam = markAsSpam;
+        _download = download;
+        _compose = compose;
         _outbox = outbox;
         _timeProvider = timeProvider;
         _logger = logger;
@@ -113,6 +120,20 @@ public sealed class ApplyArrivalRulesHandler
         if (rules.Count == 0)
         {
             return new ArrivalRulesResult(false, 0);
+        }
+
+        // Condição de corpo pede o corpo de verdade. A sincronização está conectada
+        // agora; se o download falhar mesmo assim, a prévia é o melhor disponível.
+        if (rules.Any(r => r.Conditions.Any(c => c.Field == RuleField.Body)))
+        {
+            var downloaded = await _download.DownloadBodyAsync(message.Id, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (!downloaded.Succeeded)
+            {
+                _logger.LogWarning(
+                    "Condição de corpo avaliada sobre a prévia: {Reason}", downloaded.ErrorMessage);
+            }
         }
 
         var facts = BuildFacts(message);
@@ -279,16 +300,13 @@ public sealed class ApplyArrivalRulesHandler
 
                 return false;
 
-            case RuleActionType.CopyToFolder:
+            case RuleActionType.CopyToFolder when action.TargetFolderId is { } copyTargetId:
+                await CopyAsync(rule, message, copyTargetId, cancellationToken).ConfigureAwait(false);
+                return false;
+
             case RuleActionType.Forward:
-                // Registradas como ignoradas em vez de silenciosamente perdidas: quem
-                // configurou a regra precisa descobrir pela auditoria, não por dedução.
-                await RecordSkippedAsync(
-                    rule, message,
-                    action.ActionType == RuleActionType.CopyToFolder
-                        ? "A ação de copiar para pasta ainda não é suportada."
-                        : "A ação de encaminhamento automático ainda não é suportada.",
-                    cancellationToken).ConfigureAwait(false);
+                await ForwardAsync(rule, action, message, account, cancellationToken)
+                    .ConfigureAwait(false);
                 return false;
 
             default:
@@ -320,6 +338,100 @@ public sealed class ApplyArrivalRulesHandler
             await RecordSkippedAsync(
                 rule, message,
                 "A movimentação da regra foi bloqueada pela regra de domínio da pasta de destino.",
+                cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private async Task CopyAsync(
+        Rule rule, Message message, Guid targetFolderId, CancellationToken cancellationToken)
+    {
+        var result = await _moveMessage
+            .HandleCopyAsync(message.Id, targetFolderId, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (result.Outcome == MoveMessageOutcome.Blocked)
+        {
+            await RecordSkippedAsync(
+                rule, message,
+                result.UserMessage ?? "A cópia foi recusada pela regra de domínio da pasta de destino.",
+                cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Encaminha a mensagem para o endereço configurado na regra.
+    /// </summary>
+    /// <remarks>
+    /// O corpo e os anexos são baixados antes — a sincronização está conectada — e o envio
+    /// entra na fila como qualquer outro (D-014): funciona offline dali em diante e aparece
+    /// na fila visível. Se algum conteúdo não puder ser baixado, o encaminhamento inteiro é
+    /// registrado como ignorado: encaminhar pela metade entregaria ao destinatário algo
+    /// diferente do que o remetente mandou.
+    /// </remarks>
+    private async Task ForwardAsync(
+        Rule rule, RuleAction action, Message message, Account account,
+        CancellationToken cancellationToken)
+    {
+        if (!Domain.ValueObjects.EmailAddress.TryParse(action.Value, out var target))
+        {
+            await RecordSkippedAsync(
+                rule, message,
+                $"O endereço de encaminhamento '{action.Value}' não é válido.",
+                cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        var body = await _download.DownloadBodyAsync(message.Id, cancellationToken).ConfigureAwait(false);
+
+        if (!body.Succeeded)
+        {
+            await RecordSkippedAsync(
+                rule, message,
+                $"O corpo não pôde ser baixado para o encaminhamento: {body.ErrorMessage}",
+                cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        foreach (var attachment in message.Attachments.Where(a => !a.IsInline && !a.IsDownloaded))
+        {
+            var downloaded = await _download
+                .DownloadAttachmentAsync(message.Id, attachment.Id, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (!downloaded.Succeeded)
+            {
+                await RecordSkippedAsync(
+                    rule, message,
+                    $"O anexo '{attachment.FileName}' não pôde ser baixado para o encaminhamento.",
+                    cancellationToken).ConfigureAwait(false);
+                return;
+            }
+        }
+
+        var draft = DraftComposer.Compose(
+            DraftKind.Forward, message, message.Body, account.EmailAddress, account.Signature);
+
+        var result = await _compose.SendAsync(new ComposeMessageCommand
+        {
+            AccountId = account.Id,
+            Subject = draft.Subject,
+            TextBody = draft.TextBody ?? string.Empty,
+            HtmlBody = draft.HtmlBody,
+            Recipients = [new DraftRecipient(AddressKind.To, target, null)],
+            Attachments = message.Attachments
+                .Where(a => !a.IsInline && a.StoragePath is not null)
+                .Select(a => new ComposedAttachment(a.FileName, a.StoragePath!, a.ContentType, a.Size))
+                .ToList(),
+            InReplyTo = draft.InReplyTo,
+            References = draft.References,
+            ThreadId = draft.ThreadId,
+        }, cancellationToken).ConfigureAwait(false);
+
+        if (!result.Succeeded)
+        {
+            await RecordSkippedAsync(
+                rule, message,
+                $"O encaminhamento não pôde ser enfileirado: {result.ErrorMessage}",
                 cancellationToken).ConfigureAwait(false);
         }
     }
@@ -363,7 +475,7 @@ public sealed class ApplyArrivalRulesHandler
     {
         AccountId = message.AccountId,
         Subject = message.Subject,
-        BodyText = message.Preview,
+        BodyText = message.Body?.TextBody ?? message.Preview,
         FromAddress = message.FromAddress?.Value,
         FromDomain = message.FromAddress?.Domain,
         Participants = message.Addresses

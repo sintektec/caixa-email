@@ -169,13 +169,11 @@ public static class SelectionOptions
     ];
 
     /// <summary>Ações disponíveis nas regras.</summary>
-    /// <remarks>
-    /// Copiar e encaminhar ficam de fora até serem suportadas: oferecer uma ação que a
-    /// auditoria registraria como ignorada seria vender o que não existe.
-    /// </remarks>
     public static IReadOnlyList<RuleActionOption> RuleActions { get; } =
     [
         new(RuleActionType.MoveToFolder, "Mover para a pasta"),
+        new(RuleActionType.CopyToFolder, "Copiar para a pasta"),
+        new(RuleActionType.Forward, "Encaminhar para o endereço"),
         new(RuleActionType.ApplyCategory, "Aplicar a categoria"),
         new(RuleActionType.MarkAsRead, "Marcar como lida"),
         new(RuleActionType.MarkAsImportant, "Marcar como importante"),

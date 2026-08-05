@@ -70,11 +70,16 @@ public sealed partial class RuleActionEditorViewModel : ObservableObject
     [ObservableProperty]
     private ScopeFilterOption? _selectedCategory;
 
+    /// <summary>Parâmetro livre — o endereço de destino do encaminhamento.</summary>
+    [ObservableProperty]
+    private string _value = string.Empty;
+
     /// <summary>Converte a linha em definição.</summary>
     public RuleActionDefinition ToDefinition() => new(
         SelectedAction.Value,
         TargetFolderId: SelectedFolder?.Value,
-        TargetCategoryId: SelectedCategory?.Value);
+        TargetCategoryId: SelectedCategory?.Value,
+        Value: string.IsNullOrWhiteSpace(Value) ? null : Value.Trim());
 }
 
 /// <summary>Uma regra na lista de gestão.</summary>
@@ -296,6 +301,7 @@ public sealed partial class RulesViewModel : ObservableObject
                 .FirstOrDefault(a => a.Value == action.ActionType) ?? SelectionOptions.RuleActions[0];
             row.SelectedFolder = row.FolderOptions.FirstOrDefault(f => f.Value == action.TargetFolderId);
             row.SelectedCategory = row.CategoryOptions.FirstOrDefault(c => c.Value == action.TargetCategoryId);
+            row.Value = action.Value ?? string.Empty;
 
             Actions.Add(row);
         }

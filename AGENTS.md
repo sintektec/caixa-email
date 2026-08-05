@@ -51,3 +51,13 @@ O motivo é concreto: boa parte da validação deste projeto exige uma máquina 
 — MSIX instalado, interface exercida, servidores IMAP de verdade — e nenhuma sessão
 automatizada consegue fazê-la. Acumular fases sem essa verificação empilha código que
 ninguém confirmou funcionar, e o erro descoberto na fase 5 pode ter nascido na 2.
+
+## 5. Pendência que a sessão pode resolver não fica para trás
+
+**Nunca deixe pendente o que você mesmo pode fazer; sempre finalize.** "Ainda não
+suportado" só é aceitável quando a limitação é externa — falta de credencial, de máquina
+Windows, de decisão do usuário. Pendência humana desse tipo é avisada ao usuário e
+registrada em `harness/STATUS.md`; todo o resto se implementa antes de avançar de fase.
+
+(Diretriz do usuário em 2026-08-05, ao encontrar ações de regra entregues como
+"registradas na auditoria como ignoradas" quando podiam ser implementadas.)

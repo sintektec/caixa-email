@@ -257,3 +257,27 @@ eletrônico e IA) registradas no roadmap.
 **Próxima sessão:**
 - Aguardar decisão do usuário: fase 8 (Assistência por IA), validação manual em Windows,
   ou revisão do PR #1.
+
+---
+
+## 2026-08-05 — Sessão 9 (continuação): pendências da Fase 7 fechadas
+
+**O que foi feito:**
+- `MoveMessageHandler.HandleCopyAsync`: cópia enfileirada como `CopyMessage`, com a regra
+  de domínio da pasta de destino aplicada. Cópia incompatível é recusada em qualquer modo
+  — não existe desviar cópia para pendências.
+- Encaminhamento automático de regra: baixa corpo e anexos, monta com `DraftComposer` e
+  entrega o envio à fila (D-014). Conteúdo indisponível recusa o encaminhamento inteiro.
+- Condição de corpo passa a baixar o corpo antes de avaliar; a prévia vira o recuo quando
+  o download falha.
+- `AGENTS.md` seção 5: pendência que a sessão pode resolver não fica para trás (diretriz
+  do usuário).
+- 530 → 535 testes.
+
+**Nota de infraestrutura:** o container foi revertido para o commit da fase 4 no meio da
+sessão. Nada se perdeu porque tudo já estava no remoto; o working tree foi restaurado com
+`git reset --hard origin/<branch>`. Lição registrada: enviar cedo, não acumular trabalho
+não commitado.
+
+**Próxima sessão:**
+- Fase 8 (Assistência por IA), conforme decisão do usuário.

@@ -125,10 +125,17 @@ prevalece sobre a regra do usuário. A concorrência entre regras (inclusive de 
 de Domínio diferentes) resolve-se pela prioridade configurável de cada regra, com
 "interromper as seguintes" como corte explícito.
 
-Pendências da fase: as ações de **copiar para pasta** e **encaminhamento automático**
-ainda não são executadas — a auditoria registra a ação como ignorada, com o motivo; e as
-condições de corpo avaliam sobre a prévia na chegada, porque o corpo completo ainda não
-foi baixado nesse momento.
+**Copiar para pasta** e **encaminhamento automático** também executam. A cópia passa por
+`MoveMessageHandler.HandleCopyAsync` — a regra de domínio da pasta de destino vale para a
+cópia tanto quanto para a movimentação, e cópia incompatível é recusada em qualquer modo:
+não existe "desviar a cópia para pendências", que criaria no servidor uma cópia que
+ninguém pediu. O encaminhamento baixa corpo e anexos antes e entrega o envio à fila
+(D-014); se algum conteúdo não puder ser baixado, o encaminhamento inteiro é recusado e
+auditado — encaminhar pela metade entregaria ao destinatário algo diferente do que o
+remetente mandou.
+
+Condição de corpo dispara o download do corpo antes da avaliação, já que a sincronização
+está conectada naquele momento; se o download falhar, a avaliação recai sobre a prévia.
 
 **O que esta fase deliberadamente não faz: um classificador de spam próprio.** Servidores
 corporativos — Exchange, Google Workspace — já classificam com dados que nenhum cliente
