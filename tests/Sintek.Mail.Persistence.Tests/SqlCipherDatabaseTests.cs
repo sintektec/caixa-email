@@ -75,6 +75,7 @@ public sealed class SqlCipherDatabaseTests : IAsyncLifetime
         var applied = await context.Database.GetAppliedMigrationsAsync();
         applied.Should().Contain(m => m.EndsWith("InitialSchema", StringComparison.Ordinal));
         applied.Should().Contain(m => m.EndsWith("FullTextSearchIndex", StringComparison.Ordinal));
+        applied.Should().Contain(m => m.EndsWith("RebuildSearchIndex", StringComparison.Ordinal));
         File.Exists(_databasePath).Should().BeTrue();
     }
 
@@ -299,9 +300,9 @@ public sealed class SqlCipherDatabaseTests : IAsyncLifetime
 
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT map."MessageId"
+            SELECT s."MessageId"
             FROM "MessagesFts" fts
-            JOIN "MessagesFtsMap" map ON map."Rowid" = fts."rowid"
+            JOIN "MessagesSearch" s ON s."Rowid" = fts."rowid"
             WHERE "MessagesFts" MATCH $term;
             """;
 

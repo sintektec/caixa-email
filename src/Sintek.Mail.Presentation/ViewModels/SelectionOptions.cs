@@ -16,6 +16,22 @@ public sealed record SecurityModeOption(SecureSocketMode Value, string Label);
 /// <inheritdoc cref="ValidationModeOption" />
 public sealed record AuthenticationOption(AuthenticationType Value, OAuthProviderKind Provider, string Label);
 
+/// <summary>Opção de filtro em três estados: sim, não ou indiferente.</summary>
+/// <param name="Value">Valor do filtro; nulo não filtra.</param>
+/// <param name="Label">Texto apresentado ao usuário.</param>
+public sealed record TriStateFilterOption(bool? Value, string Label);
+
+/// <inheritdoc cref="ValidationModeOption" />
+public sealed record ImportanceFilterOption(MessageImportance? Value, string Label);
+
+/// <inheritdoc cref="ValidationModeOption" />
+public sealed record SyncStateFilterOption(MessageSyncState? Value, string Label);
+
+/// <summary>Opção de conta ou de Diretório de Domínio no filtro de pesquisa.</summary>
+/// <param name="Value">Identificador; nulo significa todas.</param>
+/// <param name="Label">Texto apresentado ao usuário.</param>
+public sealed record ScopeFilterOption(Guid? Value, string Label);
+
 /// <summary>
 /// Rótulos das opções apresentadas nas listas de configuração.
 /// </summary>
@@ -74,5 +90,51 @@ public static class SelectionOptions
         new(AuthenticationType.Password, OAuthProviderKind.None, "Senha"),
         new(AuthenticationType.OAuth2, OAuthProviderKind.Microsoft, "Conta Microsoft (OAuth 2.0)"),
         new(AuthenticationType.OAuth2, OAuthProviderKind.Google, "Conta Google (OAuth 2.0)"),
+    ];
+
+    /// <summary>Filtro de leitura da pesquisa avançada.</summary>
+    public static IReadOnlyList<TriStateFilterOption> ReadStateFilters { get; } =
+    [
+        new(null, "Lidas e não lidas"),
+        new(false, "Somente não lidas"),
+        new(true, "Somente lidas"),
+    ];
+
+    /// <summary>Filtro de sinalizador da pesquisa avançada.</summary>
+    public static IReadOnlyList<TriStateFilterOption> FlagStateFilters { get; } =
+    [
+        new(null, "Com e sem sinalizador"),
+        new(true, "Somente sinalizadas"),
+        new(false, "Somente sem sinalizador"),
+    ];
+
+    /// <summary>Filtro de anexos da pesquisa avançada.</summary>
+    public static IReadOnlyList<TriStateFilterOption> AttachmentFilters { get; } =
+    [
+        new(null, "Com e sem anexo"),
+        new(true, "Somente com anexo"),
+        new(false, "Somente sem anexo"),
+    ];
+
+    /// <summary>Filtro de importância da pesquisa avançada.</summary>
+    public static IReadOnlyList<ImportanceFilterOption> ImportanceFilters { get; } =
+    [
+        new(null, "Qualquer importância"),
+        new(MessageImportance.High, "Alta"),
+        new(MessageImportance.Normal, "Normal"),
+        new(MessageImportance.Low, "Baixa"),
+    ];
+
+    /// <summary>Filtro de status de sincronização da pesquisa avançada.</summary>
+    public static IReadOnlyList<SyncStateFilterOption> SyncStateFilters { get; } =
+    [
+        new(null, "Qualquer situação"),
+        new(MessageSyncState.Synced, "Sincronizada"),
+        new(MessageSyncState.LocalOnly, "Somente local"),
+        new(MessageSyncState.PendingUpload, "Envio pendente"),
+        new(MessageSyncState.PendingUpdate, "Alteração pendente"),
+        new(MessageSyncState.PendingMove, "Movimentação pendente"),
+        new(MessageSyncState.PendingDelete, "Exclusão pendente"),
+        new(MessageSyncState.Conflict, "Em conflito"),
     ];
 }

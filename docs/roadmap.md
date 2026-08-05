@@ -81,13 +81,26 @@ ainda encontra a mensagem na pasta de origem.
 Entrada for restrita e a mensagem não pertencer ao domínio, ela vai para pendências — que é
 o que a regra manda fazer com ela.
 
-## Fase 6 — Pesquisa
+## Fase 6 — Pesquisa ✅
 
 Pesquisa local sobre o índice FTS5 com todos os filtros da seção 6.4, pesquisa avançada
-com combinação de critérios e pesquisas salvas na barra lateral.
+com combinação de critérios e pesquisas salvas.
 
-Requer estender os gatilhos do FTS5 para indexar corpo, participantes e nomes de anexo à
-medida que forem baixados.
+O índice contentless original não tinha como indexar corpo, participantes e nomes de
+anexo — apagar uma entrada exige reapresentar os valores antigos, que vivem em outras
+tabelas. A migração `RebuildSearchIndex` o reconstruiu com *external content*: a tabela
+física `MessagesSearch` espelha o texto pesquisável e os gatilhos das tabelas de origem a
+mantêm, inclusive quando corpo e anexos chegam depois, no download sob demanda.
+
+Entregue: `Fts5SearchService` com os filtros da 6.4 (texto livre e por campo com prefixo e
+sem acento; conta, pasta, Diretório de Domínio, categoria, datas com normalização de fuso,
+lida, sinalizador, anexos, importância e status de sincronização), pesquisas salvas com
+atualização por nome (`SavedSearchesHandler`), flyout de pesquisa avançada na barra
+superior e modo de resultados no painel central.
+
+Pendência da fase: as pesquisas salvas ainda não aparecem fixadas na barra lateral — hoje
+vivem no flyout de filtros. O filtro por categoria já funciona no serviço, mas só ganhará
+seletor na interface quando a fase 7 criar a gestão de categorias.
 
 ## Fase 7 — Automação e filtragem local
 

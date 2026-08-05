@@ -1,7 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Sintek.Mail.Application.Abstractions.Persistence;
+using Sintek.Mail.Application.Abstractions.Search;
 using Sintek.Mail.Persistence.Repositories;
+using Sintek.Mail.Persistence.Search;
 
 namespace Sintek.Mail.Persistence;
 
@@ -41,6 +43,8 @@ public static class DependencyInjection
         services.AddScoped<IMessageRepository, MessageRepository>();
         services.AddScoped<IOutboxRepository, OutboxRepository>();
         services.AddScoped<IAuditLogRepository, AuditLogRepository>();
+        services.AddScoped<ISavedSearchRepository, SavedSearchRepository>();
+        services.AddScoped<ISearchService, Fts5SearchService>();
 
         return services;
     }

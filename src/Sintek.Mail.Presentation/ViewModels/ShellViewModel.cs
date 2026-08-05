@@ -72,10 +72,6 @@ public sealed partial class ShellViewModel : ObservableObject
     [ObservableProperty]
     private ConnectivityState _connectivity = ConnectivityState.Offline;
 
-    /// <summary>Texto da busca.</summary>
-    [ObservableProperty]
-    private string _searchText = string.Empty;
-
     /// <summary>Quantas operações aguardam sincronização.</summary>
     [ObservableProperty]
     private int _pendingOperationCount;

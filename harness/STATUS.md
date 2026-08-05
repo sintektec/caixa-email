@@ -6,22 +6,25 @@
 
 ## Fase atual
 
-**Fase 5 — Pastas e regras de domínio na interface: concluída.** Ver `docs/roadmap.md` para as fases 6 a 10.
+**Fase 6 — Pesquisa: concluída.** Ver `docs/roadmap.md` para as fases 7 a 10.
 
 ## Marco atual
 
-**441 testes verdes no núcleo multiplataforma** (169 → 272 → 336 → 426 → 441 ao longo das
-fases).
+**478 testes verdes no núcleo multiplataforma** (169 → 272 → 336 → 426 → 441 → 478 ao
+longo das fases).
 
-A fase 5 levou a regra de domínio à interface de pastas: criação, renomeação e exclusão em
-duas etapas (com o RENAME propagando os caminhos das descendentes), vínculo de pasta a
-Diretório de Domínio com herança pela subárvore, troca de domínio com relatório de impacto e
-confirmação, favoritos, e "Marcar como spam"/"Não é spam" com os marcadores $Junk/$NotJunk
-enfileirados antes da movimentação. O motor de sincronização inteiro é testável sem servidor: espelhamento de pastas,
-sincronização incremental, troca de UIDVALIDITY, reconciliação de exclusões e a política de
-agendamento.
+A fase 6 entregou a pesquisa completa da seção 6.4. O índice FTS5 foi reconstruído com
+*external content* (migração `RebuildSearchIndex`): o modo contentless original não tinha
+como indexar corpo, participantes e nomes de anexo, porque apagar uma entrada exige
+reapresentar os valores antigos — que vivem em outras tabelas. Agora a tabela física
+`MessagesSearch` espelha o texto pesquisável, os gatilhos das tabelas de origem a mantêm
+(inclusive no download sob demanda), e `Fts5SearchService` combina MATCH com os filtros
+estruturais: conta, pasta, Diretório de Domínio, categoria, intervalo de datas com
+normalização de fuso, lida, sinalizador, anexos, importância e status de sincronização.
+Pesquisas salvas atualizam pela identidade do nome, e a interface ganhou o flyout de
+pesquisa avançada e o modo de resultados no painel central.
 
-Distribuição: Domain 130, Application 95, Infrastructure 61, Presentation 41, Persistence 9.
+Distribuição: Domain 144, Application 165, Infrastructure 85, Presentation 61, Persistence 23.
 
 > **Atenção:** houve troca de implementação em 04/08/2026 (ver `DECISIONS.md`, D-007). O que
 > este arquivo descrevia antes daquela data pertencia à versão anterior, que foi substituída.
@@ -43,9 +46,10 @@ Distribuição: Domain 130, Application 95, Infrastructure 61, Presentation 41, 
       `ChangeDomainName`), `SetFolderRestrictionHandler` e o motor de sincronização
       (`SyncAccountHandler`, `FolderMirrorService`, `MessageSyncService`, `SyncSchedule`).
       **95 testes**
-- [x] **Persistence** — EF Core 10, SQLCipher, mapeamentos de todas as entidades, migração
-      inicial e migração do FTS5 com gatilhos. **9 testes**, incluindo a leitura dos bytes
-      crus do arquivo para provar a criptografia
+- [x] **Persistence** — EF Core 10, SQLCipher, mapeamentos de todas as entidades, migrações
+      (inicial, FTS5 e a reconstrução com external content) e `Fts5SearchService`.
+      **23 testes**, incluindo a leitura dos bytes crus do arquivo para provar a
+      criptografia e a pesquisa completa contra o banco migrado de verdade
 - [x] **Infrastructure** — MailKit IMAP/SMTP, sanitizador de HTML, provedores OAuth
       Microsoft e Google, descoberta automática em cinco etapas, serialização MIME,
       `OutboxProcessor` completo e o laço `AccountSyncWorker`. **61 testes**
@@ -63,10 +67,11 @@ Distribuição: Domain 130, Application 95, Infrastructure 61, Presentation 41, 
 ## Próximos passos
 
 1. **Revisar e integrar o PR #1.**
-2. **Fase 6 — Pesquisa:** FTS5 com os filtros da seção 6.4, pesquisa avançada e pesquisas
-   salvas. Requer estender os gatilhos do índice para corpo, participantes e anexos.
-3. Pendências pontuais da fase 4: editor rico no compositor e rascunho automático por
-   intervalo de digitação.
+2. **Fase 7 — Automação e filtragem local:** editor e motor de regras, categorias com
+   gestão na interface (o filtro de pesquisa por categoria já existe no serviço, à espera
+   do seletor), modelos de mensagem, listas de remetentes bloqueados/confiáveis.
+3. Pendências pontuais: editor rico no compositor e rascunho automático (fase 4); pesquisas
+   salvas fixadas na barra lateral (fase 6 — hoje vivem no flyout de filtros).
 
 Vale notar: o MSIX compila mas **ainda não foi executado**. Nenhuma sessão automatizada
 consegue fazer isso — exige uma máquina Windows 11 real. A validação funcional da interface

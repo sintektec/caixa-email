@@ -24,11 +24,13 @@ public sealed partial class MainWindow : Window
     public MainWindow(
         ShellViewModel shell,
         MessageListViewModel messageList,
-        ReadingPaneViewModel reading)
+        ReadingPaneViewModel reading,
+        SearchViewModel search)
     {
         Shell = shell;
         MessageList = messageList;
         Reading = reading;
+        Search = search;
 
         InitializeComponent();
 
@@ -53,6 +55,9 @@ public sealed partial class MainWindow : Window
 
     /// <summary>ViewModel do painel de leitura.</summary>
     public ReadingPaneViewModel Reading { get; }
+
+    /// <summary>ViewModel da pesquisa.</summary>
+    public SearchViewModel Search { get; }
 
     /// <summary>Se há mensagem de status a exibir na faixa de aviso.</summary>
     public bool HasStatusMessage => !string.IsNullOrWhiteSpace(Shell.StatusMessage);
@@ -445,6 +450,83 @@ public sealed partial class MainWindow : Window
     {
         await OutboxDialog.Create(RootGrid.XamlRoot).ShowAsync();
         await Shell.RefreshPendingCountAsync().ConfigureAwait(true);
+    }
+
+    private async void OnSearchSubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
+    {
+        Search.SearchText = args.QueryText;
+        await RunSearchAsync().ConfigureAwait(true);
+    }
+
+    private async void OnApplyFiltersClick(object sender, RoutedEventArgs e)
+    {
+        var found = await RunSearchAsync().ConfigureAwait(true);
+
+        // O flyout permanece aberto quando a pesquisa foi recusada: é nele que está o
+        // aviso explicando o motivo.
+        if (found)
+        {
+            FiltersFlyout.Hide();
+        }
+    }
+
+    /// <summary>Executa a pesquisa e apresenta os resultados no painel central.</summary>
+    private async Task<bool> RunSearchAsync()
+    {
+        var ids = await Search.ExecuteAsync().ConfigureAwait(true);
+
+        if (ids is null)
+        {
+            Shell.StatusMessage = Search.StatusMessage;
+            return false;
+        }
+
+        await MessageList.ShowSearchResultsAsync(Search.ResultsDescription, ids).ConfigureAwait(true);
+        return true;
+    }
+
+    private void OnFiltersFlyoutOpening(object sender, object e)
+        => _ = Search.InitializeAsync();
+
+    private async void OnApplySavedSearchClick(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not SavedSearchItemViewModel item)
+        {
+            return;
+        }
+
+        Search.ApplySavedSearch(item);
+
+        if (await RunSearchAsync().ConfigureAwait(true))
+        {
+            FiltersFlyout.Hide();
+        }
+    }
+
+    private async void OnDeleteSavedSearchClick(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not SavedSearchItemViewModel item)
+        {
+            return;
+        }
+
+        await Search.DeleteSavedSearchAsync(item).ConfigureAwait(true);
+    }
+
+    /// <summary>Sai do modo de pesquisa, voltando à pasta selecionada na árvore.</summary>
+    private async void OnCloseSearchClick(object sender, RoutedEventArgs e)
+    {
+        MessageList.IsSearchResults = false;
+
+        if (Shell.SelectedNode is { Kind: NavigationNodeKind.Folder } node)
+        {
+            await MessageList.LoadFolderAsync(node.EntityId).ConfigureAwait(true);
+        }
+        else
+        {
+            MessageList.Messages.Clear();
+            MessageList.FolderName = string.Empty;
+        }
     }
 
     private void OnThemeToggleClick(object sender, RoutedEventArgs e)

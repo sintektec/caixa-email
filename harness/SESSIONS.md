@@ -210,3 +210,28 @@ eletrônico e IA) registradas no roadmap.
 **Próxima sessão:**
 - Aguardar decisão do usuário: fase 6 (Pesquisa), validação manual em Windows, ou revisão
   do PR #1.
+
+---
+
+## 2026-08-05 — Sessão 9 (continuação): Fase 6 (Pesquisa)
+
+**O que foi feito:**
+- Migração `RebuildSearchIndex`: o FTS5 contentless vira external content sobre a tabela
+  física `MessagesSearch` (D-015). Corpo, participantes e nomes de anexo agora entram e
+  saem do índice conforme as tabelas de origem mudam — inclusive no download sob demanda.
+- `Fts5SearchService` (Persistence): MATCH com termos por prefixo e sem acento, filtros de
+  campo (`Subject:`, `TextBody:`, `FromAddress:` com nome exibido, `AttachmentNames:`),
+  filtros estruturais da seção 6.4 (conta, pasta, diretório, categoria, datas com
+  `datetime()` dos dois lados, lida, sinalizador, anexos, importância, status de
+  sincronização), Para/CC como EXISTS por tipo de participante.
+- `SavedSearchesHandler`: salvar atualiza pela identidade do nome; JSON tolerante a
+  conteúdo corrompido. `SearchViewModel` testável no Linux; flyout de pesquisa avançada e
+  modo de resultados no painel central (`ShowSearchResultsAsync`, com `FolderId` nulo de
+  propósito).
+- Armadilha nova em `CLAUDE.md`: `Guid` em SQL manual vai como `Guid`, nunca `ToString()`
+  (o provider grava TEXT maiúsculo; a comparação minúscula falha em silêncio).
+- 441 → 478 testes.
+
+**Próxima sessão:**
+- Aguardar decisão do usuário: fase 7 (Automação e filtragem local), validação manual em
+  Windows, ou revisão do PR #1.

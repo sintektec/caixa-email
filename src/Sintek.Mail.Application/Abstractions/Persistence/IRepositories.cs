@@ -177,6 +177,25 @@ public interface IOutboxRepository
     Task<long> NextSequenceAsync(Guid accountId, CancellationToken cancellationToken = default);
 }
 
+/// <summary>Acesso às pesquisas salvas.</summary>
+public interface ISavedSearchRepository
+{
+    /// <summary>Carrega uma pesquisa salva.</summary>
+    Task<SavedSearch?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>Busca pelo nome, que é único.</summary>
+    Task<SavedSearch?> GetByNameAsync(string name, CancellationToken cancellationToken = default);
+
+    /// <summary>Lista todas, fixadas primeiro.</summary>
+    Task<IReadOnlyList<SavedSearch>> ListAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Registra uma pesquisa salva.</summary>
+    Task AddAsync(SavedSearch search, CancellationToken cancellationToken = default);
+
+    /// <summary>Remove uma pesquisa salva.</summary>
+    void Remove(SavedSearch search);
+}
+
 /// <summary>Registro de auditoria.</summary>
 /// <remarks>
 /// As implementações nunca podem gravar conteúdo de mensagem: apenas identificadores,

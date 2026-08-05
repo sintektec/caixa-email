@@ -276,3 +276,37 @@ faria a cópia guardada divergir do que o destinatário recebeu.
 **Consequências:** o envio nunca é instantâneo do ponto de vista do processo — há sempre um
 ciclo de fila entre o clique e o SMTP. Em troca, falha de rede no meio do envio deixa de
 existir como categoria de erro do compositor.
+
+---
+
+## D-015 — Índice de pesquisa com external content, não contentless (2026-08-05)
+
+**Status:** aceita
+
+**Decisão:** O FTS5 é reconstruído (migração `RebuildSearchIndex`) sobre uma tabela física
+`MessagesSearch` — uma linha por mensagem com o texto pesquisável: assunto, prévia, corpo
+(truncado em 64 mil caracteres), remetente com nome exibido, participantes e nomes de
+anexo. Gatilhos das tabelas de origem mantêm o espelho; gatilhos do espelho mantêm o
+índice. A pesquisa (`Fts5SearchService`) combina o MATCH com filtros estruturais em SQL
+manual, com todos os valores em parâmetros.
+
+**Motivo:** O índice contentless da fase 1 tinha um defeito estrutural: para apagar uma
+entrada, o FTS5 exige reapresentar os valores que estavam indexados. Um gatilho de
+`Messages` os tem em `OLD`; um gatilho de `MessageBodies` ou `Attachments` não tem como
+saber o que o índice guardava — o agregado vive espalhado por outras tabelas. Resultado:
+corpo, participantes e anexos existiam como colunas do índice e ficavam permanentemente
+vazios. Com external content, o espelho é a fonte dos valores antigos, e `OLD`/`NEW` nos
+gatilhos do próprio espelho resolvem o problema por construção.
+
+**Consequências:** o texto pesquisável é duplicado no banco (limitado pelo truncamento do
+corpo); em troca, o índice acompanha o download sob demanda e a exclusão sem código de
+manutenção na aplicação.
+
+**Alternativas rejeitadas:** manter o índice sincronizado por código nos casos de uso
+(quebraria na primeira escrita fora deles — o motivo de os gatilhos existirem, já registrado
+na migração da fase 1); FTS5 sem external content com `delete-all` + reinserção periódica
+(janelas de índice incompleto e custo proporcional à caixa inteira).
+
+**Armadilha registrada no caminho:** parâmetro `Guid` em SQL manual precisa ir como `Guid`,
+nunca como `ToString()` — o provider grava TEXT maiúsculo e a comparação com minúsculo
+falha em silêncio. Documentada em `CLAUDE.md`.

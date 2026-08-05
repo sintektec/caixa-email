@@ -1,0 +1,326 @@
+using System.Collections.ObjectModel;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using Sintek.Mail.Application.Abstractions.Persistence;
+using Sintek.Mail.Application.Abstractions.Search;
+using Sintek.Mail.Application.UseCases.Search;
+
+namespace Sintek.Mail.Presentation.ViewModels;
+
+/// <summary>Uma pesquisa salva exibida na lista.</summary>
+public sealed record SavedSearchItemViewModel(Guid Id, string Name, bool IsPinned, string QueryJson);
+
+/// <summary>
+/// ViewModel da pesquisa: campo de texto, filtros avançados e pesquisas salvas.
+/// </summary>
+/// <remarks>
+/// A montagem de <see cref="MessageSearchQuery"/> vive aqui, e não no XAML ou no
+/// code-behind, para ser testável no job Linux: cada combinação de filtro tem teste sem
+/// precisar de uma janela.
+/// </remarks>
+public sealed partial class SearchViewModel : ObservableObject
+{
+    private readonly ISearchService _searchService;
+    private readonly SavedSearchesHandler _savedSearchesHandler;
+    private readonly IAccountRepository _accounts;
+    private readonly IDomainDirectoryRepository _directories;
+
+    public SearchViewModel(
+        ISearchService searchService,
+        SavedSearchesHandler savedSearchesHandler,
+        IAccountRepository accounts,
+        IDomainDirectoryRepository directories)
+    {
+        _searchService = searchService;
+        _savedSearchesHandler = savedSearchesHandler;
+        _accounts = accounts;
+        _directories = directories;
+
+        SelectedReadState = ReadStates[0];
+        SelectedFlagState = FlagStates[0];
+        SelectedAttachmentState = AttachmentStates[0];
+        SelectedImportance = ImportanceOptions[0];
+        SelectedSyncState = SyncStateOptions[0];
+    }
+
+    /// <summary>Texto livre digitado na caixa de pesquisa.</summary>
+    [ObservableProperty]
+    private string _searchText = string.Empty;
+
+    /// <summary>Filtro por remetente: endereço ou nome exibido.</summary>
+    [ObservableProperty]
+    private string _fromFilter = string.Empty;
+
+    /// <summary>Filtro por destinatário direto (Para).</summary>
+    [ObservableProperty]
+    private string _recipientFilter = string.Empty;
+
+    /// <summary>Filtro por participante em cópia (CC).</summary>
+    [ObservableProperty]
+    private string _ccFilter = string.Empty;
+
+    /// <summary>Filtro por assunto.</summary>
+    [ObservableProperty]
+    private string _subjectFilter = string.Empty;
+
+    /// <summary>Filtro por corpo da mensagem.</summary>
+    [ObservableProperty]
+    private string _bodyFilter = string.Empty;
+
+    /// <summary>Filtro por nome de anexo.</summary>
+    [ObservableProperty]
+    private string _attachmentNameFilter = string.Empty;
+
+    /// <summary>Início do intervalo de datas, inclusivo.</summary>
+    [ObservableProperty]
+    private DateTimeOffset? _receivedFrom;
+
+    /// <summary>Fim do intervalo de datas, inclusivo — estendido até o fim do dia.</summary>
+    [ObservableProperty]
+    private DateTimeOffset? _receivedUntil;
+
+    /// <summary>Contas disponíveis, com "Todas as contas" em primeiro.</summary>
+    public ObservableCollection<ScopeFilterOption> AccountOptions { get; } = [];
+
+    /// <summary>Diretórios de Domínio disponíveis, com "Todos" em primeiro.</summary>
+    public ObservableCollection<ScopeFilterOption> DomainOptions { get; } = [];
+
+    /// <summary>Conta selecionada no filtro.</summary>
+    [ObservableProperty]
+    private ScopeFilterOption? _selectedAccount;
+
+    /// <summary>Diretório de Domínio selecionado no filtro.</summary>
+    [ObservableProperty]
+    private ScopeFilterOption? _selectedDomain;
+
+    /// <summary>Opções do filtro de leitura.</summary>
+    public IReadOnlyList<TriStateFilterOption> ReadStates => SelectionOptions.ReadStateFilters;
+
+    /// <summary>Opções do filtro de sinalizador.</summary>
+    public IReadOnlyList<TriStateFilterOption> FlagStates => SelectionOptions.FlagStateFilters;
+
+    /// <summary>Opções do filtro de anexos.</summary>
+    public IReadOnlyList<TriStateFilterOption> AttachmentStates => SelectionOptions.AttachmentFilters;
+
+    /// <summary>Opções do filtro de importância.</summary>
+    public IReadOnlyList<ImportanceFilterOption> ImportanceOptions => SelectionOptions.ImportanceFilters;
+
+    /// <summary>Opções do filtro de status de sincronização.</summary>
+    public IReadOnlyList<SyncStateFilterOption> SyncStateOptions => SelectionOptions.SyncStateFilters;
+
+    /// <summary>Filtro de leitura selecionado.</summary>
+    [ObservableProperty]
+    private TriStateFilterOption _selectedReadState;
+
+    /// <summary>Filtro de sinalizador selecionado.</summary>
+    [ObservableProperty]
+    private TriStateFilterOption _selectedFlagState;
+
+    /// <summary>Filtro de anexos selecionado.</summary>
+    [ObservableProperty]
+    private TriStateFilterOption _selectedAttachmentState;
+
+    /// <summary>Filtro de importância selecionado.</summary>
+    [ObservableProperty]
+    private ImportanceFilterOption _selectedImportance;
+
+    /// <summary>Filtro de status de sincronização selecionado.</summary>
+    [ObservableProperty]
+    private SyncStateFilterOption _selectedSyncState;
+
+    /// <summary>Pesquisas salvas, fixadas primeiro.</summary>
+    public ObservableCollection<SavedSearchItemViewModel> SavedSearches { get; } = [];
+
+    /// <summary>Nome digitado para salvar a pesquisa atual.</summary>
+    [ObservableProperty]
+    private string _saveSearchName = string.Empty;
+
+    /// <summary>Aviso exibido ao usuário.</summary>
+    [ObservableProperty]
+    private string? _statusMessage;
+
+    /// <summary>Se há aviso a exibir.</summary>
+    public bool HasStatusMessage => !string.IsNullOrWhiteSpace(StatusMessage);
+
+    /// <summary>Carrega contas, diretórios e pesquisas salvas para os filtros.</summary>
+    public async Task InitializeAsync(CancellationToken cancellationToken = default)
+    {
+        AccountOptions.Clear();
+        AccountOptions.Add(new ScopeFilterOption(null, "Todas as contas"));
+        foreach (var account in await _accounts.ListActiveAsync(cancellationToken).ConfigureAwait(true))
+        {
+            AccountOptions.Add(new ScopeFilterOption(account.Id, account.EmailAddress.Value));
+        }
+
+        DomainOptions.Clear();
+        DomainOptions.Add(new ScopeFilterOption(null, "Todos os diretórios"));
+        foreach (var directory in await _directories.ListAsync(cancellationToken).ConfigureAwait(true))
+        {
+            DomainOptions.Add(new ScopeFilterOption(directory.Id, directory.DomainName.Value));
+        }
+
+        SelectedAccount = AccountOptions[0];
+        SelectedDomain = DomainOptions[0];
+
+        await RefreshSavedSearchesAsync(cancellationToken).ConfigureAwait(true);
+    }
+
+    /// <summary>Monta os critérios a partir do estado atual dos filtros.</summary>
+    public MessageSearchQuery BuildQuery() => new()
+    {
+        Text = NullIfBlank(SearchText),
+        From = NullIfBlank(FromFilter),
+        Recipient = NullIfBlank(RecipientFilter),
+        Cc = NullIfBlank(CcFilter),
+        Subject = NullIfBlank(SubjectFilter),
+        Body = NullIfBlank(BodyFilter),
+        AttachmentName = NullIfBlank(AttachmentNameFilter),
+        ReceivedFrom = ReceivedFrom,
+        // O seletor devolve a meia-noite do dia escolhido; quem escolhe "até 10/08"
+        // espera ver as mensagens DE 10/08, então o limite avança ao fim do dia.
+        ReceivedUntil = ReceivedUntil?.AddDays(1).AddTicks(-1),
+        AccountId = SelectedAccount?.Value,
+        DomainDirectoryId = SelectedDomain?.Value,
+        IsRead = SelectedReadState.Value,
+        IsFlagged = SelectedFlagState.Value,
+        HasAttachments = SelectedAttachmentState.Value,
+        Importance = SelectedImportance.Value,
+        SyncState = SelectedSyncState.Value,
+    };
+
+    /// <summary>
+    /// Executa a pesquisa e devolve os identificadores encontrados, ou nulo quando não há
+    /// critério algum.
+    /// </summary>
+    public async Task<IReadOnlyList<Guid>?> ExecuteAsync(CancellationToken cancellationToken = default)
+    {
+        var query = BuildQuery();
+
+        if (!query.HasAnyCriteria)
+        {
+            StatusMessage = "Digite um termo ou escolha ao menos um filtro para pesquisar.";
+            return null;
+        }
+
+        StatusMessage = null;
+        return await _searchService.SearchAsync(query, cancellationToken).ConfigureAwait(true);
+    }
+
+    /// <summary>Título exibido no painel central para os resultados.</summary>
+    public string ResultsDescription
+    {
+        get
+        {
+            var text = SearchText.Trim();
+            return text.Length > 0 ? $"Resultados de \"{text}\"" : "Resultados da pesquisa";
+        }
+    }
+
+    /// <summary>Salva a pesquisa atual com o nome digitado.</summary>
+    [RelayCommand]
+    public async Task SaveCurrentSearchAsync(CancellationToken cancellationToken = default)
+    {
+        var name = SaveSearchName.Trim();
+
+        if (name.Length == 0)
+        {
+            StatusMessage = "Dê um nome à pesquisa antes de salvar.";
+            return;
+        }
+
+        var query = BuildQuery();
+
+        if (!query.HasAnyCriteria)
+        {
+            StatusMessage = "Não há critérios para salvar: preencha a pesquisa primeiro.";
+            return;
+        }
+
+        await _savedSearchesHandler.SaveAsync(name, query, isPinned: false, cancellationToken)
+            .ConfigureAwait(true);
+
+        SaveSearchName = string.Empty;
+        StatusMessage = null;
+        await RefreshSavedSearchesAsync(cancellationToken).ConfigureAwait(true);
+    }
+
+    /// <summary>Exclui uma pesquisa salva.</summary>
+    public async Task DeleteSavedSearchAsync(
+        SavedSearchItemViewModel item, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+
+        await _savedSearchesHandler.DeleteAsync(item.Id, cancellationToken).ConfigureAwait(true);
+        await RefreshSavedSearchesAsync(cancellationToken).ConfigureAwait(true);
+    }
+
+    /// <summary>Preenche os filtros com os critérios de uma pesquisa salva.</summary>
+    public void ApplySavedSearch(SavedSearchItemViewModel item)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+
+        var query = SavedSearchesHandler.Deserialize(item.QueryJson);
+
+        SearchText = query.Text ?? string.Empty;
+        FromFilter = query.From ?? string.Empty;
+        RecipientFilter = query.Recipient ?? string.Empty;
+        CcFilter = query.Cc ?? string.Empty;
+        SubjectFilter = query.Subject ?? string.Empty;
+        BodyFilter = query.Body ?? string.Empty;
+        AttachmentNameFilter = query.AttachmentName ?? string.Empty;
+        ReceivedFrom = query.ReceivedFrom;
+        // Desfaz a extensão ao fim do dia aplicada por BuildQuery, para o seletor de data
+        // voltar a mostrar o dia escolhido.
+        ReceivedUntil = query.ReceivedUntil?.AddTicks(1).AddDays(-1);
+
+        SelectedAccount = AccountOptions.FirstOrDefault(o => o.Value == query.AccountId)
+            ?? AccountOptions.FirstOrDefault();
+        SelectedDomain = DomainOptions.FirstOrDefault(o => o.Value == query.DomainDirectoryId)
+            ?? DomainOptions.FirstOrDefault();
+
+        SelectedReadState = ReadStates.First(o => o.Value == query.IsRead);
+        SelectedFlagState = FlagStates.First(o => o.Value == query.IsFlagged);
+        SelectedAttachmentState = AttachmentStates.First(o => o.Value == query.HasAttachments);
+        SelectedImportance = ImportanceOptions.First(o => o.Value == query.Importance);
+        SelectedSyncState = SyncStateOptions.First(o => o.Value == query.SyncState);
+    }
+
+    /// <summary>Limpa todos os filtros, voltando ao estado inicial.</summary>
+    [RelayCommand]
+    public void ClearFilters()
+    {
+        SearchText = string.Empty;
+        FromFilter = string.Empty;
+        RecipientFilter = string.Empty;
+        CcFilter = string.Empty;
+        SubjectFilter = string.Empty;
+        BodyFilter = string.Empty;
+        AttachmentNameFilter = string.Empty;
+        ReceivedFrom = null;
+        ReceivedUntil = null;
+        SelectedAccount = AccountOptions.FirstOrDefault();
+        SelectedDomain = DomainOptions.FirstOrDefault();
+        SelectedReadState = ReadStates[0];
+        SelectedFlagState = FlagStates[0];
+        SelectedAttachmentState = AttachmentStates[0];
+        SelectedImportance = ImportanceOptions[0];
+        SelectedSyncState = SyncStateOptions[0];
+        StatusMessage = null;
+    }
+
+    private async Task RefreshSavedSearchesAsync(CancellationToken cancellationToken)
+    {
+        SavedSearches.Clear();
+
+        foreach (var saved in await _savedSearchesHandler.ListAsync(cancellationToken).ConfigureAwait(true))
+        {
+            SavedSearches.Add(new SavedSearchItemViewModel(
+                saved.Id, saved.Name, saved.IsPinned, saved.QueryJson));
+        }
+    }
+
+    private static string? NullIfBlank(string value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    partial void OnStatusMessageChanged(string? value) => OnPropertyChanged(nameof(HasStatusMessage));
+}

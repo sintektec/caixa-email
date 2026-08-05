@@ -334,6 +334,41 @@ public sealed class OutboxRepository : IOutboxRepository
     }
 }
 
+/// <inheritdoc cref="ISavedSearchRepository" />
+public sealed class SavedSearchRepository : ISavedSearchRepository
+{
+    private readonly MailDbContext _context;
+
+    public SavedSearchRepository(MailDbContext context) => _context = context;
+
+    /// <inheritdoc />
+    public Task<SavedSearch?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+        => _context.SavedSearches.FirstOrDefaultAsync(s => s.Id == id, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<SavedSearch?> GetByNameAsync(string name, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        return _context.SavedSearches.FirstOrDefaultAsync(s => s.Name == name, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<SavedSearch>> ListAsync(CancellationToken cancellationToken = default)
+        => await _context.SavedSearches
+            .OrderByDescending(s => s.IsPinned)
+            .ThenBy(s => s.SortOrder)
+            .ThenBy(s => s.Name)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+    /// <inheritdoc />
+    public async Task AddAsync(SavedSearch search, CancellationToken cancellationToken = default)
+        => await _context.SavedSearches.AddAsync(search, cancellationToken).ConfigureAwait(false);
+
+    /// <inheritdoc />
+    public void Remove(SavedSearch search) => _context.SavedSearches.Remove(search);
+}
+
 /// <inheritdoc cref="IAuditLogRepository" />
 public sealed class AuditLogRepository : IAuditLogRepository
 {

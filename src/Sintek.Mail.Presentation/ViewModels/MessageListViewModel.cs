@@ -142,6 +142,10 @@ public sealed partial class MessageListViewModel : ObservableObject
     [ObservableProperty]
     private bool _groupByConversation;
 
+    /// <summary>Se o painel exibe resultados de pesquisa em vez de uma pasta.</summary>
+    [ObservableProperty]
+    private bool _isSearchResults;
+
     [ObservableProperty]
     private bool _isLoading;
 
@@ -154,6 +158,7 @@ public sealed partial class MessageListViewModel : ObservableObject
         try
         {
             FolderId = folderId;
+            IsSearchResults = false;
 
             var folder = await _folders.GetByIdAsync(folderId, cancellationToken).ConfigureAwait(true);
             FolderName = folder?.DisplayName ?? string.Empty;
@@ -164,6 +169,47 @@ public sealed partial class MessageListViewModel : ObservableObject
             var ids = await _messages.ListIdsByFolderAsync(folderId, cancellationToken).ConfigureAwait(true);
 
             foreach (var id in ids)
+            {
+                var message = await _messages.GetByIdAsync(id, cancellationToken).ConfigureAwait(true);
+                if (message is not null)
+                {
+                    Messages.Add(ToListItem(message));
+                }
+            }
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    /// <summary>
+    /// Exibe resultados de pesquisa no painel central.
+    /// </summary>
+    /// <remarks>
+    /// A pasta deixa de existir como contexto: <see cref="FolderId"/> fica nulo para que as
+    /// ações que recarregam "a pasta atual" não devolvam o usuário a uma pasta que ele não
+    /// está vendo.
+    /// </remarks>
+    public async Task ShowSearchResultsAsync(
+        string description,
+        IReadOnlyList<Guid> messageIds,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(messageIds);
+
+        IsLoading = true;
+
+        try
+        {
+            FolderId = null;
+            FolderName = description;
+            IsFolderDomainRestricted = false;
+            IsSearchResults = true;
+
+            Messages.Clear();
+
+            foreach (var id in messageIds)
             {
                 var message = await _messages.GetByIdAsync(id, cancellationToken).ConfigureAwait(true);
                 if (message is not null)

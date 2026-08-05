@@ -37,12 +37,184 @@
                 </StackPanel>
             </Button>
 
-            <AutoSuggestBox Grid.Column="1"
-                            x:Name="SearchBox"
-                            QueryIcon="Find"
-                            PlaceholderText="Pesquisar em todas as contas (Ctrl+E)"
-                            AutomationProperties.Name="Campo de pesquisa"
-                            Text="{x:Bind Shell.SearchText, Mode=TwoWay}" />
+            <Grid Grid.Column="1" ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <AutoSuggestBox Grid.Column="0"
+                                x:Name="SearchBox"
+                                QueryIcon="Find"
+                                PlaceholderText="Pesquisar em todas as contas (Ctrl+E)"
+                                AutomationProperties.Name="Campo de pesquisa"
+                                Text="{x:Bind Search.SearchText, Mode=TwoWay}"
+                                QuerySubmitted="OnSearchSubmitted" />
+
+                <!-- Pesquisa avançada: os filtros da seção 6.4 e as pesquisas salvas -->
+                <Button Grid.Column="1"
+                        x:Name="FiltersButton"
+                        AutomationProperties.Name="Filtros de pesquisa avançada"
+                        ToolTipService.ToolTip="Filtros de pesquisa avançada">
+                    <FontIcon Glyph="&#xE71C;" FontSize="16" />
+                    <Button.Flyout>
+                        <Flyout x:Name="FiltersFlyout"
+                                Placement="BottomEdgeAlignedRight"
+                                Opening="OnFiltersFlyoutOpening">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="560">
+                                <StackPanel Spacing="8" Width="360">
+
+                                    <InfoBar IsOpen="{x:Bind Search.HasStatusMessage, Mode=OneWay}"
+                                             Severity="Warning"
+                                             Message="{x:Bind Search.StatusMessage, Mode=OneWay}"
+                                             IsClosable="False" />
+
+                                    <TextBox Header="Remetente"
+                                             Text="{x:Bind Search.FromFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             AutomationProperties.Name="Filtro por remetente" />
+
+                                    <TextBox Header="Destinatário (Para)"
+                                             Text="{x:Bind Search.RecipientFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             AutomationProperties.Name="Filtro por destinatário" />
+
+                                    <TextBox Header="Em cópia (CC)"
+                                             Text="{x:Bind Search.CcFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             AutomationProperties.Name="Filtro por cópia" />
+
+                                    <TextBox Header="Assunto"
+                                             Text="{x:Bind Search.SubjectFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             AutomationProperties.Name="Filtro por assunto" />
+
+                                    <TextBox Header="Corpo da mensagem"
+                                             Text="{x:Bind Search.BodyFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             AutomationProperties.Name="Filtro por corpo" />
+
+                                    <TextBox Header="Nome do anexo"
+                                             Text="{x:Bind Search.AttachmentNameFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             AutomationProperties.Name="Filtro por nome de anexo" />
+
+                                    <CalendarDatePicker Header="A partir de"
+                                                        HorizontalAlignment="Stretch"
+                                                        Date="{x:Bind Search.ReceivedFrom, Mode=TwoWay}"
+                                                        AutomationProperties.Name="Data inicial" />
+
+                                    <CalendarDatePicker Header="Até"
+                                                        HorizontalAlignment="Stretch"
+                                                        Date="{x:Bind Search.ReceivedUntil, Mode=TwoWay}"
+                                                        AutomationProperties.Name="Data final" />
+
+                                    <ComboBox Header="Conta"
+                                              HorizontalAlignment="Stretch"
+                                              ItemsSource="{x:Bind Search.AccountOptions, Mode=OneWay}"
+                                              DisplayMemberPath="Label"
+                                              SelectedItem="{x:Bind Search.SelectedAccount, Mode=TwoWay}"
+                                              AutomationProperties.Name="Filtro por conta" />
+
+                                    <ComboBox Header="Diretório de Domínio"
+                                              HorizontalAlignment="Stretch"
+                                              ItemsSource="{x:Bind Search.DomainOptions, Mode=OneWay}"
+                                              DisplayMemberPath="Label"
+                                              SelectedItem="{x:Bind Search.SelectedDomain, Mode=TwoWay}"
+                                              AutomationProperties.Name="Filtro por Diretório de Domínio" />
+
+                                    <ComboBox Header="Leitura"
+                                              HorizontalAlignment="Stretch"
+                                              ItemsSource="{x:Bind Search.ReadStates}"
+                                              DisplayMemberPath="Label"
+                                              SelectedItem="{x:Bind Search.SelectedReadState, Mode=TwoWay}"
+                                              AutomationProperties.Name="Filtro por leitura" />
+
+                                    <ComboBox Header="Sinalizador"
+                                              HorizontalAlignment="Stretch"
+                                              ItemsSource="{x:Bind Search.FlagStates}"
+                                              DisplayMemberPath="Label"
+                                              SelectedItem="{x:Bind Search.SelectedFlagState, Mode=TwoWay}"
+                                              AutomationProperties.Name="Filtro por sinalizador" />
+
+                                    <ComboBox Header="Anexos"
+                                              HorizontalAlignment="Stretch"
+                                              ItemsSource="{x:Bind Search.AttachmentStates}"
+                                              DisplayMemberPath="Label"
+                                              SelectedItem="{x:Bind Search.SelectedAttachmentState, Mode=TwoWay}"
+                                              AutomationProperties.Name="Filtro por anexos" />
+
+                                    <ComboBox Header="Importância"
+                                              HorizontalAlignment="Stretch"
+                                              ItemsSource="{x:Bind Search.ImportanceOptions}"
+                                              DisplayMemberPath="Label"
+                                              SelectedItem="{x:Bind Search.SelectedImportance, Mode=TwoWay}"
+                                              AutomationProperties.Name="Filtro por importância" />
+
+                                    <ComboBox Header="Status de sincronização"
+                                              HorizontalAlignment="Stretch"
+                                              ItemsSource="{x:Bind Search.SyncStateOptions}"
+                                              DisplayMemberPath="Label"
+                                              SelectedItem="{x:Bind Search.SelectedSyncState, Mode=TwoWay}"
+                                              AutomationProperties.Name="Filtro por status de sincronização" />
+
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Button Content="Pesquisar"
+                                                Style="{ThemeResource AccentButtonStyle}"
+                                                Click="OnApplyFiltersClick" />
+                                        <Button Content="Limpar filtros"
+                                                Command="{x:Bind Search.ClearFiltersCommand}" />
+                                    </StackPanel>
+
+                                    <TextBlock Text="Pesquisas salvas"
+                                               Style="{ThemeResource BodyStrongTextBlockStyle}" />
+
+                                    <ItemsControl ItemsSource="{x:Bind Search.SavedSearches, Mode=OneWay}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:SavedSearchItemViewModel">
+                                                <Grid ColumnSpacing="8" Padding="0,2">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+
+                                                    <TextBlock Grid.Column="0"
+                                                               Text="{x:Bind Name}"
+                                                               VerticalAlignment="Center"
+                                                               TextTrimming="CharacterEllipsis" />
+
+                                                    <Button Grid.Column="1"
+                                                            Content="Aplicar"
+                                                            Click="OnApplySavedSearchClick"
+                                                            Tag="{x:Bind}" />
+
+                                                    <Button Grid.Column="2"
+                                                            Content="Excluir"
+                                                            Click="OnDeleteSavedSearchClick"
+                                                            Tag="{x:Bind}" />
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+
+                                    <Grid ColumnSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <TextBox Grid.Column="0"
+                                                 PlaceholderText="Nome da pesquisa"
+                                                 Text="{x:Bind Search.SaveSearchName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                 AutomationProperties.Name="Nome para salvar a pesquisa" />
+
+                                        <Button Grid.Column="1"
+                                                Content="Salvar"
+                                                Command="{x:Bind Search.SaveCurrentSearchCommand}"
+                                                VerticalAlignment="Bottom" />
+                                    </Grid>
+
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Flyout>
+                    </Button.Flyout>
+                </Button>
+            </Grid>
 
             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4">
                 <!--
@@ -179,10 +351,26 @@
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
-                <TextBlock Grid.Row="0"
-                           Margin="12,8"
-                           Style="{ThemeResource SubtitleTextBlockStyle}"
-                           Text="{x:Bind MessageList.FolderName, Mode=OneWay}" />
+                <Grid Grid.Row="0" Margin="12,8" ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Column="0"
+                               Style="{ThemeResource SubtitleTextBlockStyle}"
+                               TextTrimming="CharacterEllipsis"
+                               Text="{x:Bind MessageList.FolderName, Mode=OneWay}" />
+
+                    <!-- Só existe em modo de pesquisa: devolve o painel à pasta selecionada -->
+                    <Button Grid.Column="1"
+                            Visibility="{x:Bind MessageList.IsSearchResults, Mode=OneWay}"
+                            Click="OnCloseSearchClick"
+                            AutomationProperties.Name="Fechar resultados da pesquisa"
+                            ToolTipService.ToolTip="Fechar resultados da pesquisa">
+                        <FontIcon Glyph="&#xE711;" FontSize="12" />
+                    </Button>
+                </Grid>
 
                 <ListView Grid.Row="1"
                           x:Name="MessageListView"

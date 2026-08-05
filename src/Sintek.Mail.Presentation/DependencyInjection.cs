@@ -29,6 +29,7 @@ public static class DependencyInjection
         services.AddTransient<OutboxQueueViewModel>();
         services.AddTransient<ComposerViewModel>();
         services.AddTransient<FolderActionsViewModel>();
+        services.AddTransient<SearchViewModel>();
 
         return services;
     }

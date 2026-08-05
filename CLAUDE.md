@@ -84,7 +84,15 @@ quebra a semântica.
 `--no-build` faz a segunda usar o assembly antigo e regenerar o schema inteiro.
 
 **FTS5 é criado em SQL puro.** O EF Core não modela tabelas virtuais. Alterações no
-índice de busca vão em migração dedicada com `migrationBuilder.Sql()`.
+índice de busca vão em migração dedicada com `migrationBuilder.Sql()`. O índice usa
+*external content* sobre a tabela `MessagesSearch`, não o modo contentless: apagar uma
+entrada contentless exige reapresentar os valores antigos, e corpo, participantes e anexos
+vivem em outras tabelas — um gatilho delas não tem como sabê-los (D-015).
+
+**Parâmetro `Guid` em SQL manual vai como `Guid`, nunca como `ToString()`.** O provider
+grava Guid como TEXT **maiúsculo**; `ToString()` produz minúsculo, e a comparação devolve
+zero linhas sem nenhum erro. `Fts5SearchService` passa o `Guid` cru e deixa a conversão com
+o `Microsoft.Data.Sqlite`.
 
 **Propriedade ligada a `TextBox.Text` ou `PasswordBox.Password` não pode ser nula.** O WinUI
 lança em tempo de execução ao receber `null` nesses controles, e nada disso aparece na
