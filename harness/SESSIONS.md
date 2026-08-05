@@ -325,3 +325,23 @@ não commitado.
 **Próxima sessão:**
 - Nada de código pendente. O que resta é validação manual em Windows 11, que exige máquina
   real.
+
+---
+
+## 2026-08-05 — Sessão 9 (continuação): planejamento das fases 11 e 12
+
+**O que foi feito:**
+- Skills globais clonadas em `/workspace/skills-globais` (1.366). O hook `SessionStart`
+  falhava por falta de credencial; o repositório foi anexado à sessão explicitamente.
+  Relevantes para as fases novas: `csharp-pro`, `dotnet-architect`,
+  `dotnet-backend-patterns`, `ddd-tactical-patterns`, `ddd-strategic-design`,
+  `architecture-decision-records`. **Não há skill de iCalendar/CalDAV** no acervo.
+- Apurado que o histórico de contatos **não existe**: `KnownCorrespondent` guarda só nome
+  e domínio, e só de mensagens lidas e não-spam — serve à detecção de disfarce, não a
+  autocompletar.
+- Roadmap ganhou as fases 11 (contatos) e 12 (agenda), com a origem registrada em "Origem
+  do escopo". Nenhum código escrito ainda.
+
+**Próxima sessão:**
+- Medir o risco de fuso horário da fase 12 antes de qualquer código; decidir a ordem com o
+  usuário.

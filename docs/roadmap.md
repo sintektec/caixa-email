@@ -251,6 +251,119 @@ onde os Client IDs entram (arquivo ou variável de ambiente, para frota grande),
 configuração do assistente de IA e o que fica na máquina do usuário — incluindo o aviso de
 que perder o perfil do Windows significa perder a chave do banco, e que isso é deliberado.
 
+## Fase 11 — Contatos e histórico de destinatários
+
+**Estado hoje: não existe.** O que se parece com isso é `KnownCorrespondent`, e ele não
+serve: carrega apenas nome exibido e domínio — não o endereço —, e é alimentado somente por
+mensagens **lidas e não marcadas como spam**, porque existe para detectar remetente
+disfarçado. Usá-lo para autocompletar sugeriria endereços incompletos e deixaria de fora
+justamente quem o usuário ainda não leu.
+
+O Outlook tem duas coisas distintas, e o pedido ("históricos para facilitar preencher") é a
+primeira:
+
+1. **Cache de autocompletar** — endereços para quem você já escreveu, ordenados por
+   frequência e recência, sugeridos ao digitar e removíveis um a um.
+2. **Contatos** — o catálogo de endereços propriamente dito, com nome, empresa, telefone.
+
+### 11.1 Cache de autocompletar
+
+Entidade `RecipientHistory` (endereço, nome exibido, conta, contador de uso, último uso),
+alimentada **no envio** — é a intenção do usuário que conta, não a entrega. Sugestão no
+`AutoSuggestBox` de Para/CC/CCO, ordenada por uso e recência, com teto de oito itens.
+
+**Remoção individual é requisito, não refinamento.** Um endereço digitado errado que entrou
+no cache é o incômodo clássico do Outlook, e o usuário espera o "x" para apagá-lo.
+
+**Onde este produto diverge do Outlook, de propósito:** a sugestão cujo domínio não é aceito
+pelo Diretório de Domínio da conta aparece **marcada**, não escondida. Esconder quebraria o
+e-mail externo legítimo; não marcar deixaria enviar para um domínio sósia sem perceber — o
+mesmo vetor que o `SenderTrustEvaluator` já cobre na leitura.
+
+### 11.2 Catálogo de contatos
+
+Entidade `Contact` com os campos que o Outlook expõe, importação e exportação em **vCard
+(RFC 6350)** — que é o formato que Outlook e Google leem e escrevem, e portanto o que torna
+a migração possível nos dois sentidos.
+
+Contato pertence a uma conta e, por consequência, a um Diretório de Domínio: a lista fica
+naturalmente segmentada por cliente, que é o que o produto inteiro faz.
+
+---
+
+## Fase 12 — Agenda
+
+**A decisão que define o tamanho desta fase:** Teams, Google Meet e Outlook **não precisam
+de três integrações**. Os três enviam convite no mesmo formato — uma parte MIME
+`text/calendar` com `METHOD=REQUEST`, conforme o **iCalendar (RFC 5545)**. Implementar o
+padrão corretamente e extrair a URL de entrada do corpo cobre os três, e cobre também
+Zoom, Webex e qualquer outro que respeite a norma. Escrever um conector por produto seria
+triplicar o trabalho para obter menos.
+
+### 12.1 Importar convites da caixa
+
+A sincronização já detecta partes MIME; passa a reconhecer `text/calendar` e entregar a um
+`ImportInvitationHandler`:
+
+- `METHOD=REQUEST` cria ou atualiza o evento, casando por `UID`
+- `METHOD=CANCEL` cancela
+- `METHOD=REPLY` atualiza o `PARTSTAT` do participante que respondeu
+
+**Regra inviolável desta fase: `SEQUENCE` menor nunca sobrescreve maior.** Convite antigo
+que chega atrasado — reencaminhado, ou retido por um servidor lento — desfaria a atualização
+mais recente e mudaria a reunião de volta para o horário errado. É o mesmo raciocínio de
+`Message.MarkPending`, que também recusa rebaixar um estado mais forte.
+
+### 12.2 Responder
+
+Aceitar, Recusar e Provisório geram `METHOD=REPLY` de volta ao organizador — **pela fila de
+saída**, como todo envio (D-014). Responder direto pelo SMTP criaria um segundo caminho de
+envio sem ordem, retentativa nem visibilidade.
+
+### 12.3 Mover entre datas
+
+Arrastar e soltar na grade. O comportamento depende de quem você é no evento, e a distinção
+é deliberada:
+
+- **Organizador**: mover incrementa o `SEQUENCE` e reenvia `METHOD=REQUEST` a todos. É o que
+  mantém os participantes em dia.
+- **Participante em reunião com outros**: mover apenas a própria cópia dessincroniza você do
+  organizador em silêncio — você aparece livre no horário em que todos combinaram. O Outlook
+  permite; aqui a operação é **recusada com explicação**, e a alternativa oferecida é propor
+  novo horário.
+- **Compromisso próprio, sem participantes**: move livremente.
+
+### 12.4 Regra de Diretório de Domínio na agenda
+
+O calendário pertence a uma conta, e a conta a um diretório. Evento cujos participantes não
+satisfazem a regra do diretório é tratado pelo mesmo `DomainMembershipEvaluator` e pela
+mesma `InvalidEmailAction` já configurada — bloquear, avisar, desviar ou registrar. Sem
+isso a agenda seria um produto genérico grudado ao lado do cliente de e-mail, em vez de
+parte dele.
+
+### 12.5 Escopo e riscos
+
+**Dentro:** eventos únicos e recorrentes (`RRULE`), participantes, lembretes locais, visões
+de dia/semana/mês, e a agenda alimentada pelos convites que chegam por e-mail — que é
+exatamente o pedido.
+
+**Fora, para a fase 13:** sincronização bidirecional com servidor (CalDAV, EWS). É outra
+pilha de protocolo inteira, e a agenda local alimentada por e-mail já entrega o caso de uso
+sem ela.
+
+**Risco a verificar antes de começar:** `InvariantGlobalization` está ligado, e o iCalendar
+identifica fuso por nome IANA (`America/Sao_Paulo`). A conversão de nome IANA para fuso do
+Windows normalmente depende do ICU, que esse modo remove. Se a verificação confirmar o
+problema, as saídas são desligar `InvariantGlobalization` — o que reabre as duas armadilhas
+já documentadas no `CLAUDE.md` — ou embarcar uma tabela de fusos. **Isso precisa ser medido
+antes de a fase começar**, porque muda o desenho.
+
+**Biblioteca:** `Ical.Net` (MIT) para ler e escrever RFC 5545. Escrever um analisador de
+iCalendar à mão é a armadilha clássica desse recurso: o formato tem dobra de linha,
+escapes, fusos embutidos e recorrência com exceções.
+
+---
+
 ## Origem do escopo
 
 As fases 1 a 7 e 9 a 10 vêm da especificação em `spec/`. Duas adições posteriores, pedidas
@@ -262,6 +375,10 @@ pelo usuário e registradas aqui para que a origem não se perca:
   existe a infraestrutura de que precisa.
 - **Assistência por IA** — ausente da especificação. Virou a fase 8, depois da pesquisa (que
   ela consome) e antes do acabamento.
+- **Agenda e contatos** — ausentes da especificação, que menciona apenas "agendar envio"
+  (recurso diferente, entregue na fase 9). Viraram as fases 11 e 12. A ordem inverte a em
+  que foram pedidos de propósito: os contatos são pequenos, melhoram o compositor que já
+  existe e fornecem à agenda o seletor de participantes que ela vai precisar.
 
 ## Dependências externas
 

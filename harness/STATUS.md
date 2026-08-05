@@ -8,6 +8,10 @@
 
 **Fases 1 a 10 concluídas.** O roadmap da especificação está inteiro implementado.
 
+Duas fases novas foram acrescentadas a pedido do usuário e ainda não começaram:
+**11 — Contatos e histórico de destinatários** e **12 — Agenda**. Ver `docs/roadmap.md`;
+a fase 12 tem um risco a medir antes de começar (fusos IANA com `InvariantGlobalization`).
+
 ## Marco atual
 
 **587 testes verdes no núcleo multiplataforma** (169 → 272 → 336 → 426 → 441 → 478 → 485
