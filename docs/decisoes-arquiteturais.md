@@ -128,19 +128,54 @@ confuso, e revelando o payload de um ataque. Um teste cobre esse caso.
 
 ## 11. FTS5 em migração de SQL puro
 
-O EF Core não modela tabelas virtuais. A tabela `MessagesFts` usa modo *contentless*
-(`content=''`): guarda apenas o índice invertido, sem duplicar o texto já presente em
-`Messages` e `MessageBodies` — o que evitaria praticamente dobrar o tamanho do banco.
+O EF Core não modela tabelas virtuais. O índice usa *external content* sobre a tabela
+`MessagesSearch`, e não o modo contentless (D-015): apagar uma entrada contentless exige
+reapresentar os valores antigos, e corpo, participantes e anexos vivem em outras tabelas —
+um gatilho delas não tem como sabê-los.
 
 O tokenizador usa `remove_diacritics 2`, sem o qual buscar "orcamento" não encontraria
 "Orçamento" — o caso mais comum de busca em português.
 
 A sincronização é feita por gatilhos, e não em código, para que o índice permaneça correto
-mesmo quando as tabelas forem alteradas fora dos casos de uso. No modo contentless, o FTS5
-exige apagar a entrada antiga com o comando `'delete'` antes de reinserir; um `UPDATE`
-direto corromperia o índice.
+mesmo quando as tabelas forem alteradas fora dos casos de uso.
+
+O parâmetro `Guid` em SQL manual vai como `Guid`, nunca como `ToString()`: o provider grava
+Guid como TEXT **maiúsculo**, `ToString()` produz minúsculo, e a comparação devolve zero
+linhas sem erro algum.
 
 ## 12. AwesomeAssertions em vez de FluentAssertions
 
 A versão 8 do FluentAssertions passou a exigir licença paga para uso comercial.
 AwesomeAssertions é o fork livre (Apache-2.0) com a mesma API.
+
+## 13. Uma porta para agenda, três protocolos, e o CalDAV primeiro
+
+`ICalendarSyncProvider` é a porta única para servidor de agenda. Três implementações
+previstas, e a divisão não foi escolha de gosto: o Exchange Online **nunca** implementou
+CalDAV, e o EWS está sendo desligado (bloqueio global em 01/10/2026, remoção até 04/2027).
+Para Microsoft 365 o único caminho suportado é o Microsoft Graph. CalDAV é o padrão aberto
+que cobre todo o resto. Ver D-026.
+
+Consequência que não é adaptação, mas decisão nova: **o Graph não expõe `SEQUENCE`**. A
+regra de D-024 — versão menor nunca sobrescreve maior — vale no caminho CalDAV, que carrega
+o iCalendar íntegro, e não atravessa para o Graph.
+
+**O envio vem antes da leitura**, pelo mesmo motivo que a fila de saída drena antes do IMAP:
+enquanto o local não subiu, o servidor não sabe do que o usuário fez offline, e ler primeiro
+traria o estado antigo e desfaria a edição dele. O compromisso voltaria para o horário
+anterior e o envio seguinte o moveria de novo — um pisca-pisca que parece defeito e é.
+
+**Coleção que some da listagem não é apagada**, como a pasta que some do `LIST`: desliga a
+sincronização e preserva o conteúdo. Uma resposta incompleta do servidor é indistinguível de
+uma exclusão real, e perder a agenda de um cliente por causa de um 500 momentâneo é o erro
+caro.
+
+**Falha de um calendário não derruba os outros.** Uma coleção com permissão revogada
+registra o motivo e a passada segue; abortar o ciclo faria uma coleção quebrada esconder a
+atualização de todas as demais.
+
+O `SyncToken` e o `CTag` são tratados como blob de texto. São uma URI no CalDAV, um
+`deltaLink` no Graph e um `syncToken` na Google — nos três, o servidor emite e o cliente
+devolve sem interpretar. Extrair número, comparar ordem ou gerar um valor quebra nos três, e
+quebra em silêncio: o servidor aceita o token inventado e devolve o conjunto errado de
+mudanças.

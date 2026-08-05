@@ -38,6 +38,23 @@ public sealed class CalendarEventConfiguration : IEntityTypeConfiguration<Calend
         // A grade sempre pergunta por uma janela de tempo.
         builder.HasIndex(e => new { e.AccountId, e.StartsAt });
 
+        builder.Property(e => e.RemoteHref).HasMaxLength(2048);
+        builder.Property(e => e.RemoteETag).HasMaxLength(512);
+        builder.Property(e => e.SyncState).HasConversion<int>();
+
+        // O href é a identidade de rede do recurso, independente do UID: servidores nomeiam
+        // o recurso como querem, e nem a Google nem o iCloud usam o UID. Único por coleção,
+        // porque a mesma reunião pode estar espelhada em dois calendários remotos.
+        builder.HasIndex(e => new { e.RemoteCalendarId, e.RemoteHref }).IsUnique();
+
+        // A varredura da fila de envio pergunta por estado dentro de um calendário.
+        builder.HasIndex(e => new { e.RemoteCalendarId, e.SyncState });
+
+        builder.HasOne<RemoteCalendar>()
+            .WithMany()
+            .HasForeignKey(e => e.RemoteCalendarId)
+            .OnDelete(DeleteBehavior.SetNull);
+
         builder.HasOne<Account>()
             .WithMany()
             .HasForeignKey(e => e.AccountId)
@@ -80,5 +97,35 @@ public sealed class EventAttendeeConfiguration : IEntityTypeConfiguration<EventA
         builder.Property(a => a.DisplayName).HasMaxLength(256);
 
         builder.HasIndex(a => new { a.CalendarEventId, a.Address }).IsUnique();
+    }
+}
+
+/// <summary>Mapeamento das coleções de calendário espelhadas do servidor.</summary>
+public sealed class RemoteCalendarConfiguration : IEntityTypeConfiguration<RemoteCalendar>
+{
+    public void Configure(EntityTypeBuilder<RemoteCalendar> builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        builder.ToTable("RemoteCalendars");
+        builder.HasKey(c => c.Id);
+
+        builder.Property(c => c.CollectionUrl).HasMaxLength(2048).IsRequired();
+        builder.Property(c => c.DisplayName).HasMaxLength(256).IsRequired();
+        builder.Property(c => c.Color).HasMaxLength(32);
+        builder.Property(c => c.Provider).HasConversion<int>();
+        builder.Property(c => c.LastSyncError).HasMaxLength(2048);
+
+        // O token de sincronização é uma URI opaca do servidor — guardada como texto, nunca
+        // interpretada. Alguns servidores emitem tokens longos, daí a folga.
+        builder.Property(c => c.SyncToken).HasMaxLength(2048);
+        builder.Property(c => c.CTag).HasMaxLength(512);
+
+        builder.HasIndex(c => new { c.AccountId, c.CollectionUrl }).IsUnique();
+
+        builder.HasOne<Account>()
+            .WithMany()
+            .HasForeignKey(c => c.AccountId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }

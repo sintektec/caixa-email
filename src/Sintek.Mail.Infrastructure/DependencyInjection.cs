@@ -54,6 +54,26 @@ public static class DependencyInjection
             AllowAutoRedirect = false,
         });
 
+        // O cliente CalDAV fala com um host escolhido pelo endereço que o usuário digitou.
+        // O HttpClient dele é próprio e restrito, pelo mesmo motivo do da autoconfiguração —
+        // e com uma exigência a mais: sem redirecionamento automático, porque o HttpClient
+        // transforma PROPFIND em GET ao seguir 301 e descarta o Authorization quando o
+        // destino é outro host, que é justamente o caso do iCloud.
+        services.AddHttpClient<Calendar.CalDav.CalDavTransport>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(60);
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("Sintek.Mail/1.0");
+        })
+        .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+        {
+            AllowAutoRedirect = false,
+            PreAuthenticate = false,
+        });
+
+        services.AddTransient<
+            Application.Abstractions.Calendar.ICalendarSyncProvider,
+            Calendar.CalDav.CalDavCalendarSyncProvider>();
+
         services.AddSingleton<IDnsResolver, DnsClientResolver>();
         services.AddSingleton<DnsSrvLocator>();
 

@@ -22,6 +22,22 @@ public enum CalendarViewMode
     Month = 2,
 }
 
+/// <summary>Um compromisso que mudou dos dois lados e aguarda decisão.</summary>
+/// <param name="EventId">Compromisso em conflito.</param>
+/// <param name="Summary">Assunto.</param>
+/// <param name="StartsAt">Início da versão local.</param>
+public sealed record CalendarConflictItem(Guid EventId, string Summary, DateTimeOffset StartsAt)
+{
+    /// <summary>Data exibida ao lado do assunto.</summary>
+    /// <remarks>
+    /// Formato explícito com <see cref="CultureInfo.InvariantCulture"/>: pedir a cultura
+    /// pt-BR lança em tempo de execução com <c>InvariantGlobalization</c> ligado, e é ali
+    /// que o padrão brasileiro de data já está escrito.
+    /// </remarks>
+    public string StartLabel => StartsAt.ToLocalTime()
+        .ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture);
+}
+
 /// <summary>Uma marcação na grade.</summary>
 /// <param name="EventId">Compromisso de origem.</param>
 /// <param name="Summary">Assunto.</param>
@@ -33,6 +49,10 @@ public enum CalendarViewMode
 /// <param name="OrganizerName">Quem organiza, para o usuário saber de quem é a reunião.</param>
 /// <param name="MyResponse">Resposta que esta conta já deu.</param>
 /// <param name="MeetingUrl">Endereço de entrada da reunião on-line, quando houver.</param>
+/// <param name="IsConflicted">
+/// Se o compromisso mudou dos dois lados e aguarda decisão. Fica visível na grade: um
+/// conflito que só aparece numa tela separada é um conflito que ninguém resolve.
+/// </param>
 public sealed record CalendarOccurrenceItem(
     Guid EventId,
     string Summary,
@@ -43,7 +63,8 @@ public sealed record CalendarOccurrenceItem(
     bool IsRecurrence,
     string OrganizerName,
     AttendeeResponse MyResponse,
-    string MeetingUrl)
+    string MeetingUrl,
+    bool IsConflicted = false)
 {
     /// <summary>Faixa de horário exibida na marcação.</summary>
     /// <remarks>
@@ -153,6 +174,23 @@ public sealed partial class CalendarViewModel : ObservableObject
     /// <summary>Marcações da janela atual.</summary>
     public ObservableCollection<CalendarOccurrenceItem> Occurrences { get; } = [];
 
+    /// <summary>Compromissos que mudaram dos dois lados e aguardam decisão.</summary>
+    public ObservableCollection<CalendarConflictItem> Conflicts { get; } = [];
+
+    /// <summary>Se há conflito de sincronização esperando decisão.</summary>
+    public bool HasConflicts => Conflicts.Count > 0;
+
+    /// <summary>Texto da faixa de conflito.</summary>
+    public string ConflictSummary => Conflicts.Count switch
+    {
+        0 => string.Empty,
+        1 => "1 compromisso mudou aqui e no servidor. Escolha qual versão fica.",
+        _ => string.Format(
+            CultureInfo.InvariantCulture,
+            "{0} compromissos mudaram aqui e no servidor. Escolha qual versão fica.",
+            Conflicts.Count),
+    };
+
     /// <summary>Se há mensagem a exibir na faixa de aviso.</summary>
     public bool HasStatusMessage => StatusMessage.Length > 0;
 
@@ -217,7 +255,74 @@ public sealed partial class CalendarViewModel : ObservableObject
             Occurrences.Add(ToItem(source, occurrence));
         }
 
+        await RefreshConflictsAsync(cancellationToken).ConfigureAwait(true);
+
         OnPropertyChanged(nameof(RangeLabel));
+    }
+
+    /// <summary>
+    /// Recarrega a lista de compromissos que aguardam decisão de conflito.
+    /// </summary>
+    /// <remarks>
+    /// Separada da janela de propósito: um conflito pode estar em qualquer data, inclusive
+    /// fora do que a grade mostra agora. Filtrar pela janela esconderia justamente o que
+    /// precisa de atenção.
+    /// </remarks>
+    public async Task RefreshConflictsAsync(CancellationToken cancellationToken = default)
+    {
+        Conflicts.Clear();
+
+        var conflicted = await _events
+            .ListConflictsAsync(AccountId, cancellationToken)
+            .ConfigureAwait(true);
+
+        foreach (var item in conflicted)
+        {
+            Conflicts.Add(new CalendarConflictItem(
+                item.Id,
+                item.Summary.Length > 0 ? item.Summary : "(sem assunto)",
+                item.StartsAt));
+        }
+
+        OnPropertyChanged(nameof(HasConflicts));
+        OnPropertyChanged(nameof(ConflictSummary));
+    }
+
+    /// <summary>Mantém a versão daqui, que volta para a fila de envio.</summary>
+    [RelayCommand]
+    public Task KeepLocalVersionAsync(Guid eventId, CancellationToken cancellationToken = default)
+        => ResolveConflictAsync(eventId, keepLocal: true, cancellationToken);
+
+    /// <summary>Aceita a versão do servidor, que desce na próxima sincronização.</summary>
+    [RelayCommand]
+    public Task KeepServerVersionAsync(Guid eventId, CancellationToken cancellationToken = default)
+        => ResolveConflictAsync(eventId, keepLocal: false, cancellationToken);
+
+    private async Task ResolveConflictAsync(
+        Guid eventId, bool keepLocal, CancellationToken cancellationToken)
+    {
+        IsBusy = true;
+
+        try
+        {
+            var resultado = await _events
+                .ResolveConflictAsync(eventId, keepLocal, cancellationToken)
+                .ConfigureAwait(true);
+
+            StatusMessage = resultado.Succeeded
+                ? keepLocal
+                    ? "A sua versão será enviada ao servidor na próxima sincronização."
+                    : "A versão do servidor será aplicada na próxima sincronização."
+                : resultado.ErrorMessage ?? string.Empty;
+
+            OnPropertyChanged(nameof(HasStatusMessage));
+
+            await RefreshAsync(cancellationToken).ConfigureAwait(true);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
     /// <summary>Avança a janela.</summary>
@@ -408,7 +513,8 @@ public sealed partial class CalendarViewModel : ObservableObject
             occurrence.IsRecurrence,
             source.OrganizerDisplayName ?? source.OrganizerAddress?.Value ?? string.Empty,
             mine?.Response ?? AttendeeResponse.NeedsAction,
-            source.MeetingUrl ?? string.Empty);
+            source.MeetingUrl ?? string.Empty,
+            source.SyncState == CalendarSyncState.Conflict);
     }
 
     /// <summary>

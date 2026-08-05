@@ -43,6 +43,7 @@ que pertencem a ele.
 | `CredentialKey` | string | *acrescentado*: **identificador** no Credential Manager, nunca a senha |
 | `OAuthProvider` | enum | *acrescentado* |
 | `SyncStatus`, `LastSyncError`, `SyncIntervalMinutes`, `BodyDownloadPolicy` | | *acrescentados* |
+| `CalendarProvider`, `CalendarUrl?`, `CalendarSyncEnabled` | | *acrescentados*: servidor de agenda. A credencial é a mesma do e-mail — não há segunda chave |
 
 ## Projetadas neste plano
 
@@ -139,6 +140,9 @@ global, porque o mesmo contato pode legitimamente existir em duas contas.
 
 `EventAttendees`: `CalendarEventId`, `Address`, `DisplayName?`, `Role`, `Response`.
 
+Acrescentados na fase 13, para o espelho remoto: `RemoteCalendarId?`, `RemoteHref?`,
+`RemoteETag?`, `RawICalendar?`, `SyncState`.
+
 Índice único `(AccountId, Uid)`: o `UID` é a identidade do evento na norma, e é por ele que
 a atualização enviada pelo organizador encontra o compromisso local. Único por conta porque
 duas contas podem ter sido convidadas para a mesma reunião.
@@ -151,6 +155,34 @@ que o organizador escolheu.
 `RecurrenceRule` guarda o `RRULE` cru: quem sabe expandir uma recorrência é a biblioteca de
 iCalendar, e uma decomposição própria criaria uma segunda interpretação da norma para
 divergir da primeira.
+
+### RemoteCalendars
+`AccountId`, `Provider`, `CollectionUrl`, `DisplayName`, `Color?`, `IsReadOnly`,
+`SyncEnabled`, `SyncToken?`, `CTag?`, `LastSyncAt?`, `LastSyncError?`.
+
+É para a agenda o que `Folders` é para as mensagens: o nó remoto de onde o conteúdo vem e
+para onde as alterações voltam. Índice único `(AccountId, CollectionUrl)` — o mesmo endereço
+em duas contas é legítimo, duas vezes na mesma conta é o espelhamento duplicando.
+
+`SyncToken` e `CTag` são **opacos**: uma URI no CalDAV, um `deltaLink` no Graph, um
+`syncToken` na Google. Vão e voltam sem interpretação; extrair número, comparar ordem ou
+gerar um valor quebra nos três, e quebra em silêncio — o servidor aceita o token inventado e
+devolve o conjunto errado de mudanças.
+
+Do lado de `CalendarEvents`, o índice único é `(RemoteCalendarId, RemoteHref)`. **O `href`
+não tem relação com o `UID`**: que muitos servidores usem `{UID}.ics` é coincidência, não
+contrato — a Google usa identificadores internos e o iCloud renomeia. Os dois são guardados
+separados, porque são identidades diferentes: `href` é a de rede, `UID` é a de calendário.
+No SQLite os nulos são distintos num índice único, e é isso que permite que a agenda local,
+sem calendário remoto, tenha quantos compromissos quiser.
+
+A exclusão de um `RemoteCalendar` é `SET NULL` sobre `CalendarEvents`: apagar o espelho
+remoto não é o mesmo que apagar a agenda de quem o usava.
+
+`RawICalendar` guarda o documento do servidor íntegro. Este produto não modela tudo o que um
+`.ics` carrega — `X-*` de outros clientes, `VALARM`, parâmetros de participante —, e
+reescrever um objeto a partir do modelo destrói isso em silêncio. O campo existe para que a
+preservação seja possível quando houver um editor de documento para fazê-la.
 
 ### Demais
 `MessageThreads`, `Categories` + `MessageCategories`, `Rules` + `RuleConditions` +

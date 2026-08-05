@@ -386,9 +386,8 @@ parte dele.
 de dia/semana/mês, e a agenda alimentada pelos convites que chegam por e-mail — que é
 exatamente o pedido.
 
-**Fora, para a fase 13:** sincronização bidirecional com servidor (CalDAV, EWS). É outra
-pilha de protocolo inteira, e a agenda local alimentada por e-mail já entrega o caso de uso
-sem ela.
+**Fora, para a fase 13:** sincronização bidirecional com servidor. É outra pilha de
+protocolo inteira, e a agenda local alimentada por e-mail já entrega o caso de uso sem ela.
 
 **Risco de fuso horário: medido, e resolvido por desenho.** A suspeita era que
 `InvariantGlobalization` inviabilizasse o tratamento de fuso, já que o iCalendar identifica
@@ -457,6 +456,67 @@ movimentação da cópia própria.
 
 ---
 
+## Fase 13 — Sincronização de agenda com servidor
+
+**Entregue.** A agenda deixou de depender só do que chega por e-mail: ela espelha as
+coleções do servidor e devolve o que muda aqui.
+
+**Três protocolos, não um, e a divisão não foi escolha de gosto.** O Exchange Online nunca
+implementou CalDAV, e o EWS está sendo desligado (bloqueio global em 01/10/2026, remoção até
+04/2027): para Microsoft 365 o único caminho suportado é o Microsoft Graph. A Google mantém
+CalDAV como compatibilidade declaradamente parcial. CalDAV é o padrão aberto que cobre todo
+o resto — Nextcloud, ownCloud, Baikal, Fastmail, iCloud, SOGo, Radicale, DAViCal. Daí uma
+porta (`ICalendarSyncProvider`) com três implementações previstas; esta fase entrega a de
+CalDAV, e Graph e Google ficam desenhados atrás dela (D-026).
+
+**Dentro:**
+
+- Descoberta por `/.well-known/caldav`, `current-user-principal` (RFC 5397) e
+  `calendar-home-set` (RFC 4791), com listagem `Depth: 1` das coleções — nome, cor, `CTag`,
+  `sync-token`, componentes aceitos e privilégios num pedido só.
+- Sincronização incremental por `sync-collection` (RFC 6578), com paginação pelo 507 dentro
+  do 207 e recuperação quando o servidor recusa o token (`DAV:valid-sync-token`).
+- Caminho alternativo por `CTag` para servidor que não implementa `sync-collection`:
+  listagem só de `ETag`, conteúdo depois em `calendar-multiget`.
+- Escrita condicionada — `If-None-Match: *` para criar, `If-Match` para alterar e excluir —
+  com releitura obrigatória quando o servidor não devolve ETag forte.
+- Conflito visível na agenda, com escolha entre a versão local e a do servidor (D-027).
+- Servidor de agenda no assistente de contas, testado junto com IMAP e SMTP.
+
+**Fora, para a fase seguinte:** as implementações de Microsoft Graph e Google Calendar. O
+Graph exige decidir a precedência **sem `SEQUENCE`** — ele não o expõe —, e isso é decisão
+nova, não adaptação da regra de D-024.
+
+### As armadilhas do protocolo que custaram desenho
+
+Todas mediadas contra a norma e contra o comportamento documentado de servidores reais,
+antes de haver um servidor para testar:
+
+- **`AllowAutoRedirect = false` não é preferência.** O `HttpClient` transforma um PROPFIND
+  em GET ao seguir um 301, e descarta o `Authorization` quando o destino é outro host — que
+  é exatamente o caso do iCloud, cujo `calendar-home-set` aponta para a partição da conta em
+  outro nome de servidor.
+- **O ETag nunca é lido pela propriedade tipada.** Servidores fora da norma devolvem o valor
+  sem aspas, e `HttpResponseHeaders.ETag` lança `FormatException` ao analisá-lo. E ETag
+  fraco não serve para `If-Match`, que compara forte: ele é descartado para forçar a
+  releitura.
+- **O discriminador entre "alterado" e "removido" é onde o `status` está**, não o código:
+  filho direto da `<response>` é o recurso; dentro de um `<propstat>` é uma propriedade que
+  não existe. Confundir os dois é o erro que mais quebra cliente de CalDAV.
+- **`DAV:` é literal**, com dois-pontos e sem `http://`, e os prefixos (`D:`, `d:`, `dav:`)
+  são arbitrários. Casar por prefixo devolve zero elementos sem erro nenhum.
+- **Ausência só significa exclusão em passada completa** — e quem declara isso é o provedor,
+  não o motor. Um servidor sem `sync-collection` respondendo "o `CTag` não mudou" também
+  devolve zero alterações, e tratá-lo como passada completa apagaria a coleção inteira
+  (D-028).
+
+Dois defeitos foram achados pelos testes antes de qualquer servidor real: `StringContent`
+recusa media type com parâmetro — `text/calendar; charset=utf-8` lançava `FormatException`
+em toda escrita —, e o `StringWriter` comum declara `encoding="utf-16"` no XML enquanto os
+bytes saem em UTF-8.
+
+---
+
 ## Origem do escopo
 
 As fases 1 a 7 e 9 a 10 vêm da especificação em `spec/`. Duas adições posteriores, pedidas
@@ -468,6 +528,8 @@ pelo usuário e registradas aqui para que a origem não se perca:
   existe a infraestrutura de que precisa.
 - **Assistência por IA** — ausente da especificação. Virou a fase 8, depois da pesquisa (que
   ela consome) e antes do acabamento.
+- **Contatos e agenda** — pedidos pelo usuário depois da fase 10. Viraram as fases 11 e 12, e
+  a sincronização de agenda com servidor virou a 13.
 - **Agenda e contatos** — ausentes da especificação, que menciona apenas "agendar envio"
   (recurso diferente, entregue na fase 9). Viraram as fases 11 e 12. A ordem inverte a em
   que foram pedidos de propósito: os contatos são pequenos, melhoram o compositor que já

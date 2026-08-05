@@ -38,6 +38,33 @@ internal sealed class FakeCalendarRepository : ICalendarRepository
                     && (e.IsRecurring || e.EndsAt > from))
                 .OrderBy(e => e.StartsAt)]);
 
+    public Task<CalendarEvent?> GetByRemoteHrefAsync(
+        Guid remoteCalendarId, string href, CancellationToken cancellationToken = default)
+        => Task.FromResult(_events.FirstOrDefault(
+            e => e.RemoteCalendarId == remoteCalendarId
+                && string.Equals(e.RemoteHref, href, StringComparison.Ordinal)));
+
+    public Task<IReadOnlyList<CalendarEvent>> ListPendingAsync(
+        Guid remoteCalendarId, CancellationToken cancellationToken = default)
+        => Task.FromResult<IReadOnlyList<CalendarEvent>>(
+            [.. _events.Where(e => e.RemoteCalendarId == remoteCalendarId
+                && e.SyncState is CalendarSyncState.PendingCreate
+                    or CalendarSyncState.PendingUpdate
+                    or CalendarSyncState.PendingDelete)]);
+
+    public Task<IReadOnlyList<string>> ListRemoteHrefsAsync(
+        Guid remoteCalendarId, CancellationToken cancellationToken = default)
+        => Task.FromResult<IReadOnlyList<string>>(
+            [.. _events
+                .Where(e => e.RemoteCalendarId == remoteCalendarId && e.RemoteHref is not null)
+                .Select(e => e.RemoteHref!)]);
+
+    public Task<IReadOnlyList<CalendarEvent>> ListConflictedAsync(
+        Guid? accountId, CancellationToken cancellationToken = default)
+        => Task.FromResult<IReadOnlyList<CalendarEvent>>(
+            [.. _events.Where(e => (accountId == null || e.AccountId == accountId)
+                && e.SyncState == CalendarSyncState.Conflict)]);
+
     public Task AddAsync(CalendarEvent calendarEvent, CancellationToken cancellationToken = default)
     {
         _events.Add(calendarEvent);
@@ -378,5 +405,86 @@ public class CalendarViewModelTests
         await viewModel.InitializeAsync(_account.Id);
 
         viewModel.Occurrences.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// O conflito precisa aparecer com o compromisso, e não só numa tela separada: um
+    /// conflito escondido é um conflito que ninguém resolve.
+    /// </summary>
+    [Fact]
+    public async Task Refresh_CompromissoEmConflito_ApareceNaFaixaENaMarcacao()
+    {
+        var evento = await ArrangeEventAsync();
+        evento.BindToRemoteCalendar(Guid.CreateVersion7(), Now);
+        evento.MarkRemoteSynced("https://dav.exemplo.com/cal/1.ics", "\"1\"", null, Now);
+        evento.MarkConflicted(Now);
+
+        var viewModel = CreateViewModel();
+        await viewModel.InitializeAsync(_account.Id);
+
+        viewModel.HasConflicts.Should().BeTrue();
+        viewModel.ConflictSummary.Should().Contain("Escolha qual versão fica");
+        viewModel.Conflicts.Should().ContainSingle().Which.EventId.Should().Be(evento.Id);
+        viewModel.Occurrences[0].IsConflicted.Should().BeTrue();
+    }
+
+    /// <summary>
+    /// Um conflito pode estar em qualquer data, inclusive fora do que a grade mostra agora.
+    /// Filtrar pela janela esconderia justamente o que precisa de atenção.
+    /// </summary>
+    [Fact]
+    public async Task Refresh_ConflitoForaDaJanela_ContinuaVisivel()
+    {
+        var evento = await ArrangeEventAsync(startsAt: Inicio.AddDays(60));
+        evento.BindToRemoteCalendar(Guid.CreateVersion7(), Now);
+        evento.MarkRemoteSynced("https://dav.exemplo.com/cal/1.ics", "\"1\"", null, Now);
+        evento.MarkConflicted(Now);
+
+        var viewModel = CreateViewModel();
+        await viewModel.InitializeAsync(_account.Id);
+
+        viewModel.Occurrences.Should().BeEmpty();
+        viewModel.Conflicts.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task KeepLocalVersion_ConflitoResolvido_VoltaParaAFilaDeEnvio()
+    {
+        var evento = await ArrangeEventAsync();
+        evento.BindToRemoteCalendar(Guid.CreateVersion7(), Now);
+        evento.MarkRemoteSynced("https://dav.exemplo.com/cal/1.ics", "\"1\"", null, Now);
+        evento.MarkConflicted(Now);
+
+        var viewModel = CreateViewModel();
+        await viewModel.InitializeAsync(_account.Id);
+
+        await viewModel.KeepLocalVersionAsync(evento.Id);
+
+        evento.SyncState.Should().Be(CalendarSyncState.PendingUpdate);
+        viewModel.HasConflicts.Should().BeFalse();
+        viewModel.StatusMessage.Should().Contain("sua versão");
+    }
+
+    /// <summary>
+    /// Aceitar o servidor descarta o ETag conhecido: mantê-lo faria a passada seguinte
+    /// concluir que os dois lados estão iguais e deixaria a versão local — a que o usuário
+    /// acabou de descartar — como a final.
+    /// </summary>
+    [Fact]
+    public async Task KeepServerVersion_ConflitoResolvido_DescartaOEtagConhecido()
+    {
+        var evento = await ArrangeEventAsync();
+        evento.BindToRemoteCalendar(Guid.CreateVersion7(), Now);
+        evento.MarkRemoteSynced("https://dav.exemplo.com/cal/1.ics", "\"1\"", null, Now);
+        evento.MarkConflicted(Now);
+
+        var viewModel = CreateViewModel();
+        await viewModel.InitializeAsync(_account.Id);
+
+        await viewModel.KeepServerVersionAsync(evento.Id);
+
+        evento.SyncState.Should().Be(CalendarSyncState.Synced);
+        evento.RemoteETag.Should().BeNull();
+        viewModel.HasConflicts.Should().BeFalse();
     }
 }

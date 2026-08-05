@@ -34,6 +34,54 @@
             </InfoBar.Content>
         </InfoBar>
 
+        <!--
+            Conflito de sincronização. Fica no topo e fora da grade de propósito: ele pode
+            estar em qualquer data, e escondê-lo atrás da janela exibida seria escondê-lo de
+            quem precisa decidir.
+        -->
+        <InfoBar IsOpen="{x:Bind ViewModel.HasConflicts, Mode=OneWay}"
+                 Severity="Warning"
+                 Title="Alterado aqui e no servidor"
+                 Message="{x:Bind ViewModel.ConflictSummary, Mode=OneWay}"
+                 IsClosable="False">
+            <InfoBar.Content>
+                <ItemsControl Margin="0,8,0,12"
+                              ItemsSource="{x:Bind ViewModel.Conflicts, Mode=OneWay}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:CalendarConflictItem">
+                            <Grid ColumnSpacing="8" Padding="0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="{x:Bind Summary}"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{x:Bind StartLabel}"
+                                               FontSize="12"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                </StackPanel>
+
+                                <Button Grid.Column="1"
+                                        Content="Manter a minha"
+                                        Click="OnKeepLocalClick"
+                                        Tag="{x:Bind}"
+                                        AutomationProperties.Name="Manter a versão local do compromisso" />
+
+                                <Button Grid.Column="2"
+                                        Content="Usar a do servidor"
+                                        Click="OnKeepServerClick"
+                                        Tag="{x:Bind}"
+                                        AutomationProperties.Name="Usar a versão do servidor" />
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </InfoBar.Content>
+        </InfoBar>
+
         <Grid ColumnSpacing="8">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
@@ -105,6 +153,11 @@
                                        Visibility="{x:Bind IsCancelled}"
                                        FontSize="12"
                                        Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
+
+                            <TextBlock Text="Alterado aqui e no servidor"
+                                       Visibility="{x:Bind IsConflicted}"
+                                       FontSize="12"
+                                       Foreground="{ThemeResource SystemFillColorCautionBrush}" />
                         </StackPanel>
 
                         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4">

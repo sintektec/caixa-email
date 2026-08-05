@@ -40,6 +40,33 @@ internal sealed class InMemoryCalendarRepository : ICalendarRepository
                     && (e.IsRecurring || e.EndsAt > from))
                 .OrderBy(e => e.StartsAt)]);
 
+    public Task<CalendarEvent?> GetByRemoteHrefAsync(
+        Guid remoteCalendarId, string href, CancellationToken cancellationToken = default)
+        => Task.FromResult(_events.FirstOrDefault(
+            e => e.RemoteCalendarId == remoteCalendarId
+                && string.Equals(e.RemoteHref, href, StringComparison.Ordinal)));
+
+    public Task<IReadOnlyList<CalendarEvent>> ListPendingAsync(
+        Guid remoteCalendarId, CancellationToken cancellationToken = default)
+        => Task.FromResult<IReadOnlyList<CalendarEvent>>(
+            [.. _events.Where(e => e.RemoteCalendarId == remoteCalendarId
+                && e.SyncState is CalendarSyncState.PendingCreate
+                    or CalendarSyncState.PendingUpdate
+                    or CalendarSyncState.PendingDelete)]);
+
+    public Task<IReadOnlyList<string>> ListRemoteHrefsAsync(
+        Guid remoteCalendarId, CancellationToken cancellationToken = default)
+        => Task.FromResult<IReadOnlyList<string>>(
+            [.. _events
+                .Where(e => e.RemoteCalendarId == remoteCalendarId && e.RemoteHref is not null)
+                .Select(e => e.RemoteHref!)]);
+
+    public Task<IReadOnlyList<CalendarEvent>> ListConflictedAsync(
+        Guid? accountId, CancellationToken cancellationToken = default)
+        => Task.FromResult<IReadOnlyList<CalendarEvent>>(
+            [.. _events.Where(e => (accountId == null || e.AccountId == accountId)
+                && e.SyncState == CalendarSyncState.Conflict)]);
+
     public Task AddAsync(CalendarEvent calendarEvent, CancellationToken cancellationToken = default)
     {
         _events.Add(calendarEvent);
@@ -47,6 +74,36 @@ internal sealed class InMemoryCalendarRepository : ICalendarRepository
     }
 
     public void Remove(CalendarEvent calendarEvent) => _events.Remove(calendarEvent);
+}
+
+/// <summary>Coleções remotas em memória, para os testes do motor de sincronização.</summary>
+internal sealed class InMemoryRemoteCalendarRepository : IRemoteCalendarRepository
+{
+    private readonly List<RemoteCalendar> _calendars = [];
+
+    public IReadOnlyList<RemoteCalendar> Calendars => _calendars;
+
+    public Task<RemoteCalendar?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+        => Task.FromResult(_calendars.FirstOrDefault(c => c.Id == id));
+
+    public Task<RemoteCalendar?> GetByCollectionUrlAsync(
+        Guid accountId, string collectionUrl, CancellationToken cancellationToken = default)
+        => Task.FromResult(_calendars.FirstOrDefault(
+            c => c.AccountId == accountId
+                && string.Equals(c.CollectionUrl, collectionUrl, StringComparison.Ordinal)));
+
+    public Task<IReadOnlyList<RemoteCalendar>> ListByAccountAsync(
+        Guid accountId, CancellationToken cancellationToken = default)
+        => Task.FromResult<IReadOnlyList<RemoteCalendar>>(
+            [.. _calendars.Where(c => c.AccountId == accountId)]);
+
+    public Task AddAsync(RemoteCalendar calendar, CancellationToken cancellationToken = default)
+    {
+        _calendars.Add(calendar);
+        return Task.CompletedTask;
+    }
+
+    public void Remove(RemoteCalendar calendar) => _calendars.Remove(calendar);
 }
 
 /// <summary>
@@ -559,6 +616,38 @@ public class CalendarHandlersTests
         _calendar.Events.Should().BeEmpty();
         await _outbox.DidNotReceive().AddAsync(
             Arg.Any<OutboxOperation>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Apagar a linha aqui faria a exclusão morrer local: o recurso continuaria no servidor,
+    /// e a passada seguinte o traria de volta como novidade.
+    /// </summary>
+    [Fact]
+    public async Task Remover_CompromissoEspelhadoDoServidor_FicaPendenteDeExclusao()
+    {
+        var evento = CalendarEvent.Create(_account.Id, "meu-5", "Reunião", Inicio, Inicio.AddHours(1), Now);
+        evento.SetOrganizer(_account.EmailAddress, "Contato", Now);
+        evento.BindToRemoteCalendar(Guid.CreateVersion7(), Now);
+        evento.MarkRemoteSynced("https://dav.exemplo.com/cal/1.ics", "\"1\"", null, Now);
+        await _calendar.AddAsync(evento);
+
+        var resultado = await EventsHandler().RemoveAsync(evento.Id);
+
+        resultado.Succeeded.Should().BeTrue();
+        _calendar.Events.Should().ContainSingle();
+        evento.SyncState.Should().Be(CalendarSyncState.PendingDelete);
+    }
+
+    [Fact]
+    public async Task ResolverConflito_CompromissoSemConflito_ERecusado()
+    {
+        var evento = CalendarEvent.Create(_account.Id, "meu-6", "Reunião", Inicio, Inicio.AddHours(1), Now);
+        await _calendar.AddAsync(evento);
+
+        var resultado = await EventsHandler().ResolveConflictAsync(evento.Id, keepLocal: true);
+
+        resultado.Succeeded.Should().BeFalse();
+        resultado.ErrorMessage.Should().Contain("não está em conflito");
     }
 
     [Fact]

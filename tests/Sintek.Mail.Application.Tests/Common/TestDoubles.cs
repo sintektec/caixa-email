@@ -52,6 +52,25 @@ internal static class TestFactories
             clock,
             NullLogger<Sintek.Mail.Application.UseCases.Calendar.ImportInvitationHandler>.Instance);
 
+    /// <summary>
+    /// Sincronização de agenda inerte, para os testes do ciclo de e-mail.
+    /// </summary>
+    /// <remarks>
+    /// Sem nenhum <c>ICalendarSyncProvider</c> registrado, o motor devolve resultado vazio
+    /// sem tocar em rede — e o encadeamento real segue de pé, que é o que quebraria se ele
+    /// fosse opcional no <c>SyncAccountHandler</c>.
+    /// </remarks>
+    public static Sintek.Mail.Application.Sync.CalendarSyncService InertCalendarSync(
+        IUnitOfWork unitOfWork, TimeProvider clock)
+        => new(
+            Substitute.For<IRemoteCalendarRepository>(),
+            Substitute.For<ICalendarRepository>(),
+            Substitute.For<Abstractions.Calendar.ICalendarSerializer>(),
+            [],
+            unitOfWork,
+            clock,
+            NullLogger<Sintek.Mail.Application.Sync.CalendarSyncService>.Instance);
+
     /// <summary>Download de conteúdo com o importador de convites inerte.</summary>
     public static DownloadMessageContentHandler Download(
         IMessageRepository messages,

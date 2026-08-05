@@ -43,19 +43,37 @@ public sealed record TestAccountConnectionCommand
     /// <summary>Senha, quando a autenticação é por senha.</summary>
     /// <remarks>Vive apenas nesta instância; nunca é gravada por este caso de uso.</remarks>
     public string? Password { get; init; }
+
+    /// <summary>Protocolo do servidor de agenda, quando houver um a testar.</summary>
+    public CalendarProviderKind CalendarProvider { get; init; } = CalendarProviderKind.None;
+
+    /// <summary>Endereço HTTPS do servidor de agenda.</summary>
+    public string? CalendarUrl { get; init; }
 }
 
 /// <summary>Resultado do teste, separado por protocolo.</summary>
 /// <param name="Imap">Resultado do IMAP.</param>
 /// <param name="Smtp">Resultado do SMTP.</param>
+/// <param name="Calendar">
+/// Resultado do servidor de agenda, ou <see langword="null"/> quando não havia um a testar.
+/// </param>
 public readonly record struct TestAccountConnectionResult(
-    ConnectionTestResult Imap, ConnectionTestResult Smtp)
+    ConnectionTestResult Imap, ConnectionTestResult Smtp, ConnectionTestResult? Calendar = null)
 {
-    /// <summary>Se os dois protocolos responderam.</summary>
+    /// <summary>
+    /// Se o correio respondeu.
+    /// </summary>
+    /// <remarks>
+    /// <b>A agenda não entra nesta conta.</b> Um servidor de calendário fora do ar não
+    /// impede o cadastro de uma conta de e-mail que funciona: o erro é exibido, e o usuário
+    /// decide. Bloquear aqui trocaria um recurso opcional por uma conta que não existe.
+    /// </remarks>
     public bool Succeeded => Imap.Succeeded && Smtp.Succeeded;
 
     /// <summary>Primeira mensagem de erro encontrada, para exibição.</summary>
-    public string? FirstError => Imap.Succeeded ? Smtp.ErrorMessage : Imap.ErrorMessage;
+    public string? FirstError => Imap.Succeeded
+        ? Smtp.Succeeded ? Calendar?.ErrorMessage : Smtp.ErrorMessage
+        : Imap.ErrorMessage;
 }
 
 /// <summary>
@@ -84,6 +102,7 @@ public sealed class TestAccountConnectionHandler
     private readonly ISmtpSender _smtpSender;
     private readonly ICredentialStore _credentials;
     private readonly IOAuthProviderRegistry _oauthProviders;
+    private readonly IEnumerable<Abstractions.Calendar.ICalendarSyncProvider> _calendarProviders;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<TestAccountConnectionHandler> _logger;
 
@@ -92,6 +111,7 @@ public sealed class TestAccountConnectionHandler
         ISmtpSender smtpSender,
         ICredentialStore credentials,
         IOAuthProviderRegistry oauthProviders,
+        IEnumerable<Abstractions.Calendar.ICalendarSyncProvider> calendarProviders,
         TimeProvider timeProvider,
         ILogger<TestAccountConnectionHandler> logger)
     {
@@ -99,6 +119,7 @@ public sealed class TestAccountConnectionHandler
         _smtpSender = smtpSender;
         _credentials = credentials;
         _oauthProviders = oauthProviders;
+        _calendarProviders = calendarProviders;
         _timeProvider = timeProvider;
         _logger = logger;
     }
@@ -154,11 +175,13 @@ public sealed class TestAccountConnectionHandler
                 await _imapClient.DisconnectAsync(cancellationToken).ConfigureAwait(false);
             }
 
+            var calendar = await TestCalendarAsync(probe, cancellationToken).ConfigureAwait(false);
+
             _logger.LogInformation(
                 "Teste de conexão para {ImapHost}/{SmtpHost}: IMAP {ImapOk}, SMTP {SmtpOk}.",
                 command.ImapHost, command.SmtpHost, imap.Succeeded, smtp.Succeeded);
 
-            return new TestAccountConnectionResult(imap, smtp);
+            return new TestAccountConnectionResult(imap, smtp, calendar);
         }
         finally
         {
@@ -169,6 +192,43 @@ public sealed class TestAccountConnectionHandler
                 await _credentials.DeleteSecretAsync(probe.CredentialKey, CancellationToken.None)
                     .ConfigureAwait(false);
             }
+        }
+    }
+
+    /// <summary>
+    /// Testa o servidor de agenda, quando a configuração tem um.
+    /// </summary>
+    /// <remarks>
+    /// Uma exceção aqui derrubaria o teste inteiro, inclusive o resultado do correio que já
+    /// veio — e é o correio que decide se a conta pode ser cadastrada.
+    /// </remarks>
+    private async Task<ConnectionTestResult?> TestCalendarAsync(
+        Account probe, CancellationToken cancellationToken)
+    {
+        if (probe.CalendarProvider == CalendarProviderKind.None)
+        {
+            return null;
+        }
+
+        var provider = _calendarProviders.FirstOrDefault(p => p.Provider == probe.CalendarProvider);
+
+        if (provider is null)
+        {
+            return ConnectionTestResult.Failure(
+                $"Não há suporte a {probe.CalendarProvider} nesta versão.");
+        }
+
+        try
+        {
+            return await provider.TestAsync(probe, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return ConnectionTestResult.Failure(ex.Message);
         }
     }
 
@@ -223,6 +283,17 @@ public sealed class TestAccountConnectionHandler
         else
         {
             probe.UsePasswordAuthentication(command.UserName, now);
+        }
+
+        try
+        {
+            probe.ConfigureCalendar(
+                command.CalendarProvider, command.CalendarUrl, syncEnabled: true, now);
+        }
+        catch (ArgumentException)
+        {
+            // Endereço fora de HTTPS. O teste do correio segue; o da agenda não acontece, e
+            // é o CalendarUrlError da tela que explica o motivo enquanto se digita.
         }
 
         return probe;

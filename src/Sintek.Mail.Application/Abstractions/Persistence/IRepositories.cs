@@ -391,11 +391,56 @@ public interface ICalendarRepository
         Guid? accountId, DateTimeOffset from, DateTimeOffset until,
         CancellationToken cancellationToken = default);
 
+    /// <summary>Busca um evento pelo endereço do recurso no servidor.</summary>
+    /// <remarks>
+    /// O <c>href</c> é a identidade de rede, independente do <c>UID</c>: servidores nomeiam
+    /// o recurso como querem, e a Google e o iCloud não usam o UID.
+    /// </remarks>
+    Task<CalendarEvent?> GetByRemoteHrefAsync(
+        Guid remoteCalendarId, string href, CancellationToken cancellationToken = default);
+
+    /// <summary>Lista os eventos de um calendário remoto que aguardam envio.</summary>
+    Task<IReadOnlyList<CalendarEvent>> ListPendingAsync(
+        Guid remoteCalendarId, CancellationToken cancellationToken = default);
+
+    /// <summary>Lista os endereços de recurso conhecidos de um calendário remoto.</summary>
+    /// <remarks>
+    /// Serve à passada completa: o que existe aqui e não apareceu na listagem do servidor
+    /// foi removido lá.
+    /// </remarks>
+    Task<IReadOnlyList<string>> ListRemoteHrefsAsync(
+        Guid remoteCalendarId, CancellationToken cancellationToken = default);
+
+    /// <summary>Lista os compromissos em conflito, para a interface pedir decisão.</summary>
+    Task<IReadOnlyList<CalendarEvent>> ListConflictedAsync(
+        Guid? accountId, CancellationToken cancellationToken = default);
+
     /// <summary>Registra um evento.</summary>
     Task AddAsync(CalendarEvent calendarEvent, CancellationToken cancellationToken = default);
 
     /// <summary>Remove um evento.</summary>
     void Remove(CalendarEvent calendarEvent);
+}
+
+/// <summary>Acesso aos calendários remotos espelhados.</summary>
+public interface IRemoteCalendarRepository
+{
+    /// <summary>Carrega um calendário remoto.</summary>
+    Task<RemoteCalendar?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>Busca pelo endereço da coleção dentro da conta.</summary>
+    Task<RemoteCalendar?> GetByCollectionUrlAsync(
+        Guid accountId, string collectionUrl, CancellationToken cancellationToken = default);
+
+    /// <summary>Lista os calendários remotos de uma conta.</summary>
+    Task<IReadOnlyList<RemoteCalendar>> ListByAccountAsync(
+        Guid accountId, CancellationToken cancellationToken = default);
+
+    /// <summary>Registra um calendário remoto.</summary>
+    Task AddAsync(RemoteCalendar calendar, CancellationToken cancellationToken = default);
+
+    /// <summary>Remove um calendário remoto.</summary>
+    void Remove(RemoteCalendar calendar);
 }
 
 /// <summary>Registro de auditoria.</summary>

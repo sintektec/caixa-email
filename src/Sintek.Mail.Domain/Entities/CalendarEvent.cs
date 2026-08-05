@@ -129,6 +129,45 @@ public sealed class CalendarEvent : Entity
     /// <summary>Minutos de antecedência do lembrete.</summary>
     public int ReminderMinutesBefore { get; private set; }
 
+    /// <summary>Calendário remoto que hospeda este compromisso, quando há um.</summary>
+    public Guid? RemoteCalendarId { get; private set; }
+
+    /// <summary>
+    /// Endereço do recurso no servidor.
+    /// </summary>
+    /// <remarks>
+    /// <b>Não tem relação com o <see cref="Uid"/>.</b> Que muitos servidores nomeiem o
+    /// recurso como <c>{UID}.ics</c> é coincidência, não contrato: a Google usa
+    /// identificadores próprios e o iCloud renomeia. São duas identidades independentes —
+    /// o href é a de rede, o UID é a de calendário — e derivar uma da outra quebra na
+    /// primeira sincronização com servidor de verdade.
+    /// </remarks>
+    public string? RemoteHref { get; private set; }
+
+    /// <summary>
+    /// ETag do recurso, como o servidor o emitiu — com aspas e tudo.
+    /// </summary>
+    /// <remarks>
+    /// É o que vai em <c>If-Match</c> na escrita, e é o que detecta que outra pessoa
+    /// escreveu antes. Guardado verbatim: <c>"2134-314"</c> e <c>2134-314</c> são valores
+    /// diferentes para o servidor.
+    /// </remarks>
+    public string? RemoteETag { get; private set; }
+
+    /// <summary>
+    /// O documento iCalendar do servidor, guardado inteiro.
+    /// </summary>
+    /// <remarks>
+    /// Preservado para que uma edição devolva ao servidor o que ele tinha, alterando apenas
+    /// os campos tocados. Reserializar a partir do modelo de domínio destruiria em silêncio
+    /// o que este produto não modela — <c>X-*</c> de outros clientes, parâmetros de
+    /// participante, <c>VALARM</c> que a interface não exibe.
+    /// </remarks>
+    public string? RawICalendar { get; private set; }
+
+    /// <summary>Estado perante o servidor.</summary>
+    public CalendarSyncState SyncState { get; private set; } = CalendarSyncState.LocalOnly;
+
     /// <summary>Participantes.</summary>
     public IReadOnlyCollection<EventAttendee> Attendees => _attendees;
 
@@ -269,6 +308,7 @@ public sealed class CalendarEvent : Entity
             Sequence++;
         }
 
+        MarkPending(CalendarSyncState.PendingUpdate);
         Touch(now);
     }
 
@@ -276,6 +316,7 @@ public sealed class CalendarEvent : Entity
     public void SetEnd(DateTimeOffset endsAt, DateTimeOffset now)
     {
         EndsAt = endsAt < StartsAt ? StartsAt : endsAt;
+        MarkPending(CalendarSyncState.PendingUpdate);
         Touch(now);
     }
 
@@ -287,6 +328,7 @@ public sealed class CalendarEvent : Entity
         Description = Normalize(description);
         Location = Normalize(location);
         MeetingUrl = Normalize(meetingUrl);
+        MarkPending(CalendarSyncState.PendingUpdate);
         Touch(now);
     }
 
@@ -294,6 +336,7 @@ public sealed class CalendarEvent : Entity
     public void SetRecurrence(string? recurrenceRule, DateTimeOffset now)
     {
         RecurrenceRule = Normalize(recurrenceRule);
+        MarkPending(CalendarSyncState.PendingUpdate);
         Touch(now);
     }
 
@@ -301,6 +344,7 @@ public sealed class CalendarEvent : Entity
     public void SetAllDay(bool isAllDay, DateTimeOffset now)
     {
         IsAllDay = isAllDay;
+        MarkPending(CalendarSyncState.PendingUpdate);
         Touch(now);
     }
 
@@ -435,6 +479,115 @@ public sealed class CalendarEvent : Entity
     /// </remarks>
     public int OtherAttendeeCount(EmailAddress address)
         => _attendees.Count(a => address is null || a.Address != address);
+
+    /// <summary>Vincula o compromisso a um calendário remoto.</summary>
+    public void BindToRemoteCalendar(Guid remoteCalendarId, DateTimeOffset now)
+    {
+        RemoteCalendarId = remoteCalendarId;
+
+        if (SyncState == CalendarSyncState.LocalOnly)
+        {
+            SyncState = CalendarSyncState.PendingCreate;
+        }
+
+        Touch(now);
+    }
+
+    /// <summary>
+    /// Registra que o compromisso está idêntico ao servidor.
+    /// </summary>
+    /// <remarks>
+    /// O <c>href</c>, o <c>ETag</c> e o documento cru vêm juntos porque só fazem sentido
+    /// juntos: guardar um ETag sem o conteúdo que ele descreve faz a escrita seguinte
+    /// devolver 412 para sempre.
+    /// </remarks>
+    public void MarkRemoteSynced(
+        string remoteHref, string? remoteETag, string? rawICalendar, DateTimeOffset now)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(remoteHref);
+
+        RemoteHref = remoteHref.Trim();
+        RemoteETag = Normalize(remoteETag);
+        RawICalendar = string.IsNullOrWhiteSpace(rawICalendar) ? RawICalendar : rawICalendar;
+        SyncState = CalendarSyncState.Synced;
+        Touch(now);
+    }
+
+    /// <summary>
+    /// Marca o compromisso como pendente de envio ao servidor.
+    /// </summary>
+    /// <remarks>
+    /// <b>Nunca rebaixa um estado mais forte.</b> Um compromisso pendente de exclusão que
+    /// tem o assunto alterado continua pendente de exclusão; um pendente de criação que é
+    /// editado continua pendente de criação, porque ainda não existe lá para ser atualizado.
+    /// Reverter isso faz a fila enviar a alteração e esquecer a exclusão, e o compromisso
+    /// reaparece na sincronização seguinte. É a mesma regra de
+    /// <see cref="Message.MarkPending"/>.
+    /// </remarks>
+    private void MarkPending(CalendarSyncState state)
+    {
+        SyncState = SyncState switch
+        {
+            CalendarSyncState.PendingDelete => CalendarSyncState.PendingDelete,
+            CalendarSyncState.PendingCreate => CalendarSyncState.PendingCreate,
+            CalendarSyncState.LocalOnly => CalendarSyncState.LocalOnly,
+            CalendarSyncState.Conflict => CalendarSyncState.Conflict,
+            _ => state,
+        };
+    }
+
+    /// <summary>Marca que a exclusão precisa chegar ao servidor.</summary>
+    public void MarkPendingDelete(DateTimeOffset now)
+    {
+        SyncState = CalendarSyncState.PendingDelete;
+        Touch(now);
+    }
+
+    /// <summary>
+    /// Marca que os dois lados mudaram desde a última sincronização.
+    /// </summary>
+    /// <remarks>
+    /// O conflito fica visível e espera decisão, em vez de ser resolvido em silêncio. É o
+    /// caso em que qualquer escolha automática perde trabalho de alguém.
+    /// </remarks>
+    public void MarkConflicted(DateTimeOffset now)
+    {
+        SyncState = CalendarSyncState.Conflict;
+        Touch(now);
+    }
+
+    /// <summary>Resolve o conflito mantendo a versão local, que volta à fila de envio.</summary>
+    public void ResolveConflictKeepingLocal(DateTimeOffset now)
+    {
+        SyncState = RemoteHref is null
+            ? CalendarSyncState.PendingCreate
+            : CalendarSyncState.PendingUpdate;
+
+        Touch(now);
+    }
+
+    /// <summary>
+    /// Resolve o conflito aceitando a versão do servidor.
+    /// </summary>
+    /// <remarks>
+    /// O <c>ETag</c> conhecido é descartado de propósito. Ele é o que o avaliador compara
+    /// para decidir se o servidor mudou; mantê-lo faria a passada seguinte concluir que os
+    /// dois lados estão iguais e deixaria a cópia local — a que o usuário acabou de
+    /// descartar — como a versão final.
+    /// </remarks>
+    public void ResolveConflictAcceptingRemote(DateTimeOffset now)
+    {
+        RemoteETag = null;
+        SyncState = CalendarSyncState.Synced;
+        Touch(now);
+    }
+
+    /// <summary>Guarda o documento iCalendar do servidor sem alterar o estado.</summary>
+    public void SetRawICalendar(string? rawICalendar, DateTimeOffset now)
+    {
+        RawICalendar = string.IsNullOrWhiteSpace(rawICalendar) ? null : rawICalendar;
+        Touch(now);
+    }
 
     private static string? Normalize(string? value)
         => string.IsNullOrWhiteSpace(value) ? null : value.Trim();

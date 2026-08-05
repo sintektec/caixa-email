@@ -60,6 +60,19 @@ mensagem passa por `MoveMessageHandler`: a regra vive num avaliador puro, e arra
 grade só executa o que ele permitir. Participante não move a própria cópia de reunião
 alheia — a alternativa oferecida é propor novo horário (D-025).
 
+**Conflito de agenda não é resolvido em silêncio.** Quando local e servidor mudam o mesmo
+compromisso, `CalendarConflictEvaluator` devolve `Conflict`, o compromisso é marcado e fica
+visível até o usuário escolher. Qualquer regra automática — última escrita vence, servidor
+vence — descarta o trabalho de alguém, e a pessoa só descobre quando procura o que escreveu
+e não acha. É a postura de `InvalidEmailAction.WarnAndConfirm`: onde a decisão custa caro,
+quem decide é o usuário (D-027).
+
+**Ausência de um recurso só significa exclusão em passada completa.** Quem declara isso é o
+provedor, em `RemoteCalendarChanges.IsFullEnumeration` — o motor **não** deduz do token
+nulo. Três situações devolvem zero alterações e significam coisas opostas: passada
+incremental sem novidade, servidor sem `sync-collection` respondendo "o `CTag` não mudou", e
+passada completa de coleção esvaziada. Só a terceira autoriza apagar (D-028).
+
 ## Armadilhas conhecidas
 
 **O pacote de SQLite é `Microsoft.Data.Sqlite.Core`, não `Microsoft.Data.Sqlite`.** O
@@ -172,6 +185,53 @@ anexo, ele mostraria um `.ics` para a pessoa abrir à mão.
 **`Calendar.GetOccurrences` do Ical.Net devolve uma sequência infinita.** Uma `RRULE` sem
 `COUNT` nem `UNTIL` não termina. Toda expansão leva um `TakeWhile` com o fim da janela —
 sem ele o laço roda para sempre.
+
+**`AllowAutoRedirect` ligado quebra CalDAV de dois jeitos.** O `HttpClient` transforma um
+`PROPFIND` em `GET` ao seguir 301/302/303, e **descarta o header `Authorization` quando o
+destino é outro host** — que é exatamente o caso do iCloud, cujo `calendar-home-set` aponta
+para a partição da conta em outro nome de servidor. O sintoma é um 401 inexplicável logo
+depois de uma autenticação que funcionou. `CalDavTransport` segue o `Location` à mão, com
+teto de saltos e recusando destino que não seja HTTPS.
+
+**`response.Headers.ETag` lança em servidor fora da norma.** Radicale antigo e alguns
+gateways devolvem o ETag sem aspas, e a propriedade tipada lança `FormatException` ao
+analisá-lo. Leia com `TryGetValues("ETag", ...)` e guarde a string crua **com as aspas**:
+`"2134-314"` e `2134-314` são valores diferentes para o `If-Match`. ETag fraco (`W/"..."`)
+não serve para pré-condição e é descartado, o que força a releitura por `GET`.
+
+**No WebDAV, o discriminador entre "alterado" e "removido" é onde o `status` está.** Filho
+direto da `<D:response>` fala do recurso; dentro de um `<D:propstat>` fala de uma
+propriedade que não existe naquele recurso. O código é `404` nos dois. Ler só o primeiro
+`propstat` faz "esta propriedade não veio" virar "este recurso foi apagado".
+
+**`DAV:` é literal, e os prefixos XML são arbitrários.** É esse texto mesmo, com
+dois-pontos e sem `http://`. Um servidor escreve `<D:response>`, outro `<d:response>`, outro
+`<dav:response>`, e todos estão certos. Casar por prefixo, ou usar `Element("response")` sem
+namespace, devolve zero elementos **sem erro nenhum**. Sempre `XNamespace` + nome local.
+
+**`StringContent` recusa media type com parâmetro.** `new StringContent(body, Encoding.UTF8,
+"text/calendar; charset=utf-8")` lança `FormatException`: o `charset` vem da codificação, e
+o terceiro argumento aceita só o tipo. O erro não aparece na compilação — quebra na primeira
+escrita.
+
+**`StringWriter` declara UTF-16 no XML que sai em UTF-8.** `XDocument.Save(TextWriter)`
+escreve na declaração o `Encoding` que o escritor informa, e o `StringWriter` comum informa
+`Encoding.Unicode`. O documento sai com `encoding="utf-16"` enquanto os bytes vão em UTF-8 —
+servidor estrito recusa, tolerante decodifica errado o primeiro acento. `CalDavRequests` usa
+um escritor que sobrescreve `Encoding`.
+
+**No CalDAV, o nome do recurso não tem relação com o `UID`.** Que muitos servidores usem
+`{UID}.ics` é coincidência, não contrato: a Google usa identificadores internos e o iCloud
+renomeia. `href` e `UID` são guardados separados — o primeiro é a identidade de rede, o
+segundo é a de calendário. E o `href` volta ora absoluto, ora relativo, ora
+percent-encoded de formas diferentes: `CalDavHref` resolve contra a URI da requisição e
+guarda a forma canônica.
+
+**Sem ETag forte na resposta do `PUT`, é obrigatório reler.** A RFC 4791 §5.3.4 **proíbe**
+ETag forte quando o servidor modifica o objeto ao gravar — e eles modificam: normalizam
+fuso, injetam `SEQUENCE`, reescrevem `DTSTAMP`. Guardar um ETag adivinhado faz o `If-Match`
+seguinte falhar com 412 para sempre, ou pior: sobrescrever em silêncio o que o servidor
+gravou.
 
 **`dotnet ef migrations add --no-build` usa o assembly de `Debug`.** Compilar só em `Release`
 antes de criar a migração faz o EF ler o modelo antigo e gerar a migração anterior de novo —

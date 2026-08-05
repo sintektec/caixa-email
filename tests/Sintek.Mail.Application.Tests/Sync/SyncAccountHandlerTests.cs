@@ -73,6 +73,7 @@ public class SyncAccountHandlerTests
                     _messages, _folders, _unitOfWork, moveMessage, enqueuer, _clock),
                 _clock,
                 NullLogger<MessageSyncService>.Instance),
+            TestFactories.InertCalendarSync(_unitOfWork, _clock),
             _clock,
             NullLogger<SyncAccountHandler>.Instance);
     }

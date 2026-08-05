@@ -80,6 +80,9 @@ public sealed class MailDbContext : DbContext
     /// <summary>Participantes dos compromissos.</summary>
     public DbSet<EventAttendee> EventAttendees => Set<EventAttendee>();
 
+    /// <summary>Coleções de calendário espelhadas do servidor.</summary>
+    public DbSet<RemoteCalendar> RemoteCalendars => Set<RemoteCalendar>();
+
     /// <summary>Histórico de destinatários, que alimenta o autocompletar.</summary>
     public DbSet<RecipientHistory> RecipientHistory => Set<RecipientHistory>();
 

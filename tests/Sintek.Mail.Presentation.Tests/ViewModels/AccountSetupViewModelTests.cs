@@ -59,7 +59,7 @@ public class AccountSetupViewModelTests
             _directories, _accounts, _folders, _audit, _unitOfWork, _credentials,
             _autodiscover, _imap, _oauthRegistry, _clock, NullLogger<AddAccountHandler>.Instance),
         new TestAccountConnectionHandler(
-            _imap, _smtp, _credentials, _oauthRegistry, _clock,
+            _imap, _smtp, _credentials, _oauthRegistry, [], _clock,
             NullLogger<TestAccountConnectionHandler>.Instance),
         _oauthRegistry,
         NullLogger<AccountSetupViewModel>.Instance);

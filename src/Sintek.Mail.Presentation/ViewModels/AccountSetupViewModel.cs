@@ -267,6 +267,23 @@ public sealed partial class AccountSetupViewModel : ObservableObject
     [ObservableProperty]
     private string _password = string.Empty;
 
+    /// <summary>Se a conta também sincroniza a agenda com um servidor.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CalendarUrlError))]
+    private bool _syncCalendar;
+
+    /// <inheritdoc cref="UserName" />
+    /// <summary>
+    /// Endereço do servidor de agenda.
+    /// </summary>
+    /// <remarks>
+    /// No CalDAV basta a raiz — o principal, a coleção-raiz e os calendários vêm do próprio
+    /// servidor. Fixar o caminho quebraria no iCloud, que devolve uma partição por conta.
+    /// </remarks>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CalendarUrlError))]
+    private string _calendarUrl = string.Empty;
+
     /// <summary>De onde vieram os servidores propostos.</summary>
     [ObservableProperty]
     private DiscoverySource _discoverySource = DiscoverySource.Manual;
@@ -312,6 +329,31 @@ public sealed partial class AccountSetupViewModel : ObservableObject
     /// <summary>Se nenhum diretório existente aceita o endereço digitado.</summary>
     [ObservableProperty]
     private bool _needsNewDirectory;
+
+    /// <summary>
+    /// Erro de validação do endereço de agenda, exibido enquanto se digita.
+    /// </summary>
+    /// <remarks>
+    /// Vazio quando não há erro — e não nulo — porque o destino é um <c>TextBlock</c>, que
+    /// recusa <see langword="null"/> em tempo de execução.
+    /// </remarks>
+    public string CalendarUrlError
+    {
+        get
+        {
+            if (!SyncCalendar || string.IsNullOrWhiteSpace(CalendarUrl))
+            {
+                return string.Empty;
+            }
+
+            return Uri.TryCreate(CalendarUrl.Trim(), UriKind.Absolute, out var parsed)
+                && parsed.Scheme == Uri.UriSchemeHttps
+                    ? string.Empty
+                    // Basic sobre HTTP é a senha em claro no fio, e o host vem do que o
+                    // usuário digitou.
+                    : "O endereço do servidor de agenda precisa começar com https://.";
+        }
+    }
 
     /// <summary>Provedores OAuth efetivamente configurados nesta instalação.</summary>
     public IReadOnlyList<OAuthProviderKind> ConfiguredOAuthProviders
@@ -456,6 +498,10 @@ public sealed partial class AccountSetupViewModel : ObservableObject
                     OAuthProvider = OAuthProvider,
                     UserName = UserName,
                     Password = Password,
+                    CalendarProvider = SyncCalendar
+                        ? CalendarProviderKind.CalDav
+                        : CalendarProviderKind.None,
+                    CalendarUrl = SyncCalendar ? CalendarUrl : null,
                 },
                 cancellationToken).ConfigureAwait(true);
 
@@ -487,6 +533,12 @@ public sealed partial class AccountSetupViewModel : ObservableObject
             return;
         }
 
+        if (CalendarUrlError.Length > 0)
+        {
+            StatusMessage = CalendarUrlError;
+            return;
+        }
+
         IsBusy = true;
 
         try
@@ -507,6 +559,10 @@ public sealed partial class AccountSetupViewModel : ObservableObject
                     OAuthProvider = OAuthProvider,
                     UserName = UserName,
                     Password = Password,
+                    CalendarProvider = SyncCalendar
+                        ? CalendarProviderKind.CalDav
+                        : CalendarProviderKind.None,
+                    CalendarUrl = SyncCalendar ? CalendarUrl : null,
                 },
                 cancellationToken).ConfigureAwait(true);
 

@@ -51,6 +51,26 @@ public sealed partial class CalendarDialog : ContentDialog
         }
     }
 
+    private async void OnKeepLocalClick(object sender, RoutedEventArgs e)
+        => await ResolveConflictAsync(sender, keepLocal: true).ConfigureAwait(true);
+
+    private async void OnKeepServerClick(object sender, RoutedEventArgs e)
+        => await ResolveConflictAsync(sender, keepLocal: false).ConfigureAwait(true);
+
+    private async Task ResolveConflictAsync(object sender, bool keepLocal)
+    {
+        if ((sender as FrameworkElement)?.Tag is not CalendarConflictItem item)
+        {
+            return;
+        }
+
+        var command = keepLocal
+            ? ViewModel.KeepLocalVersionAsync(item.EventId)
+            : ViewModel.KeepServerVersionAsync(item.EventId);
+
+        await command.ConfigureAwait(true);
+    }
+
     private async void OnJoinMeetingClick(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.Tag is not CalendarOccurrenceItem item

@@ -129,6 +129,33 @@
                 <CheckBox Content="Confirmo que estes servidores estão corretos, mesmo não pertencendo ao domínio do endereço"
                           IsChecked="{x:Bind ViewModel.ServersConfirmed, Mode=TwoWay}"
                           Visibility="{x:Bind ViewModel.RequiresServerConfirmation, Mode=OneWay}" />
+
+                <!--
+                    Agenda. Opcional de propósito: a agenda local funciona por inteiro sem
+                    servidor — convite que chega por e-mail, movimentação, resposta ao
+                    organizador. O que falta sem isto é só o espelho remoto.
+                -->
+                <CheckBox Content="Sincronizar também a agenda desta conta (CalDAV)"
+                          IsChecked="{x:Bind ViewModel.SyncCalendar, Mode=TwoWay}"
+                          AutomationProperties.Name="Sincronizar a agenda desta conta" />
+
+                <TextBox Header="Servidor de agenda"
+                         PlaceholderText="https://dav.exemplo.com/"
+                         Text="{x:Bind ViewModel.CalendarUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                         Visibility="{x:Bind ViewModel.SyncCalendar, Mode=OneWay}"
+                         AutomationProperties.Name="Endereço do servidor de agenda" />
+
+                <TextBlock Text="{x:Bind ViewModel.CalendarUrlError, Mode=OneWay}"
+                           Style="{ThemeResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                           TextWrapping="Wrap"
+                           Visibility="{x:Bind ViewModel.SyncCalendar, Mode=OneWay}" />
+
+                <TextBlock Text="Basta o endereço inicial do servidor: os calendários da conta são descobertos a partir dele. A agenda usa a mesma credencial do e-mail."
+                           Style="{ThemeResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           TextWrapping="Wrap"
+                           Visibility="{x:Bind ViewModel.SyncCalendar, Mode=OneWay}" />
             </StackPanel>
 
             <!-- Etapa 3: credenciais -->

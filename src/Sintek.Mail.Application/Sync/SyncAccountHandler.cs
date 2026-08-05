@@ -13,6 +13,7 @@ namespace Sintek.Mail.Application.Sync;
 /// <param name="MessagesAdded">Mensagens novas trazidas.</param>
 /// <param name="MessagesUpdated">Mensagens já conhecidas com marcadores alterados.</param>
 /// <param name="MessagesRedirected">Mensagens desviadas pela regra de Diretório de Domínio.</param>
+/// <param name="Calendar">Resultado da sincronização de agenda.</param>
 /// <param name="ErrorMessage">Motivo exibível da falha.</param>
 /// <param name="IsAuthenticationFailure">Se a falha foi de credencial.</param>
 public sealed record SyncAccountResult(
@@ -22,6 +23,7 @@ public sealed record SyncAccountResult(
     int MessagesAdded,
     int MessagesUpdated,
     int MessagesRedirected,
+    CalendarSyncResult Calendar = default,
     string? ErrorMessage = null,
     bool IsAuthenticationFailure = false);
 
@@ -71,6 +73,7 @@ public sealed class SyncAccountHandler
     private readonly IOutboxDrainer _outboxDrainer;
     private readonly FolderMirrorService _folderMirror;
     private readonly MessageSyncService _messageSync;
+    private readonly CalendarSyncService _calendarSync;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<SyncAccountHandler> _logger;
 
@@ -82,6 +85,7 @@ public sealed class SyncAccountHandler
         IOutboxDrainer outboxDrainer,
         FolderMirrorService folderMirror,
         MessageSyncService messageSync,
+        CalendarSyncService calendarSync,
         TimeProvider timeProvider,
         ILogger<SyncAccountHandler> logger)
     {
@@ -92,6 +96,7 @@ public sealed class SyncAccountHandler
         _outboxDrainer = outboxDrainer;
         _folderMirror = folderMirror;
         _messageSync = messageSync;
+        _calendarSync = calendarSync;
         _timeProvider = timeProvider;
         _logger = logger;
     }
@@ -160,7 +165,8 @@ public sealed class SyncAccountHandler
             await _unitOfWork.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
             return new SyncAccountResult(
-                false, 0, default, 0, 0, 0, connection.ErrorMessage, connection.IsAuthenticationFailure);
+                false, 0, default, 0, 0, 0, default,
+                connection.ErrorMessage, connection.IsAuthenticationFailure);
         }
 
         var drained = await _outboxDrainer.DrainAsync(account, cancellationToken).ConfigureAwait(false);
@@ -186,6 +192,26 @@ public sealed class SyncAccountHandler
             redirected += result.RedirectedToPending;
         }
 
+        // A agenda vem depois do e-mail, e fora da conexão IMAP: ela fala HTTPS com outro
+        // servidor. Uma falha lá não pode invalidar a leitura que já deu certo — quem trata
+        // por coleção é o próprio CalendarSyncService, e o que sobra fica registrado sem
+        // derrubar o ciclo.
+        var calendar = default(CalendarSyncResult);
+
+        try
+        {
+            calendar = await _calendarSync.SyncAsync(account, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex, "A sincronização de agenda da conta {AccountId} falhou.", account.Id);
+        }
+
         account.MarkSynced(_timeProvider.GetUtcNow());
         await _unitOfWork.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         await _imapClient.DisconnectAsync(cancellationToken).ConfigureAwait(false);
@@ -194,7 +220,7 @@ public sealed class SyncAccountHandler
             "Conta {AccountId} sincronizada: {Drained} da fila, {Added} nova(s), {Updated} atualizada(s).",
             account.Id, drained, added, updated);
 
-        return new SyncAccountResult(true, drained, mirrored, added, updated, redirected);
+        return new SyncAccountResult(true, drained, mirrored, added, updated, redirected, calendar);
     }
 
     /// <summary>
@@ -222,5 +248,5 @@ public sealed class SyncAccountHandler
             .ThenBy(f => f.RemotePath, StringComparer.Ordinal);
 
     private static SyncAccountResult Failure(string message)
-        => new(false, 0, default, 0, 0, 0, message);
+        => new(false, 0, default, 0, 0, 0, default, message);
 }

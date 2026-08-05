@@ -281,9 +281,69 @@ public sealed class ManageEventsHandler
                 await EnqueueCancelAsync(account, target, ct).ConfigureAwait(false);
             }
 
-            _calendar.Remove(target);
+            if (target.RemoteCalendarId is null)
+            {
+                _calendar.Remove(target);
+            }
+            else
+            {
+                // O compromisso espelha um recurso do servidor. Apagar a linha aqui faria a
+                // exclusão morrer local: o recurso continuaria lá, e a próxima passada o
+                // traria de volta como novidade. A linha só some depois de a exclusão ser
+                // aceita pelo servidor, o que é trabalho do CalendarSyncService.
+                target.MarkPendingDelete(_timeProvider.GetUtcNow());
+            }
+
             await _unitOfWork.SaveChangesAsync(ct).ConfigureAwait(false);
         }, cancellationToken).ConfigureAwait(false);
+
+        return new CalendarEventResult(true, eventId, null);
+    }
+
+    /// <summary>Lista os compromissos que aguardam decisão de conflito.</summary>
+    public Task<IReadOnlyList<CalendarEvent>> ListConflictsAsync(
+        Guid? accountId, CancellationToken cancellationToken = default)
+        => _calendar.ListConflictedAsync(accountId, cancellationToken);
+
+    /// <summary>
+    /// Resolve um conflito de sincronização.
+    /// </summary>
+    /// <param name="keepLocal">
+    /// <see langword="true"/> mantém a versão daqui, que volta para a fila de envio;
+    /// <see langword="false"/> aceita a do servidor, que desce na próxima passada.
+    /// </param>
+    /// <remarks>
+    /// A decisão é do usuário, e é por isso que existe um método para ela: qualquer escolha
+    /// automática descarta o trabalho de alguém, e a pessoa só descobre quando procura o que
+    /// escreveu e não acha.
+    /// </remarks>
+    public async Task<CalendarEventResult> ResolveConflictAsync(
+        Guid eventId, bool keepLocal, CancellationToken cancellationToken = default)
+    {
+        var target = await _calendar.GetByIdAsync(eventId, cancellationToken).ConfigureAwait(false);
+
+        if (target is null)
+        {
+            return new CalendarEventResult(false, null, "O compromisso não existe mais.");
+        }
+
+        if (target.SyncState != CalendarSyncState.Conflict)
+        {
+            return new CalendarEventResult(false, eventId, "Este compromisso não está em conflito.");
+        }
+
+        var now = _timeProvider.GetUtcNow();
+
+        if (keepLocal)
+        {
+            target.ResolveConflictKeepingLocal(now);
+        }
+        else
+        {
+            target.ResolveConflictAcceptingRemote(now);
+        }
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
         return new CalendarEventResult(true, eventId, null);
     }

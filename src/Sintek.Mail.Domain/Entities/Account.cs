@@ -71,6 +71,25 @@ public sealed class Account : Entity
     /// </summary>
     public bool UseSsl { get; private set; } = true;
 
+    /// <summary>
+    /// Protocolo do servidor de agenda, ou <see cref="CalendarProviderKind.None"/> quando a
+    /// conta não tem um.
+    /// </summary>
+    public CalendarProviderKind CalendarProvider { get; private set; } = CalendarProviderKind.None;
+
+    /// <summary>
+    /// Ponto de entrada do servidor de agenda.
+    /// </summary>
+    /// <remarks>
+    /// No CalDAV é a raiz por onde a descoberta começa — o resto (principal, home, coleções)
+    /// vem do próprio servidor, e fixá-lo no código quebraria no iCloud, que devolve uma
+    /// partição diferente por conta.
+    /// </remarks>
+    public string? CalendarUrl { get; private set; }
+
+    /// <summary>Se a agenda desta conta é sincronizada com o servidor.</summary>
+    public bool CalendarSyncEnabled { get; private set; }
+
     /// <summary>Como a conta se autentica.</summary>
     public AuthenticationType AuthenticationType { get; private set; } = AuthenticationType.Password;
 
@@ -190,6 +209,41 @@ public sealed class Account : Entity
         SmtpPort = smtpPort;
         SmtpSecurity = smtpSecurity;
         UseSsl = imapSecurity != SecureSocketMode.None || smtpSecurity != SecureSocketMode.None;
+        Touch(now);
+    }
+
+    /// <summary>
+    /// Configura o servidor de agenda.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A credencial é a mesma do e-mail — mesmo <see cref="CredentialKey"/>, mesmo token
+    /// OAuth. Pedir uma segunda senha para o mesmo servidor seria pedir duas vezes a mesma
+    /// coisa, e guardar uma cópia dela é uma cópia a mais para vazar.
+    /// </para>
+    /// <para>
+    /// Endereço em branco desliga a sincronização em vez de recusar: uma conta sem servidor
+    /// de agenda é o caso comum, não erro de preenchimento.
+    /// </para>
+    /// </remarks>
+    public void ConfigureCalendar(
+        CalendarProviderKind provider, string? calendarUrl, bool syncEnabled, DateTimeOffset now)
+    {
+        var url = string.IsNullOrWhiteSpace(calendarUrl) ? null : calendarUrl.Trim();
+
+        if (url is not null
+            && (!Uri.TryCreate(url, UriKind.Absolute, out var parsed)
+                || parsed.Scheme != Uri.UriSchemeHttps))
+        {
+            // Basic sobre HTTP é a senha em claro no fio, e o host vem do que o usuário
+            // digitou. É a mesma exigência do AutoconfigFetcher, pelo mesmo motivo.
+            throw new ArgumentException(
+                "O endereço do servidor de agenda precisa ser HTTPS.", nameof(calendarUrl));
+        }
+
+        CalendarProvider = url is null ? CalendarProviderKind.None : provider;
+        CalendarUrl = url;
+        CalendarSyncEnabled = url is not null && provider != CalendarProviderKind.None && syncEnabled;
         Touch(now);
     }
 

@@ -556,3 +556,80 @@ deliberada, e a recusa vem com explicação e com o botão que faz o que ele que
 **Alternativas rejeitadas:** permitir com aviso (aviso que se pode ignorar não protege de
 nada, e o custo do erro é faltar a uma reunião); permitir e mandar `COUNTER` junto
 (mostraria ao usuário um horário que o organizador ainda não aceitou).
+
+---
+
+## D-026 — Três provedores de agenda atrás de uma porta, e o CalDAV primeiro (2026-08-05)
+
+**Status:** aceita
+
+**Decisão:** `ICalendarSyncProvider` é a porta única para servidor de agenda, com
+`CalendarProviderKind { None, CalDav, MicrosoftGraph, GoogleCalendar }`. Esta fase entrega a
+implementação **CalDAV**; Graph e Google Calendar ficam registrados como próximo passo,
+desenhados atrás da mesma porta.
+
+**Motivo:** O mercado se dividiu, e não por gosto. O Exchange Online **nunca** implementou
+CalDAV — nem hoje, nem no on-premises, nem no Outlook.com — e o EWS está sendo desligado
+(bloqueio global em 01/10/2026, remoção até 04/2027). Para Microsoft 365 o único caminho
+suportado é o Microsoft Graph. A Google mantém CalDAV como compatibilidade declaradamente
+parcial e recomenda a Calendar API. CalDAV é o padrão aberto que cobre todo o resto:
+Nextcloud, ownCloud, Baikal, Fastmail, iCloud, SOGo, Radicale, DAViCal. Um cliente que só
+fale CalDAV fica fora do mercado corporativo Microsoft; um que só fale Graph fica fora de
+todo o resto.
+
+**Consequências, e a mais séria delas:** a regra do `SEQUENCE` (D-024) **não se aplica ao
+caminho do Graph**. O CalDAV carrega o iCalendar íntegro, então a versão está lá e o
+`CalendarConflictEvaluator.AllowsSequence` a compara. O Graph não expõe `SEQUENCE`: quando
+aquela implementação existir, a precedência terá de ser expressa por outro critério
+(`lastModifiedDateTime` mais `changeKey`), e isso é uma decisão nova, não uma adaptação
+desta. Registrar aqui evita que a fase seguinte a tome por descuido.
+
+Outra consequência: a coleção sem `sync-collection` cai no `CTag`, que lista a coleção
+inteira a cada alteração. É mais tráfego, e é o preço de atender servidor antigo.
+
+**Alternativas rejeitadas:** só CalDAV (deixaria Microsoft 365 de fora, que é justamente o
+cliente corporativo); EWS para Microsoft (tem data de morte marcada); um gateway de
+terceiros traduzindo CalDAV para Graph (não é CalDAV nativo, e põe a credencial do usuário
+num terceiro).
+
+---
+
+## D-027 — Conflito de agenda não é resolvido em silêncio (2026-08-05)
+
+**Status:** aceita
+
+**Decisão:** Quando local e servidor mudam o mesmo compromisso entre duas sincronizações, o
+`CalendarConflictEvaluator` devolve `Conflict`, o compromisso é marcado com
+`CalendarSyncState.Conflict` e fica visível na agenda até o usuário escolher qual versão
+fica. Nada é escrito de nenhum lado enquanto isso.
+
+**Motivo:** Qualquer regra automática — última escrita vence, servidor vence, local vence —
+descarta o trabalho de alguém, e a pessoa só descobre quando procura o que escreveu e não
+acha. É a mesma postura de `InvalidEmailAction.WarnAndConfirm` na regra de domínio: onde a
+decisão custa caro, quem decide é o usuário.
+
+**Consequências:** um compromisso pode ficar parado esperando decisão, sem subir e sem
+descer. É o custo certo — a alternativa é perder a alteração sem aviso. Aceitar a versão do
+servidor descarta o `ETag` conhecido de propósito: mantê-lo faria a passada seguinte
+concluir que os dois lados estão iguais e deixaria a versão local, que o usuário acabou de
+descartar, como a final.
+
+---
+
+## D-028 — Ausência só significa exclusão em passada completa (2026-08-05)
+
+**Status:** aceita
+
+**Decisão:** `RemoteCalendarChanges.IsFullEnumeration` é declarado pelo provedor, e só ele
+autoriza o motor a apagar o compromisso local que não apareceu na listagem. O motor **não**
+deduz isso da ausência de token.
+
+**Motivo:** Três situações devolvem zero alterações e significam coisas opostas. Uma passada
+incremental sem novidade: nada mudou, e apagar esvaziaria a agenda. Um servidor sem
+`sync-collection` respondendo "o `CTag` não mudou": também não enumerou nada. E uma passada
+completa de uma coleção esvaziada no servidor: aí sim tudo foi removido. Deduzir pelo token
+nulo trata as duas primeiras como a terceira.
+
+**Consequências:** o provedor carrega a responsabilidade de declarar o que fez, e um
+provedor que declare errado apaga a agenda do usuário. É por isso que os dois caminhos do
+cliente CalDAV — `sync-collection` e `CTag` — têm teste dedicado para esse campo.

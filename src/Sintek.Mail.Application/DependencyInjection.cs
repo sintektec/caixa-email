@@ -46,6 +46,7 @@ public static class DependencyInjection
 
         services.AddScoped<FolderMirrorService>();
         services.AddScoped<MessageSyncService>();
+        services.AddScoped<CalendarSyncService>();
         services.AddScoped<SyncAccountHandler>();
 
         services.AddScoped<AddAccountHandler>();

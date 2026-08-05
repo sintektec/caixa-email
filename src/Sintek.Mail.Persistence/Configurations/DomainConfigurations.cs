@@ -103,6 +103,9 @@ public sealed class AccountConfiguration : IEntityTypeConfiguration<Account>
         builder.Property(a => a.BodyDownloadPolicy).HasConversion<int>();
         builder.Property(a => a.LastSyncError).HasMaxLength(2048);
 
+        builder.Property(a => a.CalendarProvider).HasConversion<int>();
+        builder.Property(a => a.CalendarUrl).HasMaxLength(2048);
+
         builder.HasMany(a => a.Folders)
             .WithOne(f => f.Account)
             .HasForeignKey(f => f.AccountId)

@@ -85,6 +85,7 @@ public class ConfigurationViewModelsTests
                 Substitute.For<Application.Abstractions.Mail.ISmtpSender>(),
                 _credentials,
                 _oauth,
+                [],
                 _clock,
                 NullLogger<TestAccountConnectionHandler>.Instance),
             _clock,

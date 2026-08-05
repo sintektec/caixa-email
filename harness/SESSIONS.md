@@ -409,3 +409,45 @@ não commitado.
 - Nada de código pendente nas doze fases. O que resta é validação manual em Windows 11 e
   contra servidores reais — a pendência humana registrada em "Bloqueios". A fase 13
   (CalDAV/EWS) está descrita no roadmap e fora do escopo acordado.
+
+---
+
+## 2026-08-05 — Sessão 9 (continuação): fase 13, sincronização de agenda com servidor
+
+**O que foi feito:**
+- `ICalendarSyncProvider` como porta única, com `CalendarProviderKind { None, CalDav,
+  MicrosoftGraph, GoogleCalendar }`. A implementação entregue é a de **CalDAV**; Graph e
+  Google ficam desenhados atrás da mesma porta e registrados como próximo passo (D-026).
+- Domínio: `RemoteCalendar`, `CalendarConflictEvaluator` (puro, como o
+  `DomainMembershipEvaluator`), e o estado de sincronização em `CalendarEvent` —
+  `MarkPending` que nunca rebaixa um estado mais forte, como `Message.MarkPending`.
+- `CalendarSyncService`: envio antes da leitura, falha por coleção sem derrubar as demais,
+  paginação, e remoção só em passada completa declarada pelo provedor (D-028).
+- Infraestrutura CalDAV: `CalDavTransport` (redirecionamento à mão, autenticação preemptiva,
+  ETag cru), `DavXml`, `CalDavRequests`, `CalDavHref` e `CalDavCalendarSyncProvider`.
+- Persistência: `RemoteCalendars`, colunas de espelho em `CalendarEvents`, servidor de agenda
+  em `Accounts`, migração `CalendarServerSync`, repositórios e as consultas por
+  `julianday()`.
+- Interface: conflito visível na agenda com escolha entre a versão local e a do servidor
+  (D-027), e servidor de agenda no assistente de contas, testado junto com IMAP e SMTP.
+- 865 testes (Domain 225, Application 304, Infrastructure 142, Presentation 141,
+  Persistence 55). D-026 a D-028 registradas.
+
+**Dois defeitos achados pelos testes antes de haver servidor real:**
+- `StringContent` recusa media type com parâmetro — `text/calendar; charset=utf-8` lançava
+  `FormatException` em toda escrita.
+- `StringWriter` declara `encoding="utf-16"` no XML enquanto os bytes saem em UTF-8.
+
+**Um defeito de fase anterior corrigido de passagem:** `ManageEventsHandler.RemoveAsync`
+apagava a linha local direto. Para compromisso espelhado do servidor isso faria a exclusão
+morrer local — o recurso continuaria lá e a passada seguinte o traria de volta como
+novidade. Agora fica `PendingDelete` e some depois de o servidor aceitar.
+
+**Também nesta sessão:** `.config/dotnet-tools.json` passou a fixar o `dotnet-ef` 10.0.10.
+Migração exige o pacote, e a versão precisa acompanhar o EF Core do projeto.
+
+**Próxima sessão:**
+- Provedores Microsoft Graph e Google Calendar, se houver interesse. O Graph exige decidir a
+  precedência sem `SEQUENCE` — decisão nova, não adaptação de D-024.
+- O que continua pendente é humano: validação manual em Windows 11 e teste contra servidores
+  IMAP/SMTP/CalDAV reais com Client IDs de OAuth.

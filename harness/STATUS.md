@@ -6,17 +6,14 @@
 
 ## Fase atual
 
-**Fases 1 a 12 concluídas.** O roadmap da especificação está inteiro implementado, e as
-duas fases acrescentadas a pedido do usuário — contatos e agenda — também.
-
-O que resta em `docs/roadmap.md` é a **fase 13**: sincronização bidirecional de agenda com
-servidor (CalDAV, EWS), deixada de fora de propósito. É outra pilha de protocolo inteira, e
-a agenda local alimentada por e-mail já entrega o caso de uso sem ela.
+**Fases 1 a 13 concluídas.** O roadmap da especificação está inteiro implementado, e as
+três fases acrescentadas a pedido do usuário — contatos, agenda e sincronização de agenda
+com servidor — também.
 
 ## Marco atual
 
-**790 testes verdes no núcleo multiplataforma** (169 → 272 → 336 → 426 → 441 → 478 → 485
-→ 530 → 535 → 569 → 584 → 587 → 692 → 790 ao longo das doze fases).
+**865 testes verdes no núcleo multiplataforma** (169 → 272 → 336 → 426 → 441 → 478 → 485
+→ 530 → 535 → 569 → 584 → 587 → 692 → 790 → 865 ao longo das treze fases).
 
 A fase 7 entregou a filtragem local inteira: `RuleEvaluator` puro no Domain (campos,
 operadores e combinação E/OU da seção 6.5), `ApplyArrivalRulesHandler` aplicando bloqueio
@@ -66,7 +63,28 @@ cópia de reunião alheia (D-025), que é onde o produto diverge do Outlook de p
 carrega a própria base IANA; o `VTIMEZONE` embutido cobre os nomes do Windows que o Outlook
 emite. Nenhum caminho depende da tabela do ICU, e o `InvariantGlobalization` continua ligado.
 
-Distribuição: Domain 210, Application 285, Infrastructure 114, Presentation 137, Persistence 44.
+A fase 13 ligou a agenda ao servidor, nos dois sentidos. Três protocolos atrás de uma porta
+(`ICalendarSyncProvider`), e não um: o Exchange Online nunca implementou CalDAV e o EWS tem
+data de desligamento, então Microsoft 365 só é atendido pelo Graph — que fica desenhado e
+registrado como próximo passo, com a ressalva de que ele não expõe `SEQUENCE` e por isso a
+regra de D-024 não atravessa para lá (D-026). O que entrou pronto é o **CalDAV**: descoberta
+por `current-user-principal` e `calendar-home-set`, sincronização incremental da RFC 6578
+com paginação pelo 507 dentro do 207 e recuperação de token recusado, caminho alternativo
+por `CTag` para servidor que não fala `sync-collection`, e escrita condicionada por `ETag`
+com releitura obrigatória quando o servidor não devolve ETag forte.
+
+O envio vem antes da leitura, pelo mesmo motivo que a fila de saída drena antes do IMAP.
+Conflito não é resolvido em silêncio: fica marcado e espera decisão do usuário (D-027).
+Ausência de um recurso só significa exclusão quando o provedor declara ter enumerado a
+coleção inteira — deduzir isso do token nulo apagaria a agenda de quem usa servidor sem
+`sync-collection` (D-028).
+
+Dois defeitos foram achados pelos testes antes de qualquer servidor real: o `StringContent`
+recusa media type com parâmetro (`text/calendar; charset=utf-8` lançava `FormatException` em
+toda escrita), e o `StringWriter` comum declara `encoding="utf-16"` no XML enquanto os bytes
+saem em UTF-8.
+
+Distribuição: Domain 225, Application 304, Infrastructure 142, Presentation 141, Persistence 55.
 
 > **Atenção:** houve troca de implementação em 04/08/2026 (ver `DECISIONS.md`, D-007). O que
 > este arquivo descrevia antes daquela data pertencia à versão anterior, que foi substituída.
@@ -114,9 +132,12 @@ Distribuição: Domain 210, Application 285, Infrastructure 114, Presentation 13
 1. **Revisar e integrar o PR #1.**
 2. **Validação manual em Windows 11** — o único item que resta, e que nenhuma sessão
    automatizada faz. Ver "Bloqueios".
+3. **Provedores Microsoft Graph e Google Calendar** — desenhados atrás do
+   `ICalendarSyncProvider`, ainda sem implementação. O Graph exige decidir a precedência sem
+   `SEQUENCE`, que é decisão nova e não adaptação (D-026).
 
-Não há pendência de código em nenhuma das doze fases. O que resta é **pendência humana**, registrada em "Bloqueios": validação manual em Windows 11 e teste
-contra servidores IMAP/SMTP reais com Client IDs de OAuth.
+Não há pendência de código em nenhuma das treze fases. O que resta é **pendência humana**, registrada em "Bloqueios": validação manual em Windows 11 e teste
+contra servidores IMAP/SMTP/CalDAV reais com Client IDs de OAuth.
 
 Vale notar: o MSIX compila mas **ainda não foi executado**. Nenhuma sessão automatizada
 consegue fazer isso — exige uma máquina Windows 11 real. A validação funcional da interface

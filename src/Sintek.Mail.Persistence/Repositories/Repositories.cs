@@ -732,9 +732,97 @@ public sealed class CalendarRepository : ICalendarRepository
             .ConfigureAwait(false);
 
     /// <inheritdoc />
+    public Task<CalendarEvent?> GetByRemoteHrefAsync(
+        Guid remoteCalendarId, string href, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(href);
+
+        return _context.CalendarEvents
+            .Include(e => e.Attendees)
+            .FirstOrDefaultAsync(
+                e => e.RemoteCalendarId == remoteCalendarId && e.RemoteHref == href,
+                cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<CalendarEvent>> ListPendingAsync(
+        Guid remoteCalendarId, CancellationToken cancellationToken = default)
+        => await _context.CalendarEvents
+            .Include(e => e.Attendees)
+            .Where(e => e.RemoteCalendarId == remoteCalendarId
+                && (e.SyncState == CalendarSyncState.PendingCreate
+                    || e.SyncState == CalendarSyncState.PendingUpdate
+                    || e.SyncState == CalendarSyncState.PendingDelete))
+            // Ordem estável e cronológica: julianday(), nunca a coluna de data direto.
+            .OrderBy(e => SqliteFunctions.JulianDay(e.UpdatedAt))
+            .ThenBy(e => e.Id)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<string>> ListRemoteHrefsAsync(
+        Guid remoteCalendarId, CancellationToken cancellationToken = default)
+        => await _context.CalendarEvents
+            .Where(e => e.RemoteCalendarId == remoteCalendarId && e.RemoteHref != null)
+            .Select(e => e.RemoteHref!)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<CalendarEvent>> ListConflictedAsync(
+        Guid? accountId, CancellationToken cancellationToken = default)
+        => await _context.CalendarEvents
+            .Include(e => e.Attendees)
+            .Where(e => (accountId == null || e.AccountId == accountId)
+                && e.SyncState == CalendarSyncState.Conflict)
+            .OrderBy(e => SqliteFunctions.JulianDay(e.StartsAt))
+            .ThenBy(e => e.Id)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+    /// <inheritdoc />
     public async Task AddAsync(CalendarEvent calendarEvent, CancellationToken cancellationToken = default)
         => await _context.CalendarEvents.AddAsync(calendarEvent, cancellationToken).ConfigureAwait(false);
 
     /// <inheritdoc />
     public void Remove(CalendarEvent calendarEvent) => _context.CalendarEvents.Remove(calendarEvent);
+}
+
+/// <summary>Acesso às coleções de calendário espelhadas.</summary>
+public sealed class RemoteCalendarRepository : IRemoteCalendarRepository
+{
+    private readonly MailDbContext _context;
+
+    public RemoteCalendarRepository(MailDbContext context) => _context = context;
+
+    /// <inheritdoc />
+    public Task<RemoteCalendar?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+        => _context.RemoteCalendars.FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<RemoteCalendar?> GetByCollectionUrlAsync(
+        Guid accountId, string collectionUrl, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(collectionUrl);
+
+        return _context.RemoteCalendars.FirstOrDefaultAsync(
+            c => c.AccountId == accountId && c.CollectionUrl == collectionUrl, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<RemoteCalendar>> ListByAccountAsync(
+        Guid accountId, CancellationToken cancellationToken = default)
+        => await _context.RemoteCalendars
+            .Where(c => c.AccountId == accountId)
+            .OrderBy(c => c.DisplayName)
+            .ThenBy(c => c.Id)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+    /// <inheritdoc />
+    public async Task AddAsync(RemoteCalendar calendar, CancellationToken cancellationToken = default)
+        => await _context.RemoteCalendars.AddAsync(calendar, cancellationToken).ConfigureAwait(false);
+
+    /// <inheritdoc />
+    public void Remove(RemoteCalendar calendar) => _context.RemoteCalendars.Remove(calendar);
 }

@@ -64,7 +64,7 @@ public class AccountHandlersTests
         _autodiscover, _imap, _oauthRegistry, _clock, NullLogger<AddAccountHandler>.Instance);
 
     private TestAccountConnectionHandler ConnectionTestHandler() => new(
-        _imap, _smtp, _credentials, _oauthRegistry, _clock,
+        _imap, _smtp, _credentials, _oauthRegistry, [], _clock,
         NullLogger<TestAccountConnectionHandler>.Instance);
 
     private UpdateAccountHandler UpdateHandler() => new(

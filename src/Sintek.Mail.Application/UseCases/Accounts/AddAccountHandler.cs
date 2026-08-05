@@ -56,6 +56,19 @@ public sealed record AddAccountCommand
 
     /// <summary>Nome de usuário, quando difere do endereço.</summary>
     public string? UserName { get; init; }
+
+    /// <summary>Protocolo do servidor de agenda.</summary>
+    public CalendarProviderKind CalendarProvider { get; init; } = CalendarProviderKind.None;
+
+    /// <summary>
+    /// Endereço HTTPS do servidor de agenda. Vazio deixa a conta sem espelho remoto.
+    /// </summary>
+    /// <remarks>
+    /// A credencial é a mesma do e-mail: pedir uma segunda senha para o mesmo servidor seria
+    /// pedir duas vezes a mesma coisa, e guardar uma cópia dela é uma cópia a mais para
+    /// vazar.
+    /// </remarks>
+    public string? CalendarUrl { get; init; }
 }
 
 /// <summary>Resultado do cadastro.</summary>
@@ -176,6 +189,19 @@ public sealed class AddAccountHandler
             settings.Value.SmtpPort,
             settings.Value.SmtpSecurity,
             now);
+
+        try
+        {
+            account.ConfigureCalendar(
+                command.CalendarProvider, command.CalendarUrl, syncEnabled: true, now);
+        }
+        catch (ArgumentException)
+        {
+            // Endereço fora de HTTPS. A regra é do domínio; aqui ela vira texto exibível em
+            // vez de exceção subindo até a interface.
+            return new AddAccountResult(
+                false, null, "O endereço do servidor de agenda precisa começar com https://.");
+        }
 
         if (command.AuthenticationType == AuthenticationType.OAuth2)
         {
