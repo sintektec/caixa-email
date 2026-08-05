@@ -254,3 +254,25 @@ a caixa postal de quem talvez use outro cliente na mesma conta.
 **Alternativas rejeitadas:** reimplementar a avaliação dentro do motor de sincronização
 (criaria uma segunda versão da regra, que divergiria da primeira); apagar a mensagem
 incompatível (perda de dados por configuração).
+
+---
+
+## D-014 — Enviar é entregar à fila, nunca falar SMTP da interface (2026-08-05)
+
+**Status:** aceita
+
+**Decisão:** O botão Enviar grava a mensagem na Caixa de Saída local e enfileira
+`SendMessage`, na mesma transação. O SMTP acontece quando a fila drenar. O rascunho segue o
+mesmo desenho com `AppendDraft`.
+
+**Motivo:** É a promessa offline-first aplicada ao envio: o botão funciona num avião, a
+mensagem sai quando a rede voltar, e a fila visível mostra o que ainda não saiu. Falar SMTP
+diretamente do compositor criaria dois caminhos de envio — um com as garantias da fila
+(ordem, retentativa, recuo exponencial) e outro sem nenhuma.
+
+A cópia em Itens Enviados usa o mesmo `MimeMessageWriter` do envio: serializar duas vezes
+faria a cópia guardada divergir do que o destinatário recebeu.
+
+**Consequências:** o envio nunca é instantâneo do ponto de vista do processo — há sempre um
+ciclo de fila entre o clique e o SMTP. Em troca, falha de rede no meio do envio deixa de
+existir como categoria de erro do compositor.

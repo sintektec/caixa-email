@@ -166,3 +166,25 @@ sem cumprir a regra de ouro da seção 3.
 **Próxima sessão:**
 - Aguardar a decisão do usuário entre seguir para a fase 4 (Leitura e composição) ou parar
   para validação manual em Windows 11.
+
+---
+
+## 2026-08-05 — Sessão 9 (continuação): Fase 4 (Leitura e composição)
+
+**Objetivo:** Concluir a fase 4, com as adições de escopo pedidas pelo usuário (spam/lixo
+eletrônico e IA) registradas no roadmap.
+
+**O que foi feito:**
+- Roadmap ganhou a origem do escopo novo: spam distribuído nas fases 4/5/7, IA como fase 8
+  com política de privacidade antes de recursos.
+- Veredito do servidor (SPF/DKIM/DMARC, X-Spam-*) lido na chegada; `SenderTrustEvaluator`
+  com detecção de remetente disfarçado; faixa de confiança no painel de leitura.
+- Download sob demanda de corpo e anexos; anexos em disco fora do banco
+  (`FileAttachmentStore`, com nome físico próprio — o nome do remetente é hostil).
+- `DraftComposer` (resposta, resposta a todos, encaminhamento), `ForgottenAttachmentDetector`
+  e `ComposeMessageHandler` (enviar = entregar à fila, D-014). Compositor WinUI completo.
+- Duas armadilhas do `InvariantGlobalization` documentadas em `CLAUDE.md`.
+- 336 → 426 testes.
+
+**Próxima sessão:**
+- Aguardar decisão do usuário: fase 5, validação manual em Windows, ou revisão do PR #1.

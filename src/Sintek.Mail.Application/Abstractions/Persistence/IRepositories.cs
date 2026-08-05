@@ -127,6 +127,18 @@ public interface IMessageRepository
     /// <summary>Conta as mensagens não lidas de uma pasta.</summary>
     Task<int> CountUnreadAsync(Guid folderId, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Lista os correspondentes conhecidos da conta: nome exibido e domínio de quem o
+    /// usuário já leu mensagens.
+    /// </summary>
+    /// <remarks>
+    /// Alimenta a detecção de remetente disfarçado. Só entram mensagens lidas e não marcadas
+    /// como spam — é a leitura que indica que o usuário reconhece aquele remetente. Incluir
+    /// tudo faria o primeiro golpe "ensinar" o nome falso como legítimo.
+    /// </remarks>
+    Task<IReadOnlyList<KnownCorrespondent>> ListKnownCorrespondentsAsync(
+        Guid accountId, CancellationToken cancellationToken = default);
+
     /// <summary>Lista as mensagens presentes em pastas restritas por um diretório.</summary>
     Task<IReadOnlyList<Message>> ListInRestrictedFoldersAsync(
         Guid domainDirectoryId, CancellationToken cancellationToken = default);

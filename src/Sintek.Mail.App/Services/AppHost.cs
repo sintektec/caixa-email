@@ -52,6 +52,7 @@ public static class AppHost
         services.AddSintekMailPersistence(_ => new DatabaseOptions(databasePath, encryptionKey));
 
         services.AddSintekMailPresentation();
+        services.AddSingleton<Sintek.Mail.Application.UseCases.Messages.IAttachmentStore, FileAttachmentStore>();
         services.AddSingleton<MainWindow>();
 
         var provider = services.BuildServiceProvider();

@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Sintek.Mail.App.Dialogs;
+using Sintek.Mail.Application.UseCases.Messages;
 using Sintek.Mail.Presentation.ViewModels;
 using Windows.ApplicationModel.DataTransfer;
 
@@ -61,14 +62,14 @@ public sealed partial class MainWindow : Window
     private void RegisterKeyboardShortcuts()
     {
         AddShortcut(Windows.System.VirtualKey.N, Windows.System.VirtualKeyModifiers.Control,
-            () => { /* Nova mensagem */ });
+            () => _ = OpenComposerAsync(DraftKind.New, null));
 
         AddShortcut(Windows.System.VirtualKey.R, Windows.System.VirtualKeyModifiers.Control,
-            () => { /* Responder */ });
+            () => _ = OpenComposerAsync(DraftKind.Reply, Reading.MessageId));
 
         AddShortcut(Windows.System.VirtualKey.R,
             Windows.System.VirtualKeyModifiers.Control | Windows.System.VirtualKeyModifiers.Shift,
-            () => { /* Responder a todos */ });
+            () => _ = OpenComposerAsync(DraftKind.ReplyAll, Reading.MessageId));
 
         AddShortcut(Windows.System.VirtualKey.E, Windows.System.VirtualKeyModifiers.Control,
             () => SearchBox.Focus(FocusState.Programmatic));
@@ -314,6 +315,66 @@ public sealed partial class MainWindow : Window
         return wizard.RequestedDirectoryCreation
             ? SettingsFollowUp.DomainDirectory
             : SettingsFollowUp.None;
+    }
+
+    private async void OnNewMessageClick(object sender, RoutedEventArgs e)
+        => await OpenComposerAsync(DraftKind.New, null).ConfigureAwait(true);
+
+    private async void OnReplyClick(object sender, RoutedEventArgs e)
+        => await OpenComposerAsync(DraftKind.Reply, Reading.MessageId).ConfigureAwait(true);
+
+    private async void OnReplyAllClick(object sender, RoutedEventArgs e)
+        => await OpenComposerAsync(DraftKind.ReplyAll, Reading.MessageId).ConfigureAwait(true);
+
+    private async void OnForwardClick(object sender, RoutedEventArgs e)
+        => await OpenComposerAsync(DraftKind.Forward, Reading.MessageId).ConfigureAwait(true);
+
+    /// <summary>
+    /// Abre o compositor para a conta do nó selecionado.
+    /// </summary>
+    /// <remarks>
+    /// Resposta e encaminhamento exigem uma mensagem aberta; mensagem nova exige ao menos
+    /// saber por qual conta enviar, que vem da seleção na árvore.
+    /// </remarks>
+    private async Task OpenComposerAsync(DraftKind kind, Guid? sourceMessageId)
+    {
+        if (kind != DraftKind.New && sourceMessageId is null)
+        {
+            return;
+        }
+
+        var accountId = Shell.SelectedNode?.AccountId;
+
+        if (accountId is null)
+        {
+            Shell.StatusMessage = "Selecione uma conta ou pasta antes de escrever.";
+            return;
+        }
+
+        var composer = ComposerDialog.Create(RootGrid.XamlRoot);
+        await composer.InitializeAsync(accountId.Value, kind, sourceMessageId).ConfigureAwait(true);
+        await composer.ShowAsync();
+
+        await Shell.RefreshPendingCountAsync().ConfigureAwait(true);
+    }
+
+    /// <summary>Baixa o anexo, se preciso, e o abre com o aplicativo padrão.</summary>
+    private async void OnAttachmentClick(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not AttachmentViewModel attachment)
+        {
+            return;
+        }
+
+        var path = await Reading.DownloadAttachmentAsync(attachment.AttachmentId).ConfigureAwait(true);
+
+        if (path is null)
+        {
+            return;
+        }
+
+        var file = await Windows.Storage.StorageFile.GetFileFromPathAsync(path);
+        _ = await Windows.System.Launcher.LaunchFileAsync(file);
     }
 
     private async void OnOutboxClick(object sender, RoutedEventArgs e)

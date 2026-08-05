@@ -237,6 +237,31 @@ public sealed class MessageRepository : IMessageRepository
             .CountAsync(m => m.FolderId == folderId && !m.IsDeleted && !m.IsRead, cancellationToken);
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<KnownCorrespondent>> ListKnownCorrespondentsAsync(
+        Guid accountId, CancellationToken cancellationToken = default)
+    {
+        // O domínio do endereço é derivado do value object, que o SQL não enxerga; a
+        // projeção traz os pares e a decomposição acontece em memória. O teto de linhas
+        // protege contra caixas com décadas de histórico.
+        var rows = await _context.Messages
+            .Where(m => m.AccountId == accountId
+                && m.IsRead
+                && !m.IsFlaggedAsSpamByServer
+                && m.FromDisplayName != null
+                && m.FromAddress != null)
+            .Select(m => new { m.FromDisplayName, m.FromAddress })
+            .Distinct()
+            .Take(2000)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return rows
+            .Select(r => new KnownCorrespondent(r.FromDisplayName!, r.FromAddress!.Domain))
+            .DistinctBy(k => (k.DisplayName, k.Domain.Value))
+            .ToList();
+    }
+
+    /// <inheritdoc />
     public async Task<IReadOnlyList<Message>> ListInRestrictedFoldersAsync(
         Guid domainDirectoryId, CancellationToken cancellationToken = default)
         => await _context.Messages

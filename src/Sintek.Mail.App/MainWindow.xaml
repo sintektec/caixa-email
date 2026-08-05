@@ -28,6 +28,7 @@
 
             <Button Grid.Column="0" x:Name="NewMessageButton"
                     Style="{ThemeResource AccentButtonStyle}"
+                    Click="OnNewMessageClick"
                     AutomationProperties.Name="Nova mensagem"
                     ToolTipService.ToolTip="Nova mensagem (Ctrl+N)">
                 <StackPanel Orientation="Horizontal" Spacing="8">
@@ -256,6 +257,31 @@
                     <TextBlock Text="{x:Bind Reading.Subject, Mode=OneWay}"
                                Style="{ThemeResource SubtitleTextBlockStyle}"
                                TextWrapping="Wrap" />
+
+                    <!--
+                        Só os vereditos negativos ganham faixa; o selo de verificada fica
+                        discreto. Alerta que aparece em toda mensagem legítima deixa de ser
+                        lido.
+                    -->
+                    <InfoBar IsOpen="{x:Bind Reading.ShowTrustWarning, Mode=OneWay}"
+                             Severity="Error"
+                             Title="Atenção à procedência"
+                             Message="{x:Bind Reading.TrustMessage, Mode=OneWay}"
+                             IsClosable="False" />
+
+                    <StackPanel Orientation="Horizontal" Spacing="6"
+                                Visibility="{x:Bind Reading.ShowAuthenticatedBadge, Mode=OneWay}">
+                        <FontIcon Glyph="&#xE73E;" FontSize="12"
+                                  Foreground="{ThemeResource SystemFillColorSuccessBrush}" />
+                        <TextBlock Text="Origem verificada pelo servidor"
+                                   Style="{ThemeResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+
+                    <InfoBar IsOpen="{x:Bind Reading.HasDownloadError, Mode=OneWay}"
+                             Severity="Warning"
+                             Message="{x:Bind Reading.DownloadError, Mode=OneWay}"
+                             IsClosable="False" />
                     <TextBlock Text="{x:Bind Reading.From, Mode=OneWay}"
                                Style="{ThemeResource BodyTextBlockStyle}" />
                     <TextBlock Text="{x:Bind Reading.To, Mode=OneWay}"
@@ -264,9 +290,9 @@
                 </StackPanel>
 
                 <CommandBar Grid.Row="1" DefaultLabelPosition="Right" HorizontalAlignment="Left">
-                    <AppBarButton Icon="MailReply" Label="Responder" AutomationProperties.Name="Responder (Ctrl+R)" />
-                    <AppBarButton Icon="MailReplyAll" Label="Responder a todos" />
-                    <AppBarButton Icon="MailForward" Label="Encaminhar" />
+                    <AppBarButton Icon="MailReply" Label="Responder" Click="OnReplyClick" AutomationProperties.Name="Responder (Ctrl+R)" />
+                    <AppBarButton Icon="MailReplyAll" Label="Responder a todos" Click="OnReplyAllClick" />
+                    <AppBarButton Icon="MailForward" Label="Encaminhar" Click="OnForwardClick" />
                     <AppBarSeparator />
                     <AppBarButton Icon="Delete" Label="Excluir" />
                     <AppBarButton Icon="Save" Label="Arquivar" />
@@ -306,7 +332,10 @@
                 <ItemsControl ItemsSource="{x:Bind Reading.Attachments, Mode=OneWay}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:AttachmentViewModel">
-                            <Button Margin="0,0,8,8" AutomationProperties.Name="{x:Bind FileName}">
+                            <Button Margin="0,0,8,8"
+                                    Click="OnAttachmentClick"
+                                    Tag="{x:Bind}"
+                                    AutomationProperties.Name="{x:Bind FileName}">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <FontIcon Glyph="&#xE723;" FontSize="14" />
                                     <TextBlock Text="{x:Bind FileName}" />

@@ -3,8 +3,10 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Sintek.Mail.Application.Abstractions.Persistence;
 using Sintek.Mail.Application.Abstractions.Security;
+using Sintek.Mail.Application.UseCases.Messages;
 using Sintek.Mail.Domain.Entities;
 using Sintek.Mail.Domain.Enums;
+using Sintek.Mail.Domain.Services;
 
 namespace Sintek.Mail.Presentation.ViewModels;
 
@@ -43,11 +45,16 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
 {
     private readonly IMessageRepository _messages;
     private readonly IHtmlSanitizer _sanitizer;
+    private readonly DownloadMessageContentHandler _download;
 
-    public ReadingPaneViewModel(IMessageRepository messages, IHtmlSanitizer sanitizer)
+    public ReadingPaneViewModel(
+        IMessageRepository messages,
+        IHtmlSanitizer sanitizer,
+        DownloadMessageContentHandler download)
     {
         _messages = messages;
         _sanitizer = sanitizer;
+        _download = download;
     }
 
     [ObservableProperty]
@@ -85,6 +92,34 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
     /// <summary>Se a barra "Exibir imagens" deve aparecer.</summary>
     public bool ShowRemoteContentBar => HasRemoteContent && !RemoteContentAllowed;
 
+    /// <summary>Veredito de procedência da mensagem.</summary>
+    [ObservableProperty]
+    private SenderTrustLevel _trustLevel = SenderTrustLevel.Neutral;
+
+    /// <summary>Explicação do veredito, para a faixa e para leitores de tela.</summary>
+    [ObservableProperty]
+    private string _trustMessage = string.Empty;
+
+    /// <summary>Se a faixa de alerta de procedência deve aparecer.</summary>
+    /// <remarks>
+    /// Só os vereditos negativos ganham faixa. O selo de "verificada" fica discreto no
+    /// cabeçalho: alerta que aparece em toda mensagem legítima deixa de ser lido, e o espaço
+    /// de atenção do usuário é o recurso mais escasso da tela.
+    /// </remarks>
+    public bool ShowTrustWarning => TrustLevel is SenderTrustLevel.DisplayNameSpoofing
+        or SenderTrustLevel.AuthenticationFailed
+        or SenderTrustLevel.FlaggedAsSpam;
+
+    /// <summary>Se o selo de origem verificada deve aparecer.</summary>
+    public bool ShowAuthenticatedBadge => TrustLevel == SenderTrustLevel.Authenticated;
+
+    /// <summary>Mensagem exibida quando o corpo não pôde ser baixado.</summary>
+    [ObservableProperty]
+    private string _downloadError = string.Empty;
+
+    /// <summary>Se há erro de download a exibir.</summary>
+    public bool HasDownloadError => DownloadError.Length > 0;
+
     /// <summary>Anexos.</summary>
     public ObservableCollection<AttachmentViewModel> Attachments { get; } = [];
 
@@ -99,9 +134,20 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
     public async Task LoadMessageAsync(Guid messageId, CancellationToken cancellationToken = default)
     {
         IsLoading = true;
+        DownloadError = string.Empty;
 
         try
         {
+            // O download é idempotente: corpo já presente devolve sem tocar na rede, e é
+            // isso que torna seguro chamá-lo em todo clique de mensagem.
+            var download = await _download.DownloadBodyAsync(messageId, cancellationToken)
+                .ConfigureAwait(true);
+
+            if (!download.Succeeded)
+            {
+                DownloadError = download.ErrorMessage ?? string.Empty;
+            }
+
             var message = await _messages.GetWithParticipantsAsync(messageId, cancellationToken)
                 .ConfigureAwait(true);
 
@@ -137,11 +183,59 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
             }
 
             OnPropertyChanged(nameof(HasSuspiciousAttachment));
+
+            await EvaluateTrustAsync(message, cancellationToken).ConfigureAwait(true);
         }
         finally
         {
             IsLoading = false;
         }
+    }
+
+    /// <summary>Baixa o conteúdo de um anexo e devolve o caminho no disco.</summary>
+    public async Task<string?> DownloadAttachmentAsync(
+        Guid attachmentId, CancellationToken cancellationToken = default)
+    {
+        if (MessageId is not { } messageId)
+        {
+            return null;
+        }
+
+        var result = await _download.DownloadAttachmentAsync(messageId, attachmentId, cancellationToken)
+            .ConfigureAwait(true);
+
+        if (!result.Succeeded)
+        {
+            DownloadError = result.ErrorMessage ?? string.Empty;
+            return null;
+        }
+
+        var message = await _messages.GetWithParticipantsAsync(messageId, cancellationToken)
+            .ConfigureAwait(true);
+
+        return message?.Attachments.FirstOrDefault(a => a.Id == attachmentId)?.StoragePath;
+    }
+
+    /// <summary>
+    /// Avalia a procedência da mensagem.
+    /// </summary>
+    /// <remarks>
+    /// A regra vive em <see cref="SenderTrustEvaluator"/>, no domínio; aqui só se buscam os
+    /// correspondentes conhecidos e se apresenta o veredito. A lista vem das mensagens que o
+    /// usuário leu — é a leitura que indica que ele reconhece aquele remetente.
+    /// </remarks>
+    private async Task EvaluateTrustAsync(Message message, CancellationToken cancellationToken)
+    {
+        var correspondents = await _messages
+            .ListKnownCorrespondentsAsync(message.AccountId, cancellationToken)
+            .ConfigureAwait(true);
+
+        var verdict = SenderTrustEvaluator.Evaluate(message, correspondents);
+
+        TrustLevel = verdict.Level;
+        TrustMessage = verdict.Level == SenderTrustLevel.Authenticated
+            ? "Origem verificada pelo servidor."
+            : verdict.Reason;
     }
 
     /// <summary>Autoriza o carregamento do conteúdo remoto desta mensagem.</summary>
@@ -184,6 +278,9 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
 
     private void Clear()
     {
+        TrustLevel = SenderTrustLevel.Neutral;
+        TrustMessage = string.Empty;
+        DownloadError = string.Empty;
         MessageId = null;
         Subject = string.Empty;
         From = string.Empty;
@@ -210,4 +307,12 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
     partial void OnHasRemoteContentChanged(bool value) => OnPropertyChanged(nameof(ShowRemoteContentBar));
 
     partial void OnRemoteContentAllowedChanged(bool value) => OnPropertyChanged(nameof(ShowRemoteContentBar));
+
+    partial void OnTrustLevelChanged(SenderTrustLevel value)
+    {
+        OnPropertyChanged(nameof(ShowTrustWarning));
+        OnPropertyChanged(nameof(ShowAuthenticatedBadge));
+    }
+
+    partial void OnDownloadErrorChanged(string value) => OnPropertyChanged(nameof(HasDownloadError));
 }

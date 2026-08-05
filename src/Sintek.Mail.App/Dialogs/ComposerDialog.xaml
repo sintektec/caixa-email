@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ContentDialog
+    x:Class="Sintek.Mail.App.Dialogs.ComposerDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:Sintek.Mail.Presentation.ViewModels"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Title="Nova mensagem"
+    PrimaryButtonText="Enviar"
+    SecondaryButtonText="Salvar rascunho"
+    CloseButtonText="Descartar"
+    DefaultButton="Primary"
+    PrimaryButtonClick="OnSendClick"
+    SecondaryButtonClick="OnSaveDraftClick">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="560">
+        <StackPanel Spacing="12" Width="560">
+
+            <ProgressBar IsIndeterminate="True"
+                         Visibility="{x:Bind ViewModel.IsBusy, Mode=OneWay}"
+                         AutomationProperties.Name="Operação em andamento" />
+
+            <InfoBar IsOpen="{x:Bind ViewModel.HasStatusMessage, Mode=OneWay}"
+                     Severity="Warning"
+                     Message="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
+                     IsClosable="False" />
+
+            <Grid ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBox Grid.Column="0"
+                         Header="Para"
+                         PlaceholderText="destinatario@dominio.com.br; outro@dominio.com.br"
+                         Text="{x:Bind ViewModel.To, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                         AutomationProperties.Name="Destinatários" />
+
+                <ToggleButton Grid.Column="1"
+                              Content="CC/CCO"
+                              VerticalAlignment="Bottom"
+                              IsChecked="{x:Bind ViewModel.ShowCcBcc, Mode=TwoWay}"
+                              AutomationProperties.Name="Exibir campos de cópia e cópia oculta" />
+            </Grid>
+
+            <TextBox Header="CC"
+                     Text="{x:Bind ViewModel.Cc, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                     Visibility="{x:Bind ViewModel.ShowCcBcc, Mode=OneWay}"
+                     AutomationProperties.Name="Cópia" />
+
+            <TextBox Header="CCO"
+                     Text="{x:Bind ViewModel.Bcc, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                     Visibility="{x:Bind ViewModel.ShowCcBcc, Mode=OneWay}"
+                     AutomationProperties.Name="Cópia oculta" />
+
+            <TextBox Header="Assunto"
+                     Text="{x:Bind ViewModel.Subject, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                     AutomationProperties.Name="Assunto" />
+
+            <TextBox Header="Mensagem"
+                     Text="{x:Bind ViewModel.BodyText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                     AcceptsReturn="True"
+                     TextWrapping="Wrap"
+                     MinHeight="220"
+                     MaxHeight="320"
+                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                     AutomationProperties.Name="Corpo da mensagem" />
+
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button Content="Anexar arquivo"
+                        Click="OnAttachClick"
+                        AutomationProperties.Name="Anexar arquivo" />
+
+                <CheckBox Content="Confirmação de leitura"
+                          IsChecked="{x:Bind ViewModel.RequestReadReceipt, Mode=TwoWay}" />
+            </StackPanel>
+
+            <ItemsControl ItemsSource="{x:Bind ViewModel.Attachments, Mode=OneWay}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ComposerAttachmentItem">
+                        <Grid ColumnSpacing="8" Padding="0,2">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <FontIcon Grid.Column="0" Glyph="&#xE723;" FontSize="14" />
+
+                            <TextBlock Grid.Column="1"
+                                       Text="{x:Bind FileName}"
+                                       TextTrimming="CharacterEllipsis"
+                                       VerticalAlignment="Center" />
+
+                            <Button Grid.Column="2"
+                                    Content="Remover"
+                                    Click="OnRemoveAttachmentClick"
+                                    Tag="{x:Bind}"
+                                    AutomationProperties.Name="Remover anexo" />
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+        </StackPanel>
+    </ScrollViewer>
+</ContentDialog>

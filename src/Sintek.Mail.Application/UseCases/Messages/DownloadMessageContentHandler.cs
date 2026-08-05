@@ -1,0 +1,206 @@
+using Microsoft.Extensions.Logging;
+using Sintek.Mail.Application.Abstractions.Mail;
+using Sintek.Mail.Application.Abstractions.Persistence;
+using Sintek.Mail.Application.Abstractions.Security;
+using Sintek.Mail.Domain.Entities;
+
+namespace Sintek.Mail.Application.UseCases.Messages;
+
+/// <summary>
+/// Guarda o conteúdo de anexos fora do banco de dados.
+/// </summary>
+/// <remarks>
+/// Anexo é o que domina o volume de uma caixa postal, e blobs dentro do SQLite incham o
+/// arquivo e degradam o WAL. O banco guarda apenas o caminho; o conteúdo vai para a pasta de
+/// anexos da aplicação. A implementação real vive na camada de App, que sabe onde essa pasta
+/// fica; os testes usam uma em memória.
+/// </remarks>
+public interface IAttachmentStore
+{
+    /// <summary>Grava o conteúdo e devolve o caminho de armazenamento.</summary>
+    Task<string> SaveAsync(
+        Guid messageId, Guid attachmentId, string fileName, Stream content,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>Resultado do download de corpo.</summary>
+/// <param name="Succeeded">Se o corpo está disponível ao final.</param>
+/// <param name="ErrorMessage">Motivo exibível quando não está.</param>
+public readonly record struct DownloadBodyResult(bool Succeeded, string? ErrorMessage);
+
+/// <summary>
+/// Baixa corpo e anexos sob demanda — o caminho do clique em uma mensagem ainda não baixada.
+/// </summary>
+/// <remarks>
+/// <para>
+/// A sincronização traz só cabeçalhos; o corpo desce quando o usuário abre a mensagem, como
+/// manda a política <c>OnDemand</c>/<c>RecentOnly</c>. O HTML é higienizado <b>no momento da
+/// gravação</b>, e o original fica guardado — é o que permite reprocessar mensagens antigas
+/// quando as regras de sanitização mudarem.
+/// </para>
+/// <para>
+/// O download é idempotente: corpo já presente devolve sucesso sem tocar na rede. É o que
+/// torna seguro chamá-lo em todo clique de mensagem.
+/// </para>
+/// </remarks>
+public sealed class DownloadMessageContentHandler
+{
+    private readonly IMessageRepository _messages;
+    private readonly IFolderRepository _folders;
+    private readonly IUnitOfWork _unitOfWork;
+    private readonly IImapClient _imapClient;
+    private readonly IHtmlSanitizer _sanitizer;
+    private readonly IAttachmentStore _attachmentStore;
+    private readonly TimeProvider _timeProvider;
+    private readonly ILogger<DownloadMessageContentHandler> _logger;
+
+    public DownloadMessageContentHandler(
+        IMessageRepository messages,
+        IFolderRepository folders,
+        IUnitOfWork unitOfWork,
+        IImapClient imapClient,
+        IHtmlSanitizer sanitizer,
+        IAttachmentStore attachmentStore,
+        TimeProvider timeProvider,
+        ILogger<DownloadMessageContentHandler> logger)
+    {
+        _messages = messages;
+        _folders = folders;
+        _unitOfWork = unitOfWork;
+        _imapClient = imapClient;
+        _sanitizer = sanitizer;
+        _attachmentStore = attachmentStore;
+        _timeProvider = timeProvider;
+        _logger = logger;
+    }
+
+    /// <summary>Baixa o corpo da mensagem, se ainda não estiver no banco.</summary>
+    public async Task<DownloadBodyResult> DownloadBodyAsync(
+        Guid messageId, CancellationToken cancellationToken = default)
+    {
+        var message = await _messages.GetWithParticipantsAsync(messageId, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (message is null)
+        {
+            return new DownloadBodyResult(false, "A mensagem não existe mais.");
+        }
+
+        if (message.Body?.DownloadedAt is not null)
+        {
+            return new DownloadBodyResult(true, null);
+        }
+
+        var folder = await _folders.GetByIdAsync(message.FolderId, cancellationToken).ConfigureAwait(false);
+
+        if (folder is null || folder.IsLocalOnly || message.Uid is not > 0)
+        {
+            // Sem contrapartida no servidor não há de onde baixar. Rascunho local e mensagem
+            // desviada para pendências caem aqui — o corpo delas ou já existe ou nunca existiu.
+            return new DownloadBodyResult(false, "Esta mensagem não tem conteúdo no servidor.");
+        }
+
+        var fetched = await _imapClient
+            .FetchBodyAsync(folder.RemotePath, message.Uid.Value, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (fetched is null)
+        {
+            return new DownloadBodyResult(
+                false, "Não foi possível baixar o conteúdo. Verifique a conexão e tente de novo.");
+        }
+
+        var now = _timeProvider.GetUtcNow();
+
+        // Higieniza na gravação: o HtmlBody original fica guardado para reprocessamento
+        // futuro, e o SanitizedHtml é o único que a interface entrega ao WebView2.
+        var sanitized = _sanitizer.Sanitize(fetched.HtmlBody, allowRemoteContent: false);
+
+        var body = message.Body ?? MessageBody.Create(message.Id, now);
+        body.SetContent(
+            fetched.HtmlBody,
+            fetched.TextBody,
+            sanitized.SanitizedHtml,
+            sanitized.HasRemoteContent,
+            now);
+
+        if (message.Body is null)
+        {
+            message.SetBody(body, now);
+        }
+
+        foreach (var meta in fetched.Attachments)
+        {
+            // Anexos já conhecidos não são recriados: o download de corpo pode rodar de
+            // novo após uma falha parcial, e duplicá-los mostraria o mesmo arquivo duas
+            // vezes no painel.
+            if (message.Attachments.Any(a => a.PartSpecifier == meta.PartSpecifier))
+            {
+                continue;
+            }
+
+            message.AddAttachment(Attachment.Create(
+                message.Id,
+                meta.FileName,
+                meta.ContentType,
+                meta.Size,
+                meta.PartSpecifier,
+                now,
+                meta.ContentId,
+                meta.IsInline));
+        }
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+        return new DownloadBodyResult(true, null);
+    }
+
+    /// <summary>Baixa o conteúdo de um anexo para o disco.</summary>
+    public async Task<DownloadBodyResult> DownloadAttachmentAsync(
+        Guid messageId, Guid attachmentId, CancellationToken cancellationToken = default)
+    {
+        var message = await _messages.GetWithParticipantsAsync(messageId, cancellationToken)
+            .ConfigureAwait(false);
+
+        var attachment = message?.Attachments.FirstOrDefault(a => a.Id == attachmentId);
+
+        if (message is null || attachment is null)
+        {
+            return new DownloadBodyResult(false, "O anexo não existe mais.");
+        }
+
+        if (attachment.IsDownloaded)
+        {
+            return new DownloadBodyResult(true, null);
+        }
+
+        var folder = await _folders.GetByIdAsync(message.FolderId, cancellationToken).ConfigureAwait(false);
+
+        if (folder is null || folder.IsLocalOnly || message.Uid is not > 0)
+        {
+            return new DownloadBodyResult(false, "Este anexo não tem conteúdo no servidor.");
+        }
+
+        await using var content = await _imapClient
+            .FetchAttachmentAsync(folder.RemotePath, message.Uid.Value, attachment.PartSpecifier, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (content is null)
+        {
+            return new DownloadBodyResult(
+                false, "Não foi possível baixar o anexo. Verifique a conexão e tente de novo.");
+        }
+
+        var path = await _attachmentStore
+            .SaveAsync(message.Id, attachment.Id, attachment.FileName, content, cancellationToken)
+            .ConfigureAwait(false);
+
+        attachment.MarkDownloaded(path, _timeProvider.GetUtcNow());
+        await _unitOfWork.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+        _logger.LogInformation(
+            "Anexo {AttachmentId} da mensagem {MessageId} baixado.", attachment.Id, message.Id);
+
+        return new DownloadBodyResult(true, null);
+    }
+}

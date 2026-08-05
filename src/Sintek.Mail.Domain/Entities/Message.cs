@@ -268,6 +268,22 @@ public sealed class Message : Entity
         HasAttachments = _attachments.Any(a => !a.IsInline);
     }
 
+    /// <summary>
+    /// Remove todos os participantes.
+    /// </summary>
+    /// <remarks>
+    /// Existe para a reedição de rascunho, que substitui a lista inteira: sem isso, cada
+    /// gravação somaria os destinatários de todas as edições anteriores.
+    /// </remarks>
+    public void ClearAddresses() => _addresses.Clear();
+
+    /// <summary>Remove todos os anexos. Mesma razão de <see cref="ClearAddresses"/>.</summary>
+    public void ClearAttachments()
+    {
+        _attachments.Clear();
+        HasAttachments = false;
+    }
+
     /// <summary>Define o corpo da mensagem.</summary>
     public void SetBody(MessageBody body, DateTimeOffset now)
     {

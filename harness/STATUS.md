@@ -6,18 +6,17 @@
 
 ## Fase atual
 
-**Fase 4 — Leitura e composição: em andamento.** Ver `docs/roadmap.md` para as fases 5 a 10.
+**Fase 4 — Leitura e composição: concluída.** Ver `docs/roadmap.md` para as fases 5 a 10.
 
 ## Marco atual
 
-**408 testes verdes no núcleo multiplataforma** (169 na fase 1, 272 na 2, 336 na 3).
+**426 testes verdes no núcleo multiplataforma** (169 na fase 1, 272 na 2, 336 na 3, 408 no
+meio da 4).
 
-Da fase 4 já entraram a leitura do veredito do servidor sobre cada mensagem — SPF, DKIM,
-DMARC e classificação de spam —, a detecção de remetente disfarçado e toda a montagem de
-respostas, encaminhamentos e aviso de anexo esquecido. Falta o download sob demanda de corpo
-e anexos e a tela do compositor.
-
-O resto do parágrafo vale para a fase 3: O motor de sincronização inteiro é testável sem servidor: espelhamento de pastas,
+A fase 4 trouxe o veredito do servidor sobre cada mensagem (SPF, DKIM, DMARC e classificação
+de spam), a detecção de remetente disfarçado, o download sob demanda de corpo e anexos com
+armazenamento fora do banco, e o compositor completo: resposta, resposta a todos,
+encaminhamento, rascunho, envio pela fila e aviso de anexo esquecido. O motor de sincronização inteiro é testável sem servidor: espelhamento de pastas,
 sincronização incremental, troca de UIDVALIDITY, reconciliação de exclusões e a política de
 agendamento.
 
@@ -63,9 +62,10 @@ Distribuição: Domain 130, Application 95, Infrastructure 61, Presentation 41, 
 ## Próximos passos
 
 1. **Revisar e integrar o PR #1.**
-2. **Concluir a fase 4:** download sob demanda de corpo e anexos, tela do compositor e a
-   faixa de confiança no painel de leitura.
-3. **Fase 5 — Pastas e regras de domínio na interface**, incluindo "Marcar como spam".
+2. **Fase 5 — Pastas e regras de domínio na interface**, incluindo "Marcar como spam" com os
+   marcadores $Junk/$NotJunk.
+3. Pendências pontuais da fase 4: editor rico no compositor e rascunho automático por
+   intervalo de digitação.
 
 Vale notar: o MSIX compila mas **ainda não foi executado**. Nenhuma sessão automatizada
 consegue fazer isso — exige uma máquina Windows 11 real. A validação funcional da interface

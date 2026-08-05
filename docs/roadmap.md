@@ -47,7 +47,7 @@ Pendente para a fase 4: `CONDSTORE`/`QRESYNC` são detectados mas ainda não usa
 sincronizar marcadores por `MODSEQ` — hoje a reconciliação é por UID, correta e mais cara em
 caixas grandes.
 
-## Fase 4 — Leitura e composição
+## Fase 4 — Leitura e composição ✅
 
 Painel de leitura completo com anexos, download sob demanda de corpo e anexos, compositor
 com Para/CC/CCO, rascunho automático, resposta, resposta a todos, encaminhamento e
@@ -55,9 +55,14 @@ encaminhamento como anexo, assinaturas por conta e aviso de anexo esquecido.
 
 Inclui a **leitura do veredito do servidor sobre a mensagem**: os cabeçalhos de autenticação
 (`Authentication-Results`, com SPF, DKIM e DMARC) e os de classificação (`X-Spam-Flag`,
-`X-Spam-Score`). O painel de leitura passa a exibir uma faixa de confiança, e o aviso de
-remetente disfarçado — nome exibido igual ao de um contato conhecido, domínio diferente —
-que é o vetor de phishing que mais funciona na prática.
+`X-Spam-Score`). O painel de leitura exibe a faixa de confiança e o aviso de remetente
+disfarçado — nome exibido igual ao de um contato conhecido, domínio diferente —, que é o
+vetor de phishing que mais funciona na prática.
+
+Enviar significa entregar à fila: a mensagem vai para a Caixa de Saída local e o SMTP
+acontece quando a fila drenar (D-014). O botão funciona num avião. Ainda pendente desta
+fase: editor de texto rico no compositor (hoje o corpo é texto puro) e o rascunho automático
+por intervalo de digitação — o rascunho manual existe.
 
 ## Fase 5 — Pastas e regras de domínio na interface
 
