@@ -253,6 +253,13 @@
                     <FontIcon Glyph="&#xE793;" FontSize="16" />
                 </ToggleButton>
 
+                <Button x:Name="CalendarButton"
+                        AutomationProperties.Name="Agenda"
+                        ToolTipService.ToolTip="Agenda"
+                        Click="OnCalendarClick">
+                    <FontIcon Glyph="&#xE787;" FontSize="16" />
+                </Button>
+
                 <Button x:Name="ContactsButton"
                         AutomationProperties.Name="Contatos e histórico de destinatários"
                         ToolTipService.ToolTip="Contatos e histórico de destinatários"

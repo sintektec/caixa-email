@@ -49,6 +49,17 @@ arbitrária de disco. A busca é só por HTTPS e com teto de leitura, pelo mesmo
 recebe apenas `MessageBody.SanitizedHtml`. `HtmlBody` guarda o original só para
 reprocessamento futuro.
 
+**Convite com `SEQUENCE` menor nunca sobrescreve o maior.** `CalendarEvent.ApplyUpdate` e
+`Cancel` recusam e devolvem `false`. Convite antigo chega atrasado o tempo todo —
+reencaminhado, retido por servidor lento, reprocessado numa ressincronização — e aplicá-lo
+mudaria a reunião de volta para o horário errado, com o usuário indo para a sala vazia. A
+recusa vira auditoria, nunca silêncio (D-024).
+
+**Movimentação de compromisso passa por `EventMoveEvaluator`.** Como toda movimentação de
+mensagem passa por `MoveMessageHandler`: a regra vive num avaliador puro, e arrastar na
+grade só executa o que ele permitir. Participante não move a própria cópia de reunião
+alheia — a alternativa oferecida é propor novo horário (D-025).
+
 ## Armadilhas conhecidas
 
 **O pacote de SQLite é `Microsoft.Data.Sqlite.Core`, não `Microsoft.Data.Sqlite`.** O
@@ -142,6 +153,25 @@ e devolve um número, que o provedor aceita nos dois casos. Ordenação leva jun
 estável por `Id`. Isso já custou quatro consultas: a listagem de mensagens da pasta (a tela
 principal), o registro de auditoria, a limpeza de cache e — a pior — a fila de saída, que
 nunca drenaria.
+
+**Documento iCalendar da rede é lido sem nunca lançar.** `IcalNetCalendarSerializer.Read`
+devolve `null` no lugar de propagar exceção. O documento vem de um anexo escolhido por quem
+enviou a mensagem, e uma exceção derrubaria a sincronização da conta inteira por causa de
+uma mensagem malformada — que é rotina, não exceção. Mesmo raciocínio do `VCardSerializer`.
+
+**`Ical.Net` inventa um `UID` quando o documento não traz — e diferente a cada leitura.**
+Por isso o `UID` sozinho não serve de identidade: o `ImportInvitationHandler` tem uma
+segunda via, pela mensagem em que o convite chegou. Sem ela, rebaixar o corpo criaria um
+compromisso novo a cada vez.
+
+**Resposta a convite sai como parte `text/calendar`, nunca como anexo.** `CalendarPartBuilder`
+a coloca em um `multipart/alternative` com o parâmetro `method` no `Content-Type`, como a
+RFC 6047 exige. É isso que faz o cliente do organizador atualizar o `PARTSTAT` sozinho; como
+anexo, ele mostraria um `.ics` para a pessoa abrir à mão.
+
+**`Calendar.GetOccurrences` do Ical.Net devolve uma sequência infinita.** Uma `RRULE` sem
+`COUNT` nem `UNTIL` não termina. Toda expansão leva um `TakeWhile` com o fim da janela —
+sem ele o laço roda para sempre.
 
 **`dotnet ef migrations add --no-build` usa o assembly de `Debug`.** Compilar só em `Release`
 antes de criar a migração faz o EF ler o modelo antigo e gerar a migração anterior de novo —

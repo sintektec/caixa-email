@@ -379,3 +379,33 @@ não commitado.
 - Fase 12 — Agenda. O risco de fuso já está medido: ler o `VTIMEZONE` embutido no `.ics` e
   emitir o da `TimeZoneInfo.Local`, sem depender do mapeamento IANA que o
   `InvariantGlobalization` remove.
+
+---
+
+## 2026-08-05 — Sessão 9 (continuação): fase 12, agenda
+
+**O que foi feito:**
+- Fase 12 inteira: `CalendarEvent`/`EventAttendee` e `EventMoveEvaluator` no domínio;
+  `ICalendarSerializer` como porta e `IcalNetCalendarSerializer` (Ical.Net 5.2.3) como
+  adaptador; `ImportInvitationHandler`, `RespondToInvitationHandler`, `MoveEventHandler` e
+  `ManageEventsHandler`; migração `CalendarEvents`; `CalendarViewModel` e o `CalendarDialog`
+  com grade de dia/semana/mês, ligado por um botão na barra superior.
+- Convite entra ao abrir a mensagem — a sincronização traz só cabeçalhos, e é no download do
+  corpo que a parte `text/calendar` aparece. Falha na importação não derruba o download.
+- Resposta e remarcação saem pela fila de saída como parte `text/calendar` em
+  `multipart/alternative` (`CalendarPartBuilder`), não como anexo.
+- **O risco de fuso medido na sessão anterior não se materializou:** o Ical.Net traz o
+  NodaTime com a própria base IANA, e usa o `VTIMEZONE` embutido para nomes do Windows. Os
+  dois formatos foram medidos e devolvem o instante correto com `InvariantGlobalization`
+  ligado. Nada precisou ser desligado.
+- **Comportamento medido que mudou o desenho:** o Ical.Net inventa um `UID` quando o
+  documento não traz, e diferente a cada leitura. A importação ganhou segunda via de
+  identidade pela mensagem de origem, sem a qual rebaixar o corpo criaria um compromisso a
+  cada vez.
+- 790 testes (Domain 210, Application 285, Infrastructure 114, Presentation 137,
+  Persistence 44). D-023 a D-025 registradas.
+
+**Próxima sessão:**
+- Nada de código pendente nas doze fases. O que resta é validação manual em Windows 11 e
+  contra servidores reais — a pendência humana registrada em "Bloqueios". A fase 13
+  (CalDAV/EWS) está descrita no roadmap e fora do escopo acordado.

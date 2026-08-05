@@ -6,16 +6,17 @@
 
 ## Fase atual
 
-**Fases 1 a 11 concluídas.** O roadmap da especificação está inteiro implementado, e a
-primeira das duas fases acrescentadas a pedido do usuário também.
+**Fases 1 a 12 concluídas.** O roadmap da especificação está inteiro implementado, e as
+duas fases acrescentadas a pedido do usuário — contatos e agenda — também.
 
-Falta **12 — Agenda**. Ver `docs/roadmap.md`; o risco de fuso já foi medido e tem saída sem
-mexer no `InvariantGlobalization`.
+O que resta em `docs/roadmap.md` é a **fase 13**: sincronização bidirecional de agenda com
+servidor (CalDAV, EWS), deixada de fora de propósito. É outra pilha de protocolo inteira, e
+a agenda local alimentada por e-mail já entrega o caso de uso sem ela.
 
 ## Marco atual
 
-**692 testes verdes no núcleo multiplataforma** (169 → 272 → 336 → 426 → 441 → 478 → 485
-→ 530 → 535 → 569 → 584 → 587 → 692 ao longo das onze fases).
+**790 testes verdes no núcleo multiplataforma** (169 → 272 → 336 → 426 → 441 → 478 → 485
+→ 530 → 535 → 569 → 584 → 587 → 692 → 790 ao longo das doze fases).
 
 A fase 7 entregou a filtragem local inteira: `RuleEvaluator` puro no Domain (campos,
 operadores e combinação E/OU da seção 6.5), `ApplyArrivalRulesHandler` aplicando bloqueio
@@ -54,7 +55,18 @@ principal), o registro de auditoria, a limpeza de cache e a fila de saída quebr
 primeira execução. A fila de saída é a mais grave: o modo offline inteiro depende dela.
 Nenhuma tinha teste contra o banco real. Ver D-022.
 
-Distribuição: Domain 185, Application 259, Infrastructure 94, Presentation 119, Persistence 35.
+A fase 12 trouxe a agenda. Teams, Meet e Outlook não precisaram de três integrações: os
+três mandam o mesmo `text/calendar` da RFC 5545, e uma implementação da norma cobre os três
+(D-023). Convite entra ao abrir a mensagem, resposta e remarcação saem pela fila de saída
+como parte `text/calendar` — não como anexo, que o cliente do organizador não processaria
+sozinho. Sequência menor nunca sobrescreve maior (D-024), e participante não move a própria
+cópia de reunião alheia (D-025), que é onde o produto diverge do Outlook de propósito.
+
+**O risco de fuso da fase 12 não se materializou.** O `Ical.Net` traz o `NodaTime`, que
+carrega a própria base IANA; o `VTIMEZONE` embutido cobre os nomes do Windows que o Outlook
+emite. Nenhum caminho depende da tabela do ICU, e o `InvariantGlobalization` continua ligado.
+
+Distribuição: Domain 210, Application 285, Infrastructure 114, Presentation 137, Persistence 44.
 
 > **Atenção:** houve troca de implementação em 04/08/2026 (ver `DECISIONS.md`, D-007). O que
 > este arquivo descrevia antes daquela data pertencia à versão anterior, que foi substituída.
@@ -103,7 +115,7 @@ Distribuição: Domain 185, Application 259, Infrastructure 94, Presentation 119
 2. **Validação manual em Windows 11** — o único item que resta, e que nenhuma sessão
    automatizada faz. Ver "Bloqueios".
 
-Não há pendência de código em nenhuma das onze fases. O que resta é **pendência humana**, registrada em "Bloqueios": validação manual em Windows 11 e teste
+Não há pendência de código em nenhuma das doze fases. O que resta é **pendência humana**, registrada em "Bloqueios": validação manual em Windows 11 e teste
 contra servidores IMAP/SMTP reais com Client IDs de OAuth.
 
 Vale notar: o MSIX compila mas **ainda não foi executado**. Nenhuma sessão automatizada

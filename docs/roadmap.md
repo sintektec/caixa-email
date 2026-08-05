@@ -324,7 +324,13 @@ registrada no `CLAUDE.md`.
 
 ---
 
-## Fase 12 — Agenda
+## Fase 12 — Agenda ✅
+
+**Entregue.** `CalendarEvent`/`EventAttendee` e `EventMoveEvaluator` no domínio;
+`ICalendarSerializer` como porta e `IcalNetCalendarSerializer` como adaptador;
+`ImportInvitationHandler`, `RespondToInvitationHandler`, `MoveEventHandler` e
+`ManageEventsHandler`; migração `CalendarEvents`; `CalendarViewModel` e o `CalendarDialog`.
+O texto abaixo descreve o desenho como ele foi implementado.
 
 **A decisão que define o tamanho desta fase:** Teams, Google Meet e Outlook **não precisam
 de três integrações**. Os três enviam convite no mesmo formato — uma parte MIME
@@ -421,6 +427,33 @@ formato.
 **Biblioteca:** `Ical.Net` (MIT) para ler e escrever RFC 5545. Escrever um analisador de
 iCalendar à mão é a armadilha clássica desse recurso: o formato tem dobra de linha,
 escapes, fusos embutidos e recorrência com exceções.
+
+### O que a implementação mudou em relação ao plano
+
+**O risco de fuso desapareceu, e por um motivo melhor do que o previsto.** O plano era
+depender do `VTIMEZONE` embutido no `.ics` para não precisar do mapeamento IANA que o
+`InvariantGlobalization` remove. Na prática o `Ical.Net` traz o `NodaTime` junto, e o
+`NodaTime` carrega a própria base IANA — então `America/Sao_Paulo` resolve sozinho, sem ICU.
+O `VTIMEZONE` embutido continua sendo usado quando o nome é do Windows
+(`E. South America Standard Time`), que é o que o Outlook emite. Os dois caminhos estão
+cobertos por teste, e ambos devolvem 17h UTC para 14h em São Paulo.
+
+**Convite sem `UID` ganha um inventado pela biblioteca — e diferente a cada leitura.**
+Comportamento medido, não desejado: um `UID` assim não serve de identidade, e rebaixar o
+corpo da mensagem criaria um compromisso novo a cada vez. A importação ganhou uma segunda
+via, pela mensagem em que o convite chegou.
+
+**A resposta viaja como parte `text/calendar` em `multipart/alternative`, não como anexo.**
+É essa forma que faz o cliente do organizador atualizar o `PARTSTAT` sozinho; como anexo,
+ele mostraria um `.ics` para a pessoa abrir à mão, e a metade que não abre nunca responde.
+
+**O convite entra na agenda ao abrir a mensagem**, que é quando o corpo desce — a
+sincronização traz só cabeçalhos. Falha na importação não derruba o download: perder a
+mensagem por causa de um `.ics` malformado seria trocar um problema pequeno por um grande.
+
+**Excluir uma reunião que você organiza envia o cancelamento antes de apagar o registro.**
+Sumir da agenda dos outros sem avisar é o mesmo defeito que a fase evita ao recusar a
+movimentação da cópia própria.
 
 ---
 

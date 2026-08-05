@@ -490,3 +490,69 @@ memória (a listagem de uma pasta não tem teto); ordenar por `Id` (é a ordem d
 local, não a de recebimento — mensagem antiga sincronizada depois apareceria no topo);
 `datetime()` em vez de `julianday()` (devolve texto, que resolve a ordenação e deixa a
 comparação de fora — e comparar texto dependeria de o provedor traduzir `string.Compare`).
+
+---
+
+## D-023 — Uma implementação da RFC 5545 cobre Teams, Meet e Outlook (2026-08-05)
+
+**Status:** aceita
+
+**Decisão:** A agenda não tem conector por produto. Teams, Google Meet, Outlook, Zoom e
+Webex mandam o mesmo `text/calendar` da RFC 5545, e o `ImportInvitationHandler` trata o
+formato, não o remetente. O único ajuste por produto é a lista de propriedades em que cada
+um esconde o link de entrada (`X-MICROSOFT-SKYPETEAMSMEETINGURL`, `X-GOOGLE-CONFERENCE`,
+`X-ZOOM-MEETING-URL`), com busca no texto como reserva.
+
+**Motivo:** Três conectores seriam três vezes o trabalho para obter menos: cobririam três
+produtos em vez de todos os que respeitam a norma, e cada um envelheceria por conta
+própria.
+
+**Consequências:** produto que se desvie da norma não é atendido. É o custo certo — quem se
+desvia da RFC 5545 também quebra com o Outlook.
+
+---
+
+## D-024 — `SEQUENCE` menor nunca sobrescreve maior (2026-08-05)
+
+**Status:** aceita
+
+**Decisão:** `CalendarEvent.ApplyUpdate` e `Cancel` devolvem `false` e não alteram nada
+quando o `SEQUENCE` recebido é menor que o conhecido. A recusa vira registro de auditoria
+(`InvitationOutOfOrderDiscarded`).
+
+**Motivo:** Convite antigo chega atrasado o tempo todo — reencaminhado por um participante,
+retido por um servidor lento, reprocessado numa ressincronização. Aplicá-lo mudaria a
+reunião de volta para o horário errado, e o usuário apareceria na sala vazia. É o mesmo
+raciocínio de `Message.MarkPending`, que também recusa rebaixar um estado mais forte.
+
+**Consequências:** um organizador que reemita o convite sem incrementar o `SEQUENCE` — o
+que a norma proíbe, mas acontece — tem a atualização aceita, porque a comparação é `<`, e
+não `<=`. É o lado certo do erro: recusar convite de mesma versão perderia correções
+legítimas.
+
+**Alternativas rejeitadas:** confiar no `DTSTAMP` (é o instante de emissão do documento, não
+a versão do evento, e o reencaminhamento o atualiza); aceitar sempre o mais recente que
+chega (é exatamente o defeito).
+
+---
+
+## D-025 — Participante não move a própria cópia de reunião alheia (2026-08-05)
+
+**Status:** aceita
+
+**Decisão:** `EventMoveEvaluator` recusa a movimentação quando quem arrasta não organiza o
+evento, e oferece `COUNTER` — propor novo horário — como alternativa. Organizador move e
+reenvia `REQUEST` com `SEQUENCE` incrementado. Compromisso sem organizador é próprio e move
+livremente.
+
+**Motivo:** O Outlook permite arrastar a própria cópia. O resultado é que a pessoa passa a
+aparecer livre no horário em que todos combinaram, e — pior — ela mesma vê a reunião no
+horário novo e confia nele. Ninguém é avisado, porque não há nada a avisar: a mudança nunca
+saiu do computador dela. Propor novo horário resolve o que arrastar só disfarça.
+
+**Consequências:** o usuário perde uma liberdade que tinha no Outlook. A troca é
+deliberada, e a recusa vem com explicação e com o botão que faz o que ele queria.
+
+**Alternativas rejeitadas:** permitir com aviso (aviso que se pode ignorar não protege de
+nada, e o custo do erro é faltar a uma reunião); permitir e mandar `COUNTER` junto
+(mostraria ao usuário um horário que o organizador ainda não aceitou).

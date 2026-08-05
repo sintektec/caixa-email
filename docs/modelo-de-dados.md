@@ -131,6 +131,27 @@ A entrada nasce no **envio**, não na entrega — ver D-020.
 permite reimportar a exportação do Outlook sem duplicar o catálogo. Único por conta, e não
 global, porque o mesmo contato pode legitimamente existir em duas contas.
 
+### CalendarEvents e EventAttendees
+`CalendarEvents`: `AccountId`, `Uid`, `Sequence`, `Summary`, `Description?`, `Location?`,
+`MeetingUrl?`, `StartsAt`, `EndsAt`, `IsAllDay`, `TimeZoneId?`, `Status`,
+`OrganizerAddress?`, `OrganizerDisplayName?`, `RecurrenceRule?`, `SourceMessageId?`,
+`HasReminder`, `ReminderMinutesBefore`.
+
+`EventAttendees`: `CalendarEventId`, `Address`, `DisplayName?`, `Role`, `Response`.
+
+Índice único `(AccountId, Uid)`: o `UID` é a identidade do evento na norma, e é por ele que
+a atualização enviada pelo organizador encontra o compromisso local. Único por conta porque
+duas contas podem ter sido convidadas para a mesma reunião.
+
+`SourceMessageId` tem exclusão `SET NULL`: a limpeza de cache apaga mensagens antigas, e a
+agenda não depende delas para existir. `StartsAt` e `EndsAt` guardam o instante já resolvido;
+`TimeZoneId` é informativo, para exibir "14h em São Paulo" e para reemitir o convite no fuso
+que o organizador escolheu.
+
+`RecurrenceRule` guarda o `RRULE` cru: quem sabe expandir uma recorrência é a biblioteca de
+iCalendar, e uma decomposição própria criaria uma segunda interpretação da norma para
+divergir da primeira.
+
 ### Demais
 `MessageThreads`, `Categories` + `MessageCategories`, `Rules` + `RuleConditions` +
 `RuleActions`, `SavedSearches`, `Signatures`, `MessageTemplates`, `AppSettings`,

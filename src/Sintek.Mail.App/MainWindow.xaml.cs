@@ -471,6 +471,27 @@ public sealed partial class MainWindow : Window
         => await OpenComposerAsync(DraftKind.New, null).ConfigureAwait(true);
 
     /// <summary>
+    /// Abre a agenda da conta selecionada.
+    /// </summary>
+    /// <remarks>
+    /// A agenda pertence à conta, como o catálogo: sem conta escolhida não há qual abrir.
+    /// </remarks>
+    private async void OnCalendarClick(object sender, RoutedEventArgs e)
+    {
+        var accountId = Shell.SelectedNode?.AccountId;
+
+        if (accountId is null)
+        {
+            Shell.StatusMessage = "Selecione uma conta ou pasta para abrir a agenda.";
+            return;
+        }
+
+        var calendar = CalendarDialog.Create(RootGrid.XamlRoot);
+        await calendar.InitializeAsync(accountId.Value).ConfigureAwait(true);
+        await calendar.ShowAsync();
+    }
+
+    /// <summary>
     /// Abre o catálogo de contatos da conta selecionada.
     /// </summary>
     /// <remarks>

@@ -35,6 +35,7 @@ public static class DependencyInjection
         services.AddTransient<AssistantViewModel>();
         services.AddTransient<MaintenanceViewModel>();
         services.AddTransient<ContactsViewModel>();
+        services.AddTransient<CalendarViewModel>();
 
         return services;
     }
