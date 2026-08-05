@@ -10,7 +10,7 @@
 
 Duas fases novas foram acrescentadas a pedido do usuário e ainda não começaram:
 **11 — Contatos e histórico de destinatários** e **12 — Agenda**. Ver `docs/roadmap.md`;
-a fase 12 tem um risco a medir antes de começar (fusos IANA com `InvariantGlobalization`).
+o risco de fuso da fase 12 já foi medido e tem saída sem mexer no `InvariantGlobalization`.
 
 ## Marco atual
 

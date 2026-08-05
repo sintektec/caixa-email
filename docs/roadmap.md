@@ -351,12 +351,39 @@ exatamente o pedido.
 pilha de protocolo inteira, e a agenda local alimentada por e-mail já entrega o caso de uso
 sem ela.
 
-**Risco a verificar antes de começar:** `InvariantGlobalization` está ligado, e o iCalendar
-identifica fuso por nome IANA (`America/Sao_Paulo`). A conversão de nome IANA para fuso do
-Windows normalmente depende do ICU, que esse modo remove. Se a verificação confirmar o
-problema, as saídas são desligar `InvariantGlobalization` — o que reabre as duas armadilhas
-já documentadas no `CLAUDE.md` — ou embarcar uma tabela de fusos. **Isso precisa ser medido
-antes de a fase começar**, porque muda o desenho.
+**Risco de fuso horário: medido, e resolvido por desenho.** A suspeita era que
+`InvariantGlobalization` inviabilizasse o tratamento de fuso, já que o iCalendar identifica
+fuso por nome IANA (`America/Sao_Paulo`). A medição (05/08/2026, .NET 10 em modo
+invariante) separou o que funciona do que não funciona:
+
+| API | Resultado |
+|---|---|
+| `TimeZoneInfo.GetSystemTimeZones()` | ✅ 419 fusos — a base de fusos está inteira |
+| `TimeZoneInfo.Local` e `GetAdjustmentRules()` | ✅ funcionam |
+| Cálculo de offset e conversão de instante | ✅ funcionam |
+| `TryConvertIanaIdToWindowsId` | ❌ devolve falso |
+| `TryConvertWindowsIdToIanaId` | ❌ devolve falso |
+
+Ou seja: **os dados de fuso estão presentes; o que sumiu é apenas a tabela de tradução
+entre nomes IANA e nomes Windows**, que vem do ICU. `FindSystemTimeZoneById` com nome IANA
+funciona no Linux (que usa IANA nativamente) e deve falhar no Windows, que precisa
+justamente da tradução ausente.
+
+A saída não é desligar `InvariantGlobalization` — seria reabrir as duas armadilhas já
+documentadas no `CLAUDE.md` por um problema que dá para contornar. **É não depender de nome
+de fuso em momento algum:**
+
+- **Ao ler um convite**, usar o `VTIMEZONE` que o próprio arquivo `.ics` carrega. A norma
+  manda o convite embutir as regras de offset justamente para não depender da base do
+  destinatário, e o `Ical.Net` sabe usá-las.
+- **Ao escrever um convite**, gerar o `VTIMEZONE` a partir de `TimeZoneInfo.Local` e suas
+  `AdjustmentRules` — ambos disponíveis, como a medição mostra.
+- **No seletor de fuso da interface**, listar `GetSystemTimeZones()`.
+
+Consequência a registrar: o identificador de fuso que o sistema devolve é o do sistema
+operacional (nome Windows no Windows, IANA no Linux). Como só se distribui para Windows e
+o que viaja no convite é o `VTIMEZONE`, e não o identificador, isso não vaza para o
+formato.
 
 **Biblioteca:** `Ical.Net` (MIT) para ler e escrever RFC 5545. Escrever um analisador de
 iCalendar à mão é a armadilha clássica desse recurso: o formato tem dobra de linha,
