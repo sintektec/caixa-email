@@ -6,7 +6,7 @@
 
 ## Fase atual
 
-**Fase 8 — Assistência por IA: concluída.** Ver `docs/roadmap.md` para as fases 9 e 10.
+**Fases 1 a 10 concluídas.** O roadmap da especificação está inteiro implementado.
 
 ## Marco atual
 
@@ -77,10 +77,10 @@ Distribuição: Domain 161, Application 207, Infrastructure 94, Presentation 84,
 ## Próximos passos
 
 1. **Revisar e integrar o PR #1.**
-2. **Fase 9 — Acabamento:** acessibilidade, temas, desempenho em caixas grandes e o que
-   a validação manual apontar.
+2. **Validação manual em Windows 11** — o único item que resta, e que nenhuma sessão
+   automatizada faz. Ver "Bloqueios".
 
-Não há pendência de código nas fases 1 a 8. O que resta é **pendência humana**, registrada em "Bloqueios": validação manual em Windows 11 e teste
+Não há pendência de código em nenhuma das dez fases. O que resta é **pendência humana**, registrada em "Bloqueios": validação manual em Windows 11 e teste
 contra servidores IMAP/SMTP reais com Client IDs de OAuth.
 
 Vale notar: o MSIX compila mas **ainda não foi executado**. Nenhuma sessão automatizada

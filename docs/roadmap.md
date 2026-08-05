@@ -220,11 +220,34 @@ A **limpeza de cache** é segura por construção: só descarta o que o servidor
 conteúdo remoto, e mede o impacto antes de apagar — o mesmo desenho de duas etapas da
 remoção de conta, de diretório e de pasta.
 
-## Fase 10 — Distribuição
+## Fase 10 — Distribuição ✅
 
 Assinatura do pacote MSIX com certificado corporativo, atualização por App Installer,
 instalador para o modo unpackaged e documentação de implantação, incluindo o registro dos
 aplicativos OAuth no Entra ID e no Google Cloud Console.
+
+O pipeline de release (`.github/workflows/release.yml`) dispara por tag `v*.*.*` e é
+separado do CI de propósito: o CI roda a cada push e não pode depender de segredos de
+assinatura. O certificado chega como PFX em base64 pelos segredos do repositório, vive no
+runner só durante o job e é apagado ao final. Sem ele o pipeline **não falha** — gera o
+pacote sem assinatura e avisa, o que permite validar o empacotamento antes de haver
+certificado.
+
+A atualização automática vem do `.appinstaller` gerado a partir de
+`build/Sintek.Mail.appinstaller.template`: o Windows consulta a URI a cada 8 horas de uso
+(não a cada abertura — em frota grande isso transforma o servidor de distribuição em
+gargalo) e instala em segundo plano, sem bloquear o uso.
+
+O modo sem pacote existe para ambientes em que a política de grupo bloqueia sideload.
+`build/install-unpackaged.ps1` instala sob `%LOCALAPPDATA%` — sem privilégio de
+administrador —, cria o atalho, registra a desinstalação no Painel de Controle e preserva
+`appsettings.Local.json` entre atualizações. A desinstalação **não apaga** banco nem
+credenciais: dados de usuário não somem por remoção de programa.
+
+`docs/implantacao.md` cobre o resto: registro dos aplicativos OAuth nos dois provedores,
+onde os Client IDs entram (arquivo ou variável de ambiente, para frota grande), a
+configuração do assistente de IA e o que fica na máquina do usuário — incluindo o aviso de
+que perder o perfil do Windows significa perder a chave do banco, e que isso é deliberado.
 
 ## Origem do escopo
 

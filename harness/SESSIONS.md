@@ -302,3 +302,26 @@ não commitado.
 
 **Próxima sessão:**
 - Fase 9 (Acabamento) ou validação manual em Windows, conforme decisão do usuário.
+
+---
+
+## 2026-08-05 — Sessão 9 (continuação): Fases 9 e 10
+
+**O que foi feito:**
+- Fase 9: envio agendado (a fila já respeita `NextAttemptAt` — agendar é enfileirar com a
+  data certa, sem segundo relógio), confirmação de leitura com pergunta antes de enviar e
+  recusa registrada, agrupamento por conversa, atalhos completos do Outlook (Ctrl+F
+  encaminha, como lá), limpeza de cache em duas etapas que só descarta o que o servidor
+  ainda tem.
+- Fase 10: `release.yml` disparado por tag, com assinatura vinda de segredo em base64 e
+  apagada ao fim do job; `.appinstaller` para atualização automática a cada 8 horas de
+  uso; `install-unpackaged.ps1` instalando sob `%LOCALAPPDATA%` sem administrador e
+  preservando `appsettings.Local.json`; `docs/implantacao.md` com o registro dos apps
+  OAuth nos dois provedores.
+- Armadilha nova em `CLAUDE.md`: `InfoBar.ActionButton` aceita um `ButtonBase`, não um
+  painel — o job Windows do CI foi quem pegou (WMC0015), como previsto.
+- 584 testes.
+
+**Próxima sessão:**
+- Nada de código pendente. O que resta é validação manual em Windows 11, que exige máquina
+  real.
