@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Sintek.Mail.App.Services;
+using Sintek.Mail.Infrastructure.Sync;
 
 namespace Sintek.Mail.App;
 
@@ -13,6 +14,8 @@ namespace Sintek.Mail.App;
 /// </remarks>
 public partial class App : Microsoft.UI.Xaml.Application
 {
+    private readonly CancellationTokenSource _syncCancellation = new();
+
     private Window? _window;
 
     public App()
@@ -34,6 +37,40 @@ public partial class App : Microsoft.UI.Xaml.Application
 
         _window = Services.GetRequiredService<MainWindow>();
         _window.Activate();
+
+        // O laço de sincronização começa depois de a janela aparecer. Iniciá-lo antes
+        // atrasaria a primeira tela pelo tempo de uma conexão IMAP — e é justamente na
+        // abertura que o usuário mais percebe demora.
+        StartSyncLoop();
+    }
+
+    /// <summary>
+    /// Põe o laço de sincronização em segundo plano.
+    /// </summary>
+    /// <remarks>
+    /// A tarefa não é aguardada de propósito: ela roda enquanto o aplicativo estiver aberto.
+    /// A exceção é capturada aqui porque uma falha em tarefa não observada derruba o
+    /// processo em silêncio, sem nada em log e sem nada na tela.
+    /// </remarks>
+    private void StartSyncLoop()
+    {
+        var worker = Services.GetRequiredService<AccountSyncWorker>();
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await worker.RunAsync(_syncCancellation.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                // Encerramento normal do aplicativo.
+            }
+            catch (Exception ex)
+            {
+                AppHost.LogFatal(ex);
+            }
+        });
     }
 
     private void OnUnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)

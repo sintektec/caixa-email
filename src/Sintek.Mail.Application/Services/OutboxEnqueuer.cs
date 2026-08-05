@@ -75,3 +75,28 @@ public readonly record struct FlagChangePayload(bool? Seen, bool? Flagged, bool?
 /// <param name="FolderId">Pasta em que a mensagem estava.</param>
 /// <param name="Permanent">Se é expurgo definitivo em vez de envio à lixeira.</param>
 public readonly record struct DeleteMessagePayload(Guid FolderId, bool Permanent);
+
+/// <summary>Payload das operações de pasta.</summary>
+/// <param name="RemotePath">Caminho da pasta no servidor.</param>
+/// <param name="NewRemotePath">Novo caminho, na renomeação.</param>
+/// <param name="IsSubscribed">Estado desejado da assinatura.</param>
+/// <param name="IsLocalOnly">
+/// Se a pasta é puramente local. O caminho continua no payload para que a fila registre o
+/// que aconteceu, mas nenhum comando IMAP é emitido — pendências e caixa de saída não
+/// existem no servidor.
+/// </param>
+public readonly record struct FolderOperationPayload(
+    string RemotePath,
+    string? NewRemotePath = null,
+    bool IsSubscribed = true,
+    bool IsLocalOnly = false);
+
+/// <summary>
+/// Payload do envio de mensagem.
+/// </summary>
+/// <remarks>
+/// Deliberadamente vazio de conteúdo: a mensagem inteira é lida do banco no momento do
+/// envio. Guardar corpo e destinatários aqui duplicaria dados sigilosos no
+/// <c>PayloadJson</c>, que a especificação manda manter livre deles.
+/// </remarks>
+public readonly record struct SendMessagePayload(bool CopyToSentFolder = true);

@@ -207,6 +207,36 @@ public sealed class MessageRepository : IMessageRepository
             .ConfigureAwait(false);
 
     /// <inheritdoc />
+    public Task<Message?> GetByUidAsync(Guid folderId, long uid, CancellationToken cancellationToken = default)
+        => _context.Messages
+            .FirstOrDefaultAsync(m => m.FolderId == folderId && m.Uid == uid, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<Message?> GetByMessageIdAsync(
+        Guid accountId, string messageId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(messageId);
+
+        return _context.Messages
+            .FirstOrDefaultAsync(m => m.AccountId == accountId && m.MessageId == messageId, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<long>> ListUidsByFolderAsync(
+        Guid folderId, CancellationToken cancellationToken = default)
+        => await _context.Messages
+            .Where(m => m.FolderId == folderId && m.Uid != null && m.Uid > 0)
+            .OrderBy(m => m.Uid)
+            .Select(m => m.Uid!.Value)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+    /// <inheritdoc />
+    public Task<int> CountUnreadAsync(Guid folderId, CancellationToken cancellationToken = default)
+        => _context.Messages
+            .CountAsync(m => m.FolderId == folderId && !m.IsDeleted && !m.IsRead, cancellationToken);
+
+    /// <inheritdoc />
     public async Task<IReadOnlyList<Message>> ListInRestrictedFoldersAsync(
         Guid domainDirectoryId, CancellationToken cancellationToken = default)
         => await _context.Messages

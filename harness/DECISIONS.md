@@ -193,3 +193,64 @@ janelas, XAML, WebView2 e o vaivém entre `ContentDialog`s.
 
 O limite é honesto: XAML, `x:Bind` e o gerador do MVVM Toolkit continuam só verificáveis no
 job Windows. O que este projeto elimina é a categoria de erro que *não* precisava estar lá.
+
+---
+
+## D-011 — A fila de saída drena antes da leitura do servidor (2026-08-05)
+
+**Status:** aceita
+
+**Decisão:** O ciclo de `SyncAccountHandler` é: conectar → drenar a fila de saída → espelhar
+pastas → ler mensagens. Nunca o inverso.
+
+**Motivo:** Enquanto a fila não drena, o servidor não sabe do que o usuário fez offline. Ler
+primeiro traz o estado antigo e sobrescreve localmente a intenção dele: a mensagem que ele
+marcou como lida volta a não lida, e só depois a fila a marca de novo. Ele vê o marcador
+piscar e conclui, com razão, que o programa está confuso.
+
+Pelo mesmo motivo, `MessageSyncService` não aplica marcadores do servidor sobre mensagem cujo
+`SyncState` não seja `Synced` — alteração local pendente tem precedência.
+
+**Consequências:** a fila passa a ser pré-requisito da leitura. Uma operação travada atrasa a
+sincronização daquela conta, o que é o comportamento correto: aplicar leitura sobre estado
+divergente pioraria a divergência.
+
+---
+
+## D-012 — Pasta que some do servidor não é apagada (2026-08-05)
+
+**Status:** aceita
+
+**Decisão:** `FolderMirrorService` desliga a sincronização da pasta ausente e preserva o
+conteúdo local. Exclusão de fato é decisão do usuário, pela interface de pastas.
+
+**Motivo:** Uma resposta de `LIST` incompleta — servidor sob carga, conexão cortada no meio,
+permissão temporariamente revogada — é indistinguível de uma exclusão real. A diferença entre
+as duas hipóteses é a caixa postal inteira do usuário, e o custo dos dois erros não é
+simétrico: manter uma pasta a mais incomoda, apagar uma pasta a menos é irreversível.
+
+**Consequências:** pastas realmente excluídas no servidor ficam visíveis e sem sincronização
+até o usuário removê-las. A alternativa — apagar automaticamente — foi rejeitada.
+
+---
+
+## D-013 — Classificação na chegada tem tabela de decisão própria (2026-08-05)
+
+**Status:** aceita
+
+**Decisão:** `MoveMessageHandler.ClassifyArrivalAsync` avalia mensagens trazidas pela
+sincronização. Ela vive no mesmo handler — que continua sendo o único lugar a consultar o
+`DomainMembershipEvaluator` —, mas com decisão diferente da movimentação iniciada pelo
+usuário: `Block` e `MoveToPending` desviam para pendências, e `WarnAndConfirm` e `LogOnly`
+apenas registram.
+
+**Motivo:** Uma chegada não pode ser "bloqueada". A mensagem já existe no servidor, dentro
+daquela pasta; recusá-la localmente apenas a esconderia do usuário sem mudar nada do outro
+lado. E não há a quem pedir confirmação: a sincronização roda sozinha.
+
+O desvio é puramente local — a mensagem continua onde está no servidor. Movê-la lá alteraria
+a caixa postal de quem talvez use outro cliente na mesma conta.
+
+**Alternativas rejeitadas:** reimplementar a avaliação dentro do motor de sincronização
+(criaria uma segunda versão da regra, que divergiria da primeira); apagar a mensagem
+incompatível (perda de dados por configuração).

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Sintek.Mail.Application.Services;
+using Sintek.Mail.Application.Sync;
 using Sintek.Mail.Application.UseCases.Accounts;
 using Sintek.Mail.Application.UseCases.Domains;
 using Sintek.Mail.Application.UseCases.Folders;
@@ -32,6 +33,10 @@ public static class DependencyInjection
 
         services.AddScoped<MoveMessageHandler>();
         services.AddScoped<SetFolderRestrictionHandler>();
+
+        services.AddScoped<FolderMirrorService>();
+        services.AddScoped<MessageSyncService>();
+        services.AddScoped<SyncAccountHandler>();
 
         services.AddScoped<AddAccountHandler>();
         services.AddScoped<TestAccountConnectionHandler>();

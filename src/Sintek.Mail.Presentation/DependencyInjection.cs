@@ -26,6 +26,7 @@ public static class DependencyInjection
         services.AddTransient<AccountSetupViewModel>();
         services.AddTransient<AccountsViewModel>();
         services.AddTransient<DomainDirectoryEditorViewModel>();
+        services.AddTransient<OutboxQueueViewModel>();
 
         return services;
     }

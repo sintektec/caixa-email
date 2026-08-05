@@ -142,3 +142,27 @@ sem cumprir a regra de ouro da seção 3.
 **Próxima sessão:**
 - Aguardar a decisão do usuário entre seguir para a fase 3 (Sincronização) ou parar para
   validação manual em Windows 11.
+
+---
+
+## 2026-08-05 — Sessão 9: Fase 3 (Sincronização)
+
+**Objetivo:** Executar a fase 3 do `docs/roadmap.md`.
+
+**O que foi feito:**
+- Espelhamento da árvore de pastas, com a regra de nunca apagar pasta ausente da listagem
+  (D-012) e recálculo da herança de restrição para pastas novas.
+- Sincronização incremental por UID, ressincronização completa na troca de UIDVALIDITY,
+  reconciliação de exclusões feitas fora do cliente e precedência da alteração local
+  pendente sobre o marcador do servidor.
+- `SyncAccountHandler` com a ordem fila-antes-de-leitura (D-011) e a classificação na
+  chegada com tabela de decisão própria (D-013).
+- `OutboxProcessor` ampliado para envio, rascunhos, cópia e operações de pasta;
+  `MimeMessageWriter` compartilhado entre SMTP e APPEND.
+- `SyncSchedule` (política pura) e `AccountSyncWorker` (laço com IDLE e sondagem).
+- Fila de sincronização visível na interface, com descarte de operação.
+- 272 → 336 testes.
+
+**Próxima sessão:**
+- Aguardar a decisão do usuário entre seguir para a fase 4 (Leitura e composição) ou parar
+  para validação manual em Windows 11.

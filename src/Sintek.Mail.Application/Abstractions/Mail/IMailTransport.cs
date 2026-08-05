@@ -90,8 +90,35 @@ public interface IImapClient : IAsyncDisposable
         IReadOnlyCollection<long> uids,
         CancellationToken cancellationToken = default);
 
+    /// <summary>Copia mensagens para outra pasta, mantendo-as na origem.</summary>
+    Task<IReadOnlyDictionary<long, long>> CopyAsync(
+        string sourcePath,
+        string destinationPath,
+        IReadOnlyCollection<long> uids,
+        CancellationToken cancellationToken = default);
+
     /// <summary>Expurga definitivamente as mensagens marcadas para exclusão.</summary>
     Task ExpungeAsync(string remotePath, CancellationToken cancellationToken = default);
+
+    /// <summary>Assina ou desassina uma pasta.</summary>
+    Task SetSubscriptionAsync(
+        string remotePath, bool isSubscribed, CancellationToken cancellationToken = default);
+
+    /// <summary>Indica se o servidor anuncia suporte a IDLE.</summary>
+    bool SupportsIdle { get; }
+
+    /// <summary>
+    /// Espera por atividade na pasta, devolvendo quando algo mudou ou o tempo esgotar.
+    /// </summary>
+    /// <remarks>
+    /// Com IDLE a espera é passiva e a mensagem nova chega em segundos. Sem ele, a
+    /// implementação faz uma sondagem única e devolve — quem chama trata os dois casos da
+    /// mesma forma, e é o que permite a um servidor antigo continuar funcionando, apenas
+    /// com latência maior.
+    /// </remarks>
+    /// <returns><see langword="true"/> quando houve mudança; <see langword="false"/> no tempo esgotado.</returns>
+    Task<bool> WaitForChangesAsync(
+        string remotePath, TimeSpan timeout, CancellationToken cancellationToken = default);
 
     /// <summary>Cria uma pasta no servidor.</summary>
     Task CreateFolderAsync(string remotePath, CancellationToken cancellationToken = default);

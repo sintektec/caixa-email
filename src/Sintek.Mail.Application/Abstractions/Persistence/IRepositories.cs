@@ -101,6 +101,32 @@ public interface IMessageRepository
     /// <summary>Lista os identificadores das mensagens de uma pasta.</summary>
     Task<IReadOnlyList<Guid>> ListIdsByFolderAsync(Guid folderId, CancellationToken cancellationToken = default);
 
+    /// <summary>Busca a mensagem de uma pasta pelo UID do servidor.</summary>
+    Task<Message?> GetByUidAsync(Guid folderId, long uid, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Busca uma mensagem da conta pelo <c>Message-ID</c> da RFC 5322.
+    /// </summary>
+    /// <remarks>
+    /// É o caminho de reconciliação quando o UID não serve: depois de um MOVE em servidor
+    /// sem UIDPLUS, a mensagem reaparece na pasta de destino com UID novo e desconhecido, e
+    /// o <c>Message-ID</c> é o único identificador que atravessou a operação.
+    /// </remarks>
+    Task<Message?> GetByMessageIdAsync(
+        Guid accountId, string messageId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lista os UIDs conhecidos de uma pasta, do menor para o maior.
+    /// </summary>
+    /// <remarks>
+    /// Serve à detecção de mensagens apagadas fora deste cliente: o que existe localmente e
+    /// sumiu da listagem do servidor foi removido por outra sessão.
+    /// </remarks>
+    Task<IReadOnlyList<long>> ListUidsByFolderAsync(Guid folderId, CancellationToken cancellationToken = default);
+
+    /// <summary>Conta as mensagens não lidas de uma pasta.</summary>
+    Task<int> CountUnreadAsync(Guid folderId, CancellationToken cancellationToken = default);
+
     /// <summary>Lista as mensagens presentes em pastas restritas por um diretório.</summary>
     Task<IReadOnlyList<Message>> ListInRestrictedFoldersAsync(
         Guid domainDirectoryId, CancellationToken cancellationToken = default);

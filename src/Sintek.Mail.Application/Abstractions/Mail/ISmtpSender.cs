@@ -85,3 +85,15 @@ public interface ISmtpSender
     Task<ConnectionTestResult> TestConnectionAsync(
         Account account, CancellationToken cancellationToken = default);
 }
+
+/// <summary>Serializa uma mensagem no formato MIME da RFC 5322.</summary>
+/// <remarks>
+/// Abstraída porque o <c>APPEND</c> do IMAP precisa exatamente do mesmo documento que o
+/// envio SMTP produz. Uma segunda serialização escrita à parte faria a cópia em Itens
+/// Enviados divergir do que o destinatário recebeu.
+/// </remarks>
+public interface IMimeMessageWriter
+{
+    /// <summary>Escreve a mensagem em um fluxo posicionado no início.</summary>
+    Task<Stream> WriteAsync(OutgoingMessage message, CancellationToken cancellationToken = default);
+}

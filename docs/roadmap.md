@@ -28,14 +28,24 @@ a diferença entre "o domínio declarou isto" e "chutamos isto".
 Os ViewModels passaram para `Sintek.Mail.Presentation`, multiplataforma, e são testados no
 job Linux junto com o núcleo (ver `DECISIONS.md`, D-010).
 
-## Fase 3 — Sincronização
+## Fase 3 — Sincronização ✅
 
-Descoberta e espelhamento de pastas, sincronização incremental por UID com `CONDSTORE` e
-`QRESYNC` quando o servidor suportar, `IDLE` para recebimento imediato com retorno a
-sondagem periódica, e ressincronização completa quando o `UIDVALIDITY` mudar.
+Espelhamento da árvore de pastas, sincronização incremental por UID, ressincronização
+completa quando o `UIDVALIDITY` muda, reconciliação de mensagens apagadas fora do cliente e
+`IDLE` para recebimento imediato, com retorno a sondagem periódica onde o servidor não o
+oferece.
 
-Ampliar `OutboxProcessor` para os tipos de operação ainda não tratados (envio, rascunhos,
-operações de pasta) e expor a fila na interface, como a especificação exige.
+A fila de saída passou a cobrir envio, rascunhos, cópia e as operações de pasta, e está
+visível na interface — no modo offline-first, "já enviei" e "ainda não saiu daqui" são
+estados diferentes que o usuário precisa distinguir.
+
+Três decisões governam o ciclo e estão em `DECISIONS.md`: a fila drena antes da leitura
+(D-011), pasta ausente na listagem não é apagada (D-012) e a classificação na chegada tem
+tabela de decisão própria (D-013).
+
+Pendente para a fase 4: `CONDSTORE`/`QRESYNC` são detectados mas ainda não usados para
+sincronizar marcadores por `MODSEQ` — hoje a reconciliação é por UID, correta e mais cara em
+caixas grandes.
 
 ## Fase 4 — Leitura e composição
 

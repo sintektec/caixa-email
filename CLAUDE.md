@@ -65,6 +65,16 @@ exclusão que tem o marcador de leitura alterado continua pendente de exclusão.
 isso faz a fila propagar o marcador e esquecer a exclusão, e a mensagem reaparece na
 sincronização seguinte. `Restore` é a exceção deliberada e atribui o estado diretamente.
 
+**A fila de saída drena antes da leitura do servidor.** `SyncAccountHandler` conecta, drena
+e só então lê. Ler primeiro traria o estado antigo e desfaria localmente o que o usuário fez
+offline — o marcador voltaria atrás e a fila o refaria em seguida, um pisca-pisca que parece
+defeito e é. Pelo mesmo motivo, marcador vindo do servidor não sobrescreve mensagem cujo
+`SyncState` não seja `Synced`.
+
+**Pasta que some da listagem do servidor não é apagada.** `FolderMirrorService` desliga a
+sincronização e preserva o conteúdo. Uma resposta de `LIST` incompleta é indistinguível de
+uma exclusão real, e o custo dos dois erros não é simétrico.
+
 **A fila de saída é estritamente sequencial por conta.** `OutboxProcessor` interrompe o
 lote na primeira falha em vez de pular para a próxima operação, porque as seguintes
 dependem do estado que a anterior deixaria. Paralelizar parece uma otimização óbvia e

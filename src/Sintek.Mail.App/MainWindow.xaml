@@ -49,16 +49,21 @@
                     de tela precisa saber que está offline, e um ícone sozinho não comunica isso.
                 -->
                 <Button x:Name="SyncButton"
+                        Command="{x:Bind Shell.SyncNowCommand}"
                         AutomationProperties.Name="Sincronizar agora"
                         AutomationProperties.HelpText="{x:Bind Shell.ConnectivityDescription, Mode=OneWay}"
                         ToolTipService.ToolTip="{x:Bind Shell.ConnectivityDescription, Mode=OneWay}">
                     <FontIcon Glyph="&#xE895;" FontSize="16" />
                 </Button>
 
-                <InfoBadge x:Name="PendingBadge"
-                           Value="{x:Bind Shell.PendingOperationCount, Mode=OneWay}"
-                           AutomationProperties.Name="Operações aguardando sincronização"
-                           VerticalAlignment="Center" />
+                <Button x:Name="OutboxButton"
+                        Click="OnOutboxClick"
+                        AutomationProperties.Name="Fila de sincronização"
+                        ToolTipService.ToolTip="Operações aguardando sincronização">
+                    <InfoBadge x:Name="PendingBadge"
+                               Value="{x:Bind Shell.PendingOperationCount, Mode=OneWay}"
+                               VerticalAlignment="Center" />
+                </Button>
 
                 <ToggleButton x:Name="ThemeToggle"
                               AutomationProperties.Name="Alternar tema claro e escuro"

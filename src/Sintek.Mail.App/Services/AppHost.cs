@@ -6,6 +6,7 @@ using Sintek.Mail.Presentation.ViewModels;
 using Sintek.Mail.Application;
 using Sintek.Mail.Application.Abstractions.Security;
 using Sintek.Mail.Infrastructure;
+using Sintek.Mail.Infrastructure.Sync;
 using Sintek.Mail.Infrastructure.Windows;
 using Sintek.Mail.Persistence;
 using Sintek.Mail.Presentation;

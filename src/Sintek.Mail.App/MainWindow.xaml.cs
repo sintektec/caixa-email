@@ -316,6 +316,12 @@ public sealed partial class MainWindow : Window
             : SettingsFollowUp.None;
     }
 
+    private async void OnOutboxClick(object sender, RoutedEventArgs e)
+    {
+        await OutboxDialog.Create(RootGrid.XamlRoot).ShowAsync();
+        await Shell.RefreshPendingCountAsync().ConfigureAwait(true);
+    }
+
     private void OnThemeToggleClick(object sender, RoutedEventArgs e)
     {
         if (RootGrid is FrameworkElement root)

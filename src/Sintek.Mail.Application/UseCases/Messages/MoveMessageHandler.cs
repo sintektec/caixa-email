@@ -163,6 +163,101 @@ public sealed class MoveMessageHandler
         };
     }
 
+    /// <summary>
+    /// Avalia uma mensagem que a sincronização acabou de trazer para dentro de uma pasta.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Vive aqui, e não no motor de sincronização, porque este é o único lugar autorizado a
+    /// consultar o <see cref="DomainMembershipEvaluator"/>. Uma segunda avaliação escrita
+    /// no motor divergiria da desta classe, e a divergência sempre termina com um dos dois
+    /// caminhos permitindo o que o outro proíbe.
+    /// </para>
+    /// <para>
+    /// <b>A tabela de decisão é diferente da movimentação iniciada pelo usuário</b>, e
+    /// precisa ser. Uma chegada não pode ser "bloqueada": a mensagem já existe no servidor,
+    /// dentro daquela pasta, e recusá-la localmente apenas a esconderia do usuário sem
+    /// mudar nada do outro lado. Por isso <see cref="InvalidEmailAction.Block"/> e
+    /// <see cref="InvalidEmailAction.MoveToPending"/> desviam para pendências, e os dois
+    /// modos permissivos apenas registram.
+    /// </para>
+    /// </remarks>
+    public async Task<MoveMessageResult> ClassifyArrivalAsync(
+        Message message, Folder folder, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        ArgumentNullException.ThrowIfNull(folder);
+
+        if (!folder.IsDomainRestricted)
+        {
+            return new MoveMessageResult(MoveMessageOutcome.Moved, null, folder.Id);
+        }
+
+        var directoryId = folder.EffectiveRestrictionDomainDirectoryId!.Value;
+        var directory = await _directories.GetByIdAsync(directoryId, cancellationToken).ConfigureAwait(false);
+
+        if (directory is null)
+        {
+            _logger.LogWarning(
+                "A pasta {FolderId} aponta para o Diretório de Domínio {DomainId}, que não existe mais.",
+                folder.Id, directoryId);
+
+            return new MoveMessageResult(MoveMessageOutcome.Moved, null, folder.Id);
+        }
+
+        var participants = await _messages.GetParticipantsAsync(message.Id, cancellationToken).ConfigureAwait(false);
+
+        if (DomainMembershipEvaluator.Evaluate(directory, participants).IsMember)
+        {
+            return new MoveMessageResult(MoveMessageOutcome.Moved, null, folder.Id);
+        }
+
+        if (directory.InvalidEmailAction is InvalidEmailAction.WarnAndConfirm or InvalidEmailAction.LogOnly)
+        {
+            await RecordAuditAsync(
+                AuditEventType.MessageMoveOverridden,
+                $"Mensagem recebida na pasta '{folder.DisplayName}' não pertence ao domínio " +
+                $"'{directory.DomainName.Value}' (ação configurada: {directory.InvalidEmailAction}).",
+                AuditSeverity.Warning,
+                message,
+                directory,
+                cancellationToken).ConfigureAwait(false);
+
+            return new MoveMessageResult(MoveMessageOutcome.Moved, null, folder.Id);
+        }
+
+        var pending = await _folders
+            .GetByTypeAsync(message.AccountId, FolderType.Pending, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (pending is null)
+        {
+            // Sem pasta de pendências não há para onde desviar, e apagar a mensagem seria
+            // perda de dados causada por uma configuração incompleta. Fica onde está, com
+            // registro para que a incoerência apareça na auditoria.
+            _logger.LogWarning(
+                "A conta {AccountId} não tem pasta de pendências; a mensagem incompatível permaneceu em {FolderId}.",
+                message.AccountId, folder.Id);
+
+            return new MoveMessageResult(MoveMessageOutcome.Moved, null, folder.Id);
+        }
+
+        // Movimentação puramente local: a mensagem continua onde está no servidor, e é isso
+        // que se quer — desviá-la lá mudaria a caixa postal de quem talvez use outro cliente.
+        message.MoveTo(pending.Id, _timeProvider.GetUtcNow());
+
+        await RecordAuditAsync(
+            AuditEventType.MessageMovedToPending,
+            $"Mensagem recebida incompatível com o domínio '{directory.DomainName.Value}' " +
+            "desviada para a pasta de pendências.",
+            AuditSeverity.Information,
+            message,
+            directory,
+            cancellationToken).ConfigureAwait(false);
+
+        return new MoveMessageResult(MoveMessageOutcome.MovedToPending, null, pending.Id);
+    }
+
     private async Task<MoveMessageResult> CommitMoveAsync(
         Message message, Guid targetFolderId, MoveMessageOutcome outcome, CancellationToken cancellationToken)
     {

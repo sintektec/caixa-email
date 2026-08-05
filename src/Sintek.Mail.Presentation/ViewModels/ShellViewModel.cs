@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using Sintek.Mail.Application.Abstractions.Persistence;
+using Sintek.Mail.Application.Sync;
 using Sintek.Mail.Application.UseCases.Messages;
 using Sintek.Mail.Domain.Entities;
 using Sintek.Mail.Domain.Enums;
@@ -36,6 +37,7 @@ public sealed partial class ShellViewModel : ObservableObject
     private readonly IFolderRepository _folders;
     private readonly IOutboxRepository _outbox;
     private readonly MoveMessageHandler _moveMessage;
+    private readonly SyncAccountHandler _syncAccount;
     private readonly ILogger<ShellViewModel> _logger;
 
     public ShellViewModel(
@@ -44,6 +46,7 @@ public sealed partial class ShellViewModel : ObservableObject
         IFolderRepository folders,
         IOutboxRepository outbox,
         MoveMessageHandler moveMessage,
+        SyncAccountHandler syncAccount,
         ILogger<ShellViewModel> logger)
     {
         _directories = directories;
@@ -51,6 +54,7 @@ public sealed partial class ShellViewModel : ObservableObject
         _folders = folders;
         _outbox = outbox;
         _moveMessage = moveMessage;
+        _syncAccount = syncAccount;
         _logger = logger;
     }
 
@@ -246,6 +250,75 @@ public sealed partial class ShellViewModel : ObservableObject
             StatusMessage = ex.UserMessage;
             _logger.LogInformation("Movimentação recusada pela regra de domínio da pasta {FolderId}.", targetFolderId);
             return false;
+        }
+    }
+
+    /// <summary>
+    /// Sincroniza todas as contas ativas agora.
+    /// </summary>
+    /// <remarks>
+    /// Uma conta que falha não interrompe as demais: em um cliente com várias contas, o
+    /// servidor de uma delas fora do ar não pode deixar o usuário sem a correspondência das
+    /// outras. O estado exibido é o pior encontrado — é o que ele precisa notar.
+    /// </remarks>
+    [RelayCommand]
+    public async Task SyncNowAsync(CancellationToken cancellationToken = default)
+    {
+        if (IsBusy)
+        {
+            return;
+        }
+
+        IsBusy = true;
+        Connectivity = ConnectivityState.Syncing;
+        StatusMessage = null;
+
+        try
+        {
+            var accounts = await _accounts.ListActiveAsync(cancellationToken).ConfigureAwait(true);
+
+            if (accounts.Count == 0)
+            {
+                Connectivity = ConnectivityState.Offline;
+                StatusMessage = "Nenhuma conta cadastrada. Adicione uma conta para começar.";
+                return;
+            }
+
+            var worst = ConnectivityState.Online;
+            string? firstError = null;
+
+            foreach (var account in accounts)
+            {
+                var result = await _syncAccount.HandleAsync(account.Id, cancellationToken).ConfigureAwait(true);
+
+                if (result.Succeeded)
+                {
+                    continue;
+                }
+
+                firstError ??= result.ErrorMessage;
+                worst = result.IsAuthenticationFailure ? ConnectivityState.Error : worst;
+
+                if (worst != ConnectivityState.Error)
+                {
+                    worst = ConnectivityState.Offline;
+                }
+            }
+
+            Connectivity = worst;
+            StatusMessage = firstError;
+
+            await LoadNavigationAsync(cancellationToken).ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Connectivity = ConnectivityState.Error;
+            StatusMessage = ex.Message;
+            _logger.LogError(ex, "A sincronização manual falhou.");
+        }
+        finally
+        {
+            IsBusy = false;
         }
     }
 

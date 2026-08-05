@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Sintek.Mail.Application.Abstractions.Mail;
 using Sintek.Mail.Application.Abstractions.Persistence;
 using Sintek.Mail.Application.Services;
+using Sintek.Mail.Application.Sync;
 using Sintek.Mail.Domain.Entities;
 using Sintek.Mail.Domain.Enums;
 
@@ -28,7 +29,7 @@ namespace Sintek.Mail.Infrastructure.Sync;
 /// pelo mesmo motivo. As demais contas seguem normalmente.
 /// </para>
 /// </remarks>
-public sealed class OutboxProcessor
+public sealed class OutboxProcessor : IOutboxDrainer
 {
     /// <summary>Quantas operações processar por ciclo, por conta.</summary>
     private const int BatchSize = 50;
@@ -42,8 +43,11 @@ public sealed class OutboxProcessor
     private readonly IOutboxRepository _outbox;
     private readonly IMessageRepository _messages;
     private readonly IFolderRepository _folders;
+    private readonly IAccountRepository _accounts;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IImapClient _imapClient;
+    private readonly ISmtpSender _smtpSender;
+    private readonly IMimeMessageWriter _messageWriter;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<OutboxProcessor> _logger;
 
@@ -51,16 +55,22 @@ public sealed class OutboxProcessor
         IOutboxRepository outbox,
         IMessageRepository messages,
         IFolderRepository folders,
+        IAccountRepository accounts,
         IUnitOfWork unitOfWork,
         IImapClient imapClient,
+        ISmtpSender smtpSender,
+        IMimeMessageWriter messageWriter,
         TimeProvider timeProvider,
         ILogger<OutboxProcessor> logger)
     {
         _outbox = outbox;
         _messages = messages;
         _folders = folders;
+        _accounts = accounts;
         _unitOfWork = unitOfWork;
         _imapClient = imapClient;
+        _smtpSender = smtpSender;
+        _messageWriter = messageWriter;
         _timeProvider = timeProvider;
         _logger = logger;
     }
@@ -145,6 +155,25 @@ public sealed class OutboxProcessor
 
             case OutboxOperationType.ExpungeFolder:
                 await ApplyExpungeAsync(operation, cancellationToken).ConfigureAwait(false);
+                break;
+
+            case OutboxOperationType.CopyMessage:
+                await ApplyCopyAsync(operation, cancellationToken).ConfigureAwait(false);
+                break;
+
+            case OutboxOperationType.SendMessage:
+                await ApplySendAsync(operation, cancellationToken).ConfigureAwait(false);
+                break;
+
+            case OutboxOperationType.AppendDraft:
+                await ApplyAppendDraftAsync(operation, cancellationToken).ConfigureAwait(false);
+                break;
+
+            case OutboxOperationType.CreateFolder:
+            case OutboxOperationType.RenameFolder:
+            case OutboxOperationType.DeleteFolder:
+            case OutboxOperationType.SetFolderSubscription:
+                await ApplyFolderOperationAsync(operation, cancellationToken).ConfigureAwait(false);
                 break;
 
             default:
@@ -252,6 +281,187 @@ public sealed class OutboxProcessor
         }
 
         await _imapClient.ExpungeAsync(folder.RemotePath, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task ApplyCopyAsync(OutboxOperation operation, CancellationToken cancellationToken)
+    {
+        var payload = Deserialize<MoveMessagePayload>(operation.PayloadJson);
+
+        var message = await _messages.GetByIdAsync(operation.EntityId, cancellationToken).ConfigureAwait(false);
+        if (message?.Uid is null)
+        {
+            return;
+        }
+
+        var source = await _folders.GetByIdAsync(payload.SourceFolderId, cancellationToken).ConfigureAwait(false);
+        var target = await _folders.GetByIdAsync(payload.TargetFolderId, cancellationToken).ConfigureAwait(false);
+
+        if (source is null || target is null || source.IsLocalOnly || target.IsLocalOnly)
+        {
+            return;
+        }
+
+        await _imapClient
+            .CopyAsync(source.RemotePath, target.RemotePath, [message.Uid.Value], cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Envia a mensagem por SMTP e grava a cópia em Itens Enviados.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// O <c>APPEND</c> em Enviados acontece depois do envio e <b>não</b> desfaz o envio se
+    /// falhar. A mensagem já saiu; repetir a operação a enviaria de novo, e o destinatário
+    /// receberia duas. Uma cópia ausente em Enviados é um incômodo; uma mensagem duplicada
+    /// é um problema real com terceiros.
+    /// </para>
+    /// <para>
+    /// Recusa definitiva do servidor — endereço inexistente, mensagem grande demais —
+    /// encerra a operação em vez de gastar tentativas: nenhuma delas mudaria a resposta.
+    /// </para>
+    /// </remarks>
+    private async Task ApplySendAsync(OutboxOperation operation, CancellationToken cancellationToken)
+    {
+        var message = await _messages
+            .GetWithParticipantsAsync(operation.EntityId, cancellationToken).ConfigureAwait(false);
+
+        if (message is null)
+        {
+            return;
+        }
+
+        var outgoing = OutgoingMessageBuilder.Build(message, message.Body);
+
+        if (outgoing is null)
+        {
+            throw new NotSupportedException(
+                "A mensagem não está em condições de ser enviada: falta remetente, destinatário " +
+                "ou o download de um anexo.");
+        }
+
+        var account = await _accounts.GetByIdAsync(operation.AccountId, cancellationToken).ConfigureAwait(false)
+            ?? throw new InvalidOperationException($"Conta {operation.AccountId} não encontrada.");
+
+        var result = await _smtpSender.SendAsync(account, outgoing, cancellationToken).ConfigureAwait(false);
+
+        if (!result.Succeeded)
+        {
+            if (result.IsPermanentFailure)
+            {
+                throw new NotSupportedException(result.ErrorMessage ?? "O servidor recusou a mensagem.");
+            }
+
+            throw new InvalidOperationException(result.ErrorMessage ?? "Falha ao enviar a mensagem.");
+        }
+
+        var now = _timeProvider.GetUtcNow();
+        var sent = await _folders
+            .GetByTypeAsync(operation.AccountId, FolderType.Sent, cancellationToken).ConfigureAwait(false);
+
+        if (sent is not null && !sent.IsLocalOnly)
+        {
+            try
+            {
+                await AppendAsync(message, sent, isDraft: false, cancellationToken).ConfigureAwait(false);
+                message.MoveTo(sent.Id, now);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "A mensagem {MessageId} foi enviada, mas a cópia em Itens Enviados falhou.",
+                    message.Id);
+            }
+        }
+
+        message.MarkSynced(now);
+    }
+
+    private async Task ApplyAppendDraftAsync(OutboxOperation operation, CancellationToken cancellationToken)
+    {
+        var message = await _messages
+            .GetWithParticipantsAsync(operation.EntityId, cancellationToken).ConfigureAwait(false);
+
+        if (message is null)
+        {
+            return;
+        }
+
+        var folder = await _folders.GetByIdAsync(message.FolderId, cancellationToken).ConfigureAwait(false);
+
+        if (folder is null || folder.IsLocalOnly)
+        {
+            return;
+        }
+
+        var uid = await AppendAsync(message, folder, isDraft: true, cancellationToken).ConfigureAwait(false);
+        var now = _timeProvider.GetUtcNow();
+
+        if (uid.HasValue)
+        {
+            message.SetRemoteIdentity(uid.Value, null, now);
+        }
+
+        message.MarkSynced(now);
+    }
+
+    private async Task<long?> AppendAsync(
+        Message message, Folder folder, bool isDraft, CancellationToken cancellationToken)
+    {
+        var outgoing = OutgoingMessageBuilder.Build(message, message.Body)
+            ?? throw new NotSupportedException("A mensagem não pôde ser montada para gravação no servidor.");
+
+        await using var stream = await _messageWriter
+            .WriteAsync(outgoing, cancellationToken).ConfigureAwait(false);
+
+        return await _imapClient
+            .AppendAsync(folder.RemotePath, stream, isDraft, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Aplica no servidor uma operação de pasta já executada localmente.
+    /// </summary>
+    /// <remarks>
+    /// Pasta local não gera comando: pendências e caixa de saída não existem no IMAP, e
+    /// tentar criá-las lá poluiria a caixa postal com pastas que só fazem sentido aqui.
+    /// </remarks>
+    private async Task ApplyFolderOperationAsync(OutboxOperation operation, CancellationToken cancellationToken)
+    {
+        var payload = Deserialize<FolderOperationPayload>(operation.PayloadJson);
+
+        if (payload.IsLocalOnly || string.IsNullOrWhiteSpace(payload.RemotePath))
+        {
+            return;
+        }
+
+        switch (operation.OperationType)
+        {
+            case OutboxOperationType.CreateFolder:
+                await _imapClient.CreateFolderAsync(payload.RemotePath, cancellationToken).ConfigureAwait(false);
+                break;
+
+            case OutboxOperationType.RenameFolder:
+                if (string.IsNullOrWhiteSpace(payload.NewRemotePath))
+                {
+                    throw new NotSupportedException("A renomeação de pasta não trouxe o novo caminho.");
+                }
+
+                await _imapClient
+                    .RenameFolderAsync(payload.RemotePath, payload.NewRemotePath, cancellationToken)
+                    .ConfigureAwait(false);
+                break;
+
+            case OutboxOperationType.DeleteFolder:
+                await _imapClient.DeleteFolderAsync(payload.RemotePath, cancellationToken).ConfigureAwait(false);
+                break;
+
+            case OutboxOperationType.SetFolderSubscription:
+                await _imapClient
+                    .SetSubscriptionAsync(payload.RemotePath, payload.IsSubscribed, cancellationToken)
+                    .ConfigureAwait(false);
+                break;
+        }
     }
 
     private async Task<(Message? Message, Folder? Folder)> ResolveMessageAsync(

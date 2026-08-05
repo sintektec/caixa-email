@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Sintek.Mail.Application.Abstractions.Mail;
 using Sintek.Mail.Application.Abstractions.Security;
+using Sintek.Mail.Application.Sync;
 using Sintek.Mail.Infrastructure.Mail;
 using Sintek.Mail.Infrastructure.Mail.Autodiscover;
 using Sintek.Mail.Infrastructure.Security;
@@ -63,8 +64,13 @@ public static class DependencyInjection
         services.AddSingleton<MailKitAuthenticator>();
         services.AddScoped<IImapClient, MailKitImapClient>();
         services.AddScoped<ISmtpSender, MailKitSmtpSender>();
+        services.AddSingleton<IMimeMessageWriter, MimeMessageWriter>();
 
         services.AddScoped<OutboxProcessor>();
+        services.AddScoped<IOutboxDrainer>(sp => sp.GetRequiredService<OutboxProcessor>());
+
+        // Singleton: é um laço de vida longa que cria o próprio escopo a cada ciclo.
+        services.AddSingleton<AccountSyncWorker>();
 
         return services;
     }

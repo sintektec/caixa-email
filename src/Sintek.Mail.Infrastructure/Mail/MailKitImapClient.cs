@@ -437,10 +437,111 @@ public sealed class MailKitImapClient : Application.Abstractions.Mail.IImapClien
     }
 
     /// <inheritdoc />
+    public async Task<IReadOnlyDictionary<long, long>> CopyAsync(
+        string sourcePath,
+        string destinationPath,
+        IReadOnlyCollection<long> uids,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(uids);
+
+        if (uids.Count == 0)
+        {
+            return new Dictionary<long, long>();
+        }
+
+        var source = await OpenAsync(sourcePath, cancellationToken).ConfigureAwait(false);
+        var destination = await _client.GetFolderAsync(destinationPath, cancellationToken).ConfigureAwait(false);
+
+        var ids = uids.Select(u => new UniqueId((uint)u)).ToList();
+        var copied = await source.CopyToAsync(ids, destination, cancellationToken).ConfigureAwait(false);
+
+        var result = new Dictionary<long, long>();
+        foreach (var pair in copied)
+        {
+            result[pair.Key.Id] = pair.Value.Id;
+        }
+
+        return result;
+    }
+
+    /// <inheritdoc />
     public async Task ExpungeAsync(string remotePath, CancellationToken cancellationToken = default)
     {
         var folder = await OpenAsync(remotePath, cancellationToken).ConfigureAwait(false);
         await folder.ExpungeAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task SetSubscriptionAsync(
+        string remotePath, bool isSubscribed, CancellationToken cancellationToken = default)
+    {
+        EnsureConnected();
+
+        var folder = await _client.GetFolderAsync(remotePath, cancellationToken).ConfigureAwait(false);
+
+        if (isSubscribed)
+        {
+            await folder.SubscribeAsync(cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            await folder.UnsubscribeAsync(cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    /// <inheritdoc />
+    public bool SupportsIdle => _client.IsConnected && _client.Capabilities.HasFlag(ImapCapabilities.Idle);
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Com IDLE a espera é passiva e o servidor avisa em segundos. Sem ele, a alternativa
+    /// honesta é devolver imediatamente e deixar o agendador sondar: fingir uma espera com
+    /// <c>Task.Delay</c> daria a impressão de recebimento imediato onde não há.
+    /// </remarks>
+    public async Task<bool> WaitForChangesAsync(
+        string remotePath, TimeSpan timeout, CancellationToken cancellationToken = default)
+    {
+        EnsureConnected();
+
+        if (!SupportsIdle)
+        {
+            return false;
+        }
+
+        var folder = await OpenAsync(remotePath, cancellationToken).ConfigureAwait(false);
+        var changed = false;
+
+        void OnCountChanged(object? sender, EventArgs e) => changed = true;
+        void OnFlagsChanged(object? sender, MessageFlagsChangedEventArgs e) => changed = true;
+
+        folder.CountChanged += OnCountChanged;
+        folder.MessageFlagsChanged += OnFlagsChanged;
+
+        // O teto de 29 minutos vem da RFC 2177: passado esse tempo, muitos servidores e
+        // intermediários derrubam a conexão em silêncio, e o cliente ficaria esperando um
+        // aviso que nunca viria.
+        var effective = timeout > TimeSpan.FromMinutes(29) ? TimeSpan.FromMinutes(29) : timeout;
+
+        try
+        {
+            using var deadline = new CancellationTokenSource(effective);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+                deadline.Token, cancellationToken);
+
+            await _client.IdleAsync(linked.Token, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // Tempo esgotado é o fim normal de um IDLE, não erro.
+        }
+        finally
+        {
+            folder.CountChanged -= OnCountChanged;
+            folder.MessageFlagsChanged -= OnFlagsChanged;
+        }
+
+        return changed;
     }
 
     /// <inheritdoc />
