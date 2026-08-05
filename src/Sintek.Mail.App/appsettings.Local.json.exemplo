@@ -1,30 +1,13 @@
-ESTE ARQUIVO É VERSIONADO. NÃO ESCREVA A CHAVE AQUI.
-
-Ele não termina em .json de propósito: a aplicação não o lê, e o que for escrito nele vai
-para o repositório. Uma chave colada aqui vaza — o detector de segredos reprova o PR, e o
-valor precisa ser revogado no Google Cloud mesmo depois de removido, porque o commit fica
-acessível na origem até a coleta de lixo do GitHub.
-
-O que fazer, na pasta src/Sintek.Mail.App:
-
-    copy appsettings.Local.json.exemplo appsettings.Local.json
-
-Depois apague estas linhas de texto do arquivo copiado, deixe só o JSON abaixo e troque o
-COLE-AQUI pela Chave secreta do cliente — a que começa com GOCSPX-, obtida no Console do
-Google Cloud em APIs e serviços -> Credenciais -> o cliente OAuth do tipo "Aplicativo para
-computador".
-
-Só o nome appsettings.Local.json está no .gitignore. É esse, e nenhum outro, que recebe a
-chave.
-
-O ClientId não precisa ser repetido: ele já está no appsettings.json, e a configuração é
-sobreposta chave a chave — o que não estiver no arquivo local continua vindo de lá.
-
------------------------------- conteúdo do arquivo ------------------------------
-
 {
+  "//1": "MODELO VERSIONADO. Não escreva a chave neste arquivo — o que for escrito aqui vai para o repositório.",
+  "//2": "Copie-o primeiro:  copy appsettings.Local.json.exemplo appsettings.Local.json",
+  "//3": "Só o nome 'appsettings.Local.json' está no .gitignore. É esse, e nenhum outro, que recebe a chave.",
+  "//4": "Na cópia, troque apenas o valor de ClientSecret. Estas linhas '//' podem ficar: são propriedades sem destino e a configuração as ignora.",
+
   "OAuth": {
     "Google": {
+      "//1": "Chave secreta do cliente, a que começa com GOCSPX-. Console do Google Cloud -> APIs e serviços -> Credenciais -> o cliente OAuth do tipo 'Aplicativo para computador'.",
+      "//2": "O ClientId não precisa ser repetido: já está no appsettings.json, e a configuração é sobreposta chave a chave.",
       "ClientSecret": "COLE-AQUI-A-CHAVE-SECRETA"
     }
   }
