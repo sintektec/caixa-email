@@ -213,6 +213,8 @@ public sealed class MailKitImapClient : Application.Abstractions.Mail.IImapClien
         AppendAddresses(addresses, envelope?.Bcc, AddressKind.Bcc);
         AppendAddresses(addresses, envelope?.ReplyTo, AddressKind.ReplyTo);
 
+        var verdict = ReadServerVerdict(summary.Headers);
+
         return new FetchedMessage
         {
             Uid = summary.UniqueId.Id,
@@ -240,8 +242,29 @@ public sealed class MailKitImapClient : Application.Abstractions.Mail.IImapClien
             IsAnswered = summary.Flags?.HasFlag(MessageFlags.Answered) ?? false,
             Importance = MapImportance(summary),
             ReadReceiptRequested = summary.Headers?.Contains(HeaderId.DispositionNotificationTo) ?? false,
+            SpfResult = verdict.Spf,
+            DkimResult = verdict.Dkim,
+            DmarcResult = verdict.Dmarc,
+            IsFlaggedAsSpam = verdict.IsFlaggedAsSpam,
+            SpamScore = verdict.SpamScore,
         };
     }
+
+    /// <summary>
+    /// Lê o veredito do servidor a partir dos cabeçalhos.
+    /// </summary>
+    /// <remarks>
+    /// Nada é reverificado aqui. SPF, DKIM e DMARC dependem de consultar o DNS no instante em
+    /// que a mensagem chegou; refazer isso dias depois daria resultado diferente e errado.
+    /// </remarks>
+    private static ServerVerdict ReadServerVerdict(HeaderList? headers)
+        => headers is null
+            ? default
+            : AuthenticationResultsParser.Parse(
+                headers[HeaderId.AuthenticationResults],
+                headers["X-Spam-Flag"],
+                headers["X-Spam-Status"],
+                headers["X-Spam-Score"]);
 
     private static void AppendAddresses(
         List<FetchedAddress> accumulator, InternetAddressList? list, AddressKind kind)

@@ -217,6 +217,21 @@ public sealed record FetchedMessage
 
     /// <summary>Se o remetente pediu confirmação de leitura.</summary>
     public bool ReadReceiptRequested { get; init; }
+
+    /// <summary>Resultado do SPF apurado pelo servidor de recebimento.</summary>
+    public Domain.Enums.AuthenticationResult SpfResult { get; init; }
+
+    /// <summary>Resultado do DKIM.</summary>
+    public Domain.Enums.AuthenticationResult DkimResult { get; init; }
+
+    /// <summary>Resultado do DMARC.</summary>
+    public Domain.Enums.AuthenticationResult DmarcResult { get; init; }
+
+    /// <summary>Se o servidor classificou a mensagem como lixo eletrônico.</summary>
+    public bool IsFlaggedAsSpam { get; init; }
+
+    /// <summary>Pontuação de spam informada pelo servidor, quando houver.</summary>
+    public double? SpamScore { get; init; }
 }
 
 /// <summary>Um participante trazido do servidor, ainda em texto.</summary>

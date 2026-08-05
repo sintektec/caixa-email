@@ -96,6 +96,15 @@ vez de nulo.
 compilador de XAML recusar a conversão. A saída é expor a propriedade em `double` no
 ViewModel (`ImapPortValue`), com a conversão explícita ali.
 
+**`InvariantGlobalization` está ligado, e isso quebra duas coisas em silêncio.**
+`string.Normalize` não decompõe nada — o acento sobrevive como caractere único —, então
+comparação sem acento usa mapeamento explícito (`SenderTrustEvaluator.Normalize`). E
+`CultureInfo.GetCultureInfo("pt-BR")` **lança em tempo de execução**: datas e números usam
+formato explícito com `CultureInfo.InvariantCulture`, que é onde o padrão brasileiro já está
+escrito. As duas pegadinhas custaram uma rodada de testes cada: a primeira fez "JOAO SILVA"
+deixar de casar com "João Silva" na detecção de remetente disfarçado, que é exatamente o caso
+que a função existe para pegar.
+
 **Um `ContentDialog` por vez.** Abrir o segundo enquanto o primeiro está aberto não empilha:
 simplesmente não aparece. As telas de configuração se chamam fechando a atual e sinalizando
 a próxima (`SettingsFollowUp`, `RequestedDirectoryCreation`), e o encadeamento acontece em

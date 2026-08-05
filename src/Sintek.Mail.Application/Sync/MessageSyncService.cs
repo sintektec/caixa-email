@@ -218,6 +218,17 @@ public sealed class MessageSyncService
         }
 
         message.SetRemoteIdentity(header.Uid, header.ModSeq, now);
+
+        // O veredito do servidor é gravado uma vez, na chegada. Reavaliá-lo depois seria
+        // impossível: SPF, DKIM e DMARC dependem do DNS no instante em que a mensagem chegou.
+        message.SetAuthenticationResults(
+            header.SpfResult,
+            header.DkimResult,
+            header.DmarcResult,
+            header.IsFlaggedAsSpam,
+            header.SpamScore,
+            now);
+
         ApplyRemoteFlags(message, header, folder, now);
         message.MarkSynced(now);
 

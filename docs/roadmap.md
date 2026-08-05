@@ -53,12 +53,23 @@ Painel de leitura completo com anexos, download sob demanda de corpo e anexos, c
 com Para/CC/CCO, rascunho automático, resposta, resposta a todos, encaminhamento e
 encaminhamento como anexo, assinaturas por conta e aviso de anexo esquecido.
 
+Inclui a **leitura do veredito do servidor sobre a mensagem**: os cabeçalhos de autenticação
+(`Authentication-Results`, com SPF, DKIM e DMARC) e os de classificação (`X-Spam-Flag`,
+`X-Spam-Score`). O painel de leitura passa a exibir uma faixa de confiança, e o aviso de
+remetente disfarçado — nome exibido igual ao de um contato conhecido, domínio diferente —
+que é o vetor de phishing que mais funciona na prática.
+
 ## Fase 5 — Pastas e regras de domínio na interface
 
 Criação, renomeação e exclusão de pastas, favoritos, arrastar e soltar ligado ao
 `MoveMessageHandler`, interface de vínculo de pasta a Diretório de Domínio com a
 propagação de herança, pastas de pendências e o fluxo de troca de domínio com relatório de
 impacto e confirmação.
+
+Inclui as ações **"Marcar como spam"** e **"Não é spam"**, com propagação correta: mover para
+a pasta de lixo eletrônico *e* aplicar os marcadores `$Junk`/`$NotJunk`, que é como
+servidores modernos recebem o treinamento. Mover a mensagem sem o marcador faz o servidor
+continuar classificando errado indefinidamente.
 
 ## Fase 6 — Pesquisa
 
@@ -68,23 +79,75 @@ com combinação de critérios e pesquisas salvas na barra lateral.
 Requer estender os gatilhos do FTS5 para indexar corpo, participantes e nomes de anexo à
 medida que forem baixados.
 
-## Fase 7 — Automação
+## Fase 7 — Automação e filtragem local
 
 Editor de regras automáticas, motor de avaliação na chegada de mensagens, categorias
 coloridas com atalhos, modelos de mensagem e resolução de prioridade quando mais de um
 Diretório de Domínio corresponder.
 
-## Fase 8 — Acabamento
+Inclui listas de **remetentes e domínios bloqueados e confiáveis**, avaliadas pelo mesmo
+motor de regras. Remetente confiável libera imagens remotas sem perguntar; bloqueado vai
+direto para o lixo eletrônico.
+
+**O que esta fase deliberadamente não faz: um classificador de spam próprio.** Servidores
+corporativos — Exchange, Google Workspace — já classificam com dados que nenhum cliente
+desktop tem: volume global, reputação de IP, telemetria de milhões de caixas. Um
+classificador local competindo com isso perde, e o modo de perder é o pior possível: falso
+positivo esconde mensagem legítima numa pasta que o usuário não olha. O papel do cliente é
+respeitar o veredito do servidor, tornar a correção fácil e avisar sobre disfarce.
+
+## Fase 8 — Assistência por IA
+
+Recursos de IA sobre a caixa postal: resumo de mensagem longa e de conversa, sugestão de
+resposta, redação assistida no compositor, classificação sugerida para as regras automáticas
+e pesquisa em linguagem natural sobre o índice da fase 6.
+
+**A parte difícil não são os recursos, é a política de privacidade — e ela vem primeiro.**
+Todo o desenho deste produto é sobre conteúdo de mensagem não sair da máquina em claro:
+banco cifrado com SQLCipher, segredos fora do banco, auditoria sem conteúdo. Mandar corpo de
+mensagem para um modelo em nuvem inverte isso por completo, e num cliente organizado por
+domínio — que existe justamente porque a confidencialidade varia de cliente para cliente —
+não é detalhe menor.
+
+Por isso a fase começa pela infraestrutura, não pelos recursos:
+
+1. **Abstração `IAssistantProvider`** na camada de Aplicação, com implementações separadas.
+2. **Modelo local por padrão** (ONNX Runtime ou equivalente), em que nada trafega. Custa
+   tamanho de download e qualidade menor; ganha o direito de estar ligado sem perguntar.
+3. **Provedor em nuvem opcional, com consentimento por Diretório de Domínio.** É o encaixe
+   natural: o Diretório de Domínio já é a unidade de política do produto. Um diretório pode
+   permitir processamento em nuvem e outro não, e a decisão fica onde o usuário já pensa
+   sobre confidencialidade. Nunca ligado por padrão.
+4. **Registro em auditoria de cada envio a provedor externo** — identificadores e destino,
+   nunca conteúdo, como manda a regra que já vale para o resto.
+
+Só depois disso os recursos. Ordená-los antes produziria um atalho difícil de desfazer: uma
+chamada em nuvem enfiada no meio do compositor, sem consentimento, que ninguém lembra de
+remover.
+
+## Fase 9 — Acabamento
 
 Envio agendado, confirmação de leitura, agrupamento por conversa, atalhos completos no
 padrão Outlook, revisão de acessibilidade com leitor de tela e navegação apenas por
 teclado, limpeza segura de cache e confirmações antes de operações destrutivas.
 
-## Fase 9 — Distribuição
+## Fase 10 — Distribuição
 
 Assinatura do pacote MSIX com certificado corporativo, atualização por App Installer,
 instalador para o modo unpackaged e documentação de implantação, incluindo o registro dos
 aplicativos OAuth no Entra ID e no Google Cloud Console.
+
+## Origem do escopo
+
+As fases 1 a 7 e 9 a 10 vêm da especificação em `spec/`. Duas adições posteriores, pedidas
+pelo usuário e registradas aqui para que a origem não se perca:
+
+- **Spam e lixo eletrônico** — a especificação trata apenas da *pasta* Spam, listada entre as
+  padrão com ícone de alerta. Ações de marcar, leitura do veredito do servidor e listas de
+  bloqueio não estavam previstas; foram distribuídas pelas fases 4, 5 e 7, cada peça onde já
+  existe a infraestrutura de que precisa.
+- **Assistência por IA** — ausente da especificação. Virou a fase 8, depois da pesquisa (que
+  ela consome) e antes do acabamento.
 
 ## Dependências externas
 
@@ -92,4 +155,4 @@ Os Client IDs de OAuth são configuração de implantação, não código. Sem e
 ficam implementados e desativados, e a interface os apresenta como "não configurados" em
 vez de falhar na autenticação. Ver `appsettings.json`.
 
-O certificado de assinatura de código é necessário apenas na fase 9.
+O certificado de assinatura de código é necessário apenas na fase 10.

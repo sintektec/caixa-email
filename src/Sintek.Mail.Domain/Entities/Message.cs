@@ -69,6 +69,28 @@ public sealed class Message : Entity
     /// <summary>MODSEQ (CONDSTORE) da última alteração conhecida no servidor.</summary>
     public long? ModSeq { get; private set; }
 
+    /// <summary>Resultado do SPF, conforme o servidor informou.</summary>
+    public AuthenticationResult SpfResult { get; private set; } = AuthenticationResult.Unknown;
+
+    /// <summary>Resultado do DKIM.</summary>
+    public AuthenticationResult DkimResult { get; private set; } = AuthenticationResult.Unknown;
+
+    /// <summary>Resultado do DMARC.</summary>
+    public AuthenticationResult DmarcResult { get; private set; } = AuthenticationResult.Unknown;
+
+    /// <summary>Se o servidor classificou a mensagem como lixo eletrônico.</summary>
+    public bool IsFlaggedAsSpamByServer { get; private set; }
+
+    /// <summary>
+    /// Pontuação de spam atribuída pelo servidor, quando informada.
+    /// </summary>
+    /// <remarks>
+    /// A escala varia entre implementações — SpamAssassin e Rspamd usam faixas diferentes —,
+    /// então o número só é exibido, nunca comparado com um limiar próprio. Quem decide o que
+    /// é spam é o servidor.
+    /// </remarks>
+    public double? SpamScore { get; private set; }
+
     /// <summary>Assunto, como veio.</summary>
     public string Subject { get; private set; } = string.Empty;
 
@@ -196,6 +218,31 @@ public sealed class Message : Entity
         HasAttachments = hasAttachments;
         Importance = importance;
         ReadReceiptRequested = readReceiptRequested;
+        Touch(now);
+    }
+
+    /// <summary>
+    /// Registra o que o servidor apurou sobre a autenticação e a classificação da mensagem.
+    /// </summary>
+    /// <remarks>
+    /// Nada aqui é verificado por nós. SPF, DKIM e DMARC exigem consultar o DNS no momento em
+    /// que a mensagem chegou ao servidor de recebimento; refazer a verificação dias depois,
+    /// do lado do cliente, daria resultado diferente e errado — chaves DKIM rotacionam e
+    /// registros SPF mudam.
+    /// </remarks>
+    public void SetAuthenticationResults(
+        AuthenticationResult spf,
+        AuthenticationResult dkim,
+        AuthenticationResult dmarc,
+        bool isFlaggedAsSpam,
+        double? spamScore,
+        DateTimeOffset now)
+    {
+        SpfResult = spf;
+        DkimResult = dkim;
+        DmarcResult = dmarc;
+        IsFlaggedAsSpamByServer = isFlaggedAsSpam;
+        SpamScore = spamScore;
         Touch(now);
     }
 

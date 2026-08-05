@@ -109,6 +109,16 @@ public sealed class Account : Entity
     /// <summary>Posição manual na árvore de navegação.</summary>
     public int SortOrder { get; private set; }
 
+    /// <summary>
+    /// Assinatura acrescentada às mensagens escritas por esta conta.
+    /// </summary>
+    /// <remarks>
+    /// Texto puro, não HTML. O compositor a escapa antes de inserir no corpo: o campo é
+    /// digitado pelo usuário, e aceitar marcação crua transformaria a tela de assinatura em
+    /// vetor de injeção contra o próprio produto.
+    /// </remarks>
+    public string? Signature { get; private set; }
+
     /// <summary>Pastas da conta.</summary>
     public IReadOnlyCollection<Folder> Folders => _folders;
 
@@ -255,6 +265,13 @@ public sealed class Account : Entity
 
         SyncIntervalMinutes = syncIntervalMinutes;
         BodyDownloadPolicy = bodyDownloadPolicy;
+        Touch(now);
+    }
+
+    /// <summary>Define a assinatura da conta.</summary>
+    public void SetSignature(string? signature, DateTimeOffset now)
+    {
+        Signature = string.IsNullOrWhiteSpace(signature) ? null : signature.Trim();
         Touch(now);
     }
 
