@@ -526,14 +526,19 @@
                              Title="Confirmação de leitura"
                              Message="O remetente pediu confirmação de que você abriu esta mensagem."
                              IsClosable="False">
-                        <InfoBar.ActionButton>
-                            <StackPanel Orientation="Horizontal" Spacing="8">
+                        <!--
+                            Os dois botões vão no Content, não no ActionButton: aquele
+                            aceita apenas um ButtonBase, e um painel ali quebra só na
+                            compilação do XAML — que não roda fora do Windows.
+                        -->
+                        <InfoBar.Content>
+                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,8">
                                 <Button Content="Enviar confirmação"
                                         Command="{x:Bind Reading.SendReadReceiptCommand}" />
                                 <Button Content="Não enviar"
                                         Command="{x:Bind Reading.DeclineReadReceiptCommand}" />
                             </StackPanel>
-                        </InfoBar.ActionButton>
+                        </InfoBar.Content>
                     </InfoBar>
                     <TextBlock Text="{x:Bind Reading.From, Mode=OneWay}"
                                Style="{ThemeResource BodyTextBlockStyle}" />

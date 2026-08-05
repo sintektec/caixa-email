@@ -113,6 +113,10 @@ escrito. As duas pegadinhas custaram uma rodada de testes cada: a primeira fez "
 deixar de casar com "João Silva" na detecção de remetente disfarçado, que é exatamente o caso
 que a função existe para pegar.
 
+**`InfoBar.ActionButton` aceita um `ButtonBase`, não um painel.** Dois botões lado a lado
+vão em `InfoBar.Content`. O erro (`WMC0015`) só aparece na compilação do XAML, que não roda
+fora do Windows — o job `windows` do CI é o primeiro lugar onde ele existe.
+
 **Um `ContentDialog` por vez.** Abrir o segundo enquanto o primeiro está aberto não empilha:
 simplesmente não aparece. As telas de configuração se chamam fechando a atual e sinalizando
 a próxima (`SettingsFollowUp`, `RequestedDirectoryCreation`), e o encadeamento acontece em
