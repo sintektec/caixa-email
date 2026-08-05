@@ -30,6 +30,21 @@ public sealed class MicrosoftOAuthProvider : IOAuthProvider
         "offline_access",
     ];
 
+    /// <summary>
+    /// Escopo do Microsoft Graph para agenda.
+    /// </summary>
+    /// <remarks>
+    /// <b>Não pode ser pedido junto com os de IMAP.</b> O Entra emite um token por recurso, e
+    /// misturar públicos numa só chamada é recusado antes de sair da máquina. O consentimento
+    /// interativo cobre os dois porque pede os dois em sequência; a renovação silenciosa pede
+    /// só o que a chamada precisa.
+    /// </remarks>
+    public static readonly string[] CalendarScopes =
+    [
+        "https://graph.microsoft.com/Calendars.ReadWrite",
+        "offline_access",
+    ];
+
     private readonly OAuthClientOptions _options;
     private readonly ICredentialStore _credentials;
     private readonly ILogger<MicrosoftOAuthProvider> _logger;
@@ -65,6 +80,33 @@ public sealed class MicrosoftOAuthProvider : IOAuthProvider
             .ExecuteAsync(cancellationToken)
             .ConfigureAwait(false);
 
+        // O consentimento da agenda vai na mesma sessão interativa, e falhar nele não
+        // invalida o do e-mail: a conta é cadastrada e a agenda fica sem espelho remoto até
+        // o usuário consentir. Pedir os dois de uma vez seria recusado — públicos diferentes.
+        try
+        {
+            await application
+                .AcquireTokenSilent(CalendarScopes, result.Account)
+                .ExecuteAsync(cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (MsalUiRequiredException)
+        {
+            try
+            {
+                await application
+                    .AcquireTokenInteractive(CalendarScopes)
+                    .WithLoginHint(emailAddress)
+                    .ExecuteAsync(cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (MsalException ex)
+            {
+                _logger.LogInformation(
+                    ex, "O consentimento de agenda não foi concedido; o e-mail segue autorizado.");
+            }
+        }
+
         await PersistCacheAsync(application, emailAddress, cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation("Autenticação Microsoft concluída para uma conta de e-mail.");
@@ -72,9 +114,18 @@ public sealed class MicrosoftOAuthProvider : IOAuthProvider
     }
 
     /// <inheritdoc />
-    public async Task<OAuthAccessToken> GetAccessTokenAsync(
+    public Task<OAuthAccessToken> GetAccessTokenAsync(
         string emailAddress, CancellationToken cancellationToken = default)
+        => GetAccessTokenAsync(emailAddress, Scopes, cancellationToken);
+
+    /// <inheritdoc />
+    public async Task<OAuthAccessToken> GetAccessTokenAsync(
+        string emailAddress,
+        IReadOnlyCollection<string> scopes,
+        CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(scopes);
+
         var application = await GetApplicationAsync(emailAddress, cancellationToken).ConfigureAwait(false);
 
         var accounts = await application.GetAccountsAsync().ConfigureAwait(false);
@@ -89,7 +140,7 @@ public sealed class MicrosoftOAuthProvider : IOAuthProvider
         try
         {
             var result = await application
-                .AcquireTokenSilent(Scopes, account)
+                .AcquireTokenSilent(scopes, account)
                 .ExecuteAsync(cancellationToken)
                 .ConfigureAwait(false);
 

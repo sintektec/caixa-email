@@ -59,7 +59,6 @@ public sealed class CalendarSyncService
 
     private readonly IRemoteCalendarRepository _calendars;
     private readonly ICalendarRepository _events;
-    private readonly ICalendarSerializer _serializer;
     private readonly IEnumerable<ICalendarSyncProvider> _providers;
     private readonly IUnitOfWork _unitOfWork;
     private readonly TimeProvider _timeProvider;
@@ -68,7 +67,6 @@ public sealed class CalendarSyncService
     public CalendarSyncService(
         IRemoteCalendarRepository calendars,
         ICalendarRepository events,
-        ICalendarSerializer serializer,
         IEnumerable<ICalendarSyncProvider> providers,
         IUnitOfWork unitOfWork,
         TimeProvider timeProvider,
@@ -76,7 +74,6 @@ public sealed class CalendarSyncService
     {
         _calendars = calendars;
         _events = events;
-        _serializer = serializer;
         _providers = providers;
         _unitOfWork = unitOfWork;
         _timeProvider = timeProvider;
@@ -258,11 +255,13 @@ public sealed class CalendarSyncService
 
                 CalendarSyncState.PendingUpdate when target.RemoteHref is { } href
                     => await provider.UpdateAsync(
-                        account, calendar, href, target.RemoteETag, Serialize(target), cancellationToken)
+                        account, calendar, href, target.RemoteETag,
+                        RespondToInvitationHandler.ToData(target), cancellationToken)
                         .ConfigureAwait(false),
 
                 _ => await provider.CreateAsync(
-                    account, calendar, Serialize(target), cancellationToken).ConfigureAwait(false),
+                    account, calendar, RespondToInvitationHandler.ToData(target), cancellationToken)
+                    .ConfigureAwait(false),
             };
 
             if (result.IsConflict)
@@ -286,9 +285,10 @@ public sealed class CalendarSyncService
             }
             else if (result.Href is { } finalHref)
             {
-                // O documento vem junto quando o provedor precisou relê-lo: o servidor
-                // reescreve o que recebe, e o que ficou lá não é o que subiu daqui.
-                target.MarkRemoteSynced(finalHref, result.ETag, result.ICalendar, now);
+                // O documento e a versão vêm junto quando o provedor precisou reler: o
+                // servidor reescreve o que recebe, e o que ficou lá não é o que subiu daqui.
+                target.MarkRemoteSynced(
+                    finalHref, result.ETag, result.ICalendar, now, result.Version.LastModifiedAt);
             }
 
             pushed++;
@@ -388,10 +388,9 @@ public sealed class CalendarSyncService
             pending.Add((change, local, decision));
         }
 
-        // O documento vem num pedido só, em lote: um por recurso multiplicaria as viagens.
+        // O conteúdo vem num pedido só, em lote: um por recurso multiplicaria as viagens.
         var missingContent = pending
-            .Where(p => p.Decision == CalendarSyncDecision.ApplyRemote
-                && string.IsNullOrWhiteSpace(p.Change.ICalendar))
+            .Where(p => p.Decision == CalendarSyncDecision.ApplyRemote && !p.Change.HasContent)
             .Select(p => p.Change.Href)
             .ToList();
 
@@ -399,7 +398,7 @@ public sealed class CalendarSyncService
             ? (await provider.FetchResourcesAsync(account, calendar, missingContent, cancellationToken)
                 .ConfigureAwait(false))
                 .GroupBy(c => c.Href, StringComparer.Ordinal)
-                .ToDictionary(g => g.Key, g => g.First().ICalendar, StringComparer.Ordinal)
+                .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal)
             : [];
 
         foreach (var (change, local, decision) in pending)
@@ -407,13 +406,12 @@ public sealed class CalendarSyncService
             switch (decision)
             {
                 case CalendarSyncDecision.ApplyRemote:
-                    var document = string.IsNullOrWhiteSpace(change.ICalendar)
-                        && fetched.TryGetValue(change.Href, out var extra)
-                            ? extra
-                            : change.ICalendar;
+                    var complete = change.HasContent
+                        ? change
+                        : fetched.TryGetValue(change.Href, out var extra) ? extra : change;
 
                     var outcomeOrNull = await ApplyRemoteAsync(
-                        calendar, local, change, document, now, cancellationToken).ConfigureAwait(false);
+                        calendar, local, complete, now, cancellationToken).ConfigureAwait(false);
 
                     if (outcomeOrNull is { } outcome)
                     {
@@ -471,26 +469,24 @@ public sealed class CalendarSyncService
         RemoteCalendar calendar,
         CalendarEvent? local,
         RemoteCalendarChange change,
-        string? document,
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(document)
-            || _serializer.Read(document) is not { } parsed
-            || parsed.Events.Count == 0)
+        if (change.Event is not { } data)
         {
-            // Um .ics malformado numa coleção de milhares é rotina, não exceção. Descartar
-            // o recurso e seguir é o certo; derrubar a coleção inteira, não.
+            // Recurso que a listagem prometeu e o servidor não entregou — um .ics malformado
+            // numa coleção de milhares é rotina, não exceção. Descartar e seguir é o certo;
+            // derrubar a coleção inteira, não.
             _logger.LogWarning(
                 "Recurso do calendário {CalendarId} descartado por não ser interpretável.", calendar.Id);
 
             return null;
         }
 
-        var data = parsed.Events[0];
-
         if (data.StartsAt is not { } startsAt)
         {
+            // Documento sem horário é um REPLY, que só carrega resposta de participante.
+            // Não há compromisso a criar a partir dele.
             return null;
         }
 
@@ -499,10 +495,23 @@ public sealed class CalendarSyncService
         local ??= CalendarEvent.Create(
             calendar.AccountId, data.Uid, data.Summary, startsAt, data.EndsAt ?? startsAt, now);
 
-        // A regra do SEQUENCE vale aqui como vale para o convite que chega por e-mail: o
-        // CalDAV carrega o iCalendar íntegro, então a versão está lá.
+        // A precedência é do domínio, e escolhe o critério que existir dos dois lados:
+        // SEQUENCE no iCalendar (D-024), instante de alteração no Graph e na Google (D-029).
+        if (!isNew && !CalendarConflictEvaluator.AllowsVersion(local.LocalVersion, change.Version))
+        {
+            // O ETag não é gravado de propósito: gravá-lo declararia sincronia com uma
+            // versão que foi recusada, e a próxima escrita local subiria por cima do que
+            // está lá.
+            _logger.LogInformation(
+                "Versão do compromisso {EventId} recusada por ser anterior à local.", local.Id);
+
+            return null;
+        }
+
         var applied = local.ApplyUpdate(
-            data.Sequence,
+            // Servidor sem SEQUENCE não pode rebaixar o que já está aqui: passar o local
+            // preserva o valor e deixa a decisão inteira com AllowsVersion, acima.
+            change.Version.Sequence ?? local.Sequence,
             data.Summary,
             data.Description,
             data.Location,
@@ -517,13 +526,6 @@ public sealed class CalendarSyncService
 
         if (!applied)
         {
-            // SEQUENCE menor que o local: a versão do servidor é antiga (D-024). O ETag não
-            // é gravado de propósito — gravá-lo declararia sincronia com um documento que
-            // foi recusado, e a próxima escrita local subiria por cima do que está lá.
-            _logger.LogInformation(
-                "Versão do compromisso {EventId} recusada por SEQUENCE menor que a local.",
-                local.Id);
-
             return null;
         }
 
@@ -534,7 +536,8 @@ public sealed class CalendarSyncService
             now);
 
         local.BindToRemoteCalendar(calendar.Id, now);
-        local.MarkRemoteSynced(change.Href, change.ETag, document, now);
+        local.MarkRemoteSynced(
+            change.Href, change.ETag, change.ICalendar, now, change.Version.LastModifiedAt);
 
         if (isNew)
         {
@@ -570,18 +573,4 @@ public sealed class CalendarSyncService
 
         return removed;
     }
-
-    /// <summary>
-    /// Monta o documento a enviar.
-    /// </summary>
-    /// <remarks>
-    /// O documento é reescrito a partir do modelo, e isso descarta o que este produto não
-    /// modela — <c>X-*</c> de outros clientes, <c>VALARM</c>, parâmetros de participante que
-    /// a projeção não carrega. Preservar exigiria costurar as alterações sobre o
-    /// <c>RawICalendar</c> guardado, o que só é possível com um editor de documento que a
-    /// porta do serializador não expõe. O <c>RawICalendar</c> fica gravado para quando
-    /// existir.
-    /// </remarks>
-    private string Serialize(CalendarEvent target)
-        => _serializer.WriteRequest(RespondToInvitationHandler.ToData(target));
 }

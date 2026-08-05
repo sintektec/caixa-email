@@ -139,19 +139,32 @@
                           IsChecked="{x:Bind ViewModel.SyncCalendar, Mode=TwoWay}"
                           AutomationProperties.Name="Sincronizar a agenda desta conta" />
 
+                <ComboBox Header="Protocolo da agenda"
+                          HorizontalAlignment="Stretch"
+                          ItemsSource="{x:Bind ViewModel.CalendarProtocols}"
+                          DisplayMemberPath="Label"
+                          SelectedItem="{x:Bind ViewModel.SelectedCalendarProtocol, Mode=TwoWay}"
+                          Visibility="{x:Bind ViewModel.SyncCalendar, Mode=OneWay}"
+                          AutomationProperties.Name="Protocolo do servidor de agenda" />
+
+                <!--
+                    Só o CalDAV pede endereço. Graph e Calendar API têm endereço fixo e
+                    conhecido, e pedir que o usuário o digite seria pedir que ele acerte um
+                    valor que o programa já sabe.
+                -->
                 <TextBox Header="Servidor de agenda"
                          PlaceholderText="https://dav.exemplo.com/"
                          Text="{x:Bind ViewModel.CalendarUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                         Visibility="{x:Bind ViewModel.SyncCalendar, Mode=OneWay}"
+                         Visibility="{x:Bind ViewModel.RequiresCalendarUrl, Mode=OneWay}"
                          AutomationProperties.Name="Endereço do servidor de agenda" />
 
                 <TextBlock Text="{x:Bind ViewModel.CalendarUrlError, Mode=OneWay}"
                            Style="{ThemeResource CaptionTextBlockStyle}"
                            Foreground="{ThemeResource SystemFillColorCriticalBrush}"
                            TextWrapping="Wrap"
-                           Visibility="{x:Bind ViewModel.SyncCalendar, Mode=OneWay}" />
+                           Visibility="{x:Bind ViewModel.RequiresCalendarUrl, Mode=OneWay}" />
 
-                <TextBlock Text="Basta o endereço inicial do servidor: os calendários da conta são descobertos a partir dele. A agenda usa a mesma credencial do e-mail."
+                <TextBlock Text="{x:Bind ViewModel.CalendarProtocolHint, Mode=OneWay}"
                            Style="{ThemeResource CaptionTextBlockStyle}"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                            TextWrapping="Wrap"

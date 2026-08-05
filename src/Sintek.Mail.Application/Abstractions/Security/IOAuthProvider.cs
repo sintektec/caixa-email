@@ -54,6 +54,24 @@ public interface IOAuthProvider
     Task<OAuthAccessToken> GetAccessTokenAsync(
         string emailAddress, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Devolve um token válido para os escopos informados.
+    /// </summary>
+    /// <remarks>
+    /// <b>Escopo não é detalhe de configuração; é parte do pedido.</b> No Entra ID o token é
+    /// emitido <i>por recurso</i>: pedir <c>outlook.office.com/IMAP.AccessAsUser.All</c> e
+    /// <c>graph.microsoft.com/Calendars.ReadWrite</c> na mesma chamada é recusado, porque são
+    /// dois públicos diferentes. O token do IMAP não abre o Graph, e vice-versa — daí a
+    /// agenda precisar pedir o dela.
+    /// </remarks>
+    /// <exception cref="ReauthenticationRequiredException">
+    /// O token de atualização não vale mais, ou o usuário nunca consentiu com estes escopos.
+    /// </exception>
+    Task<OAuthAccessToken> GetAccessTokenAsync(
+        string emailAddress,
+        IReadOnlyCollection<string> scopes,
+        CancellationToken cancellationToken = default);
+
     /// <summary>Revoga o consentimento e descarta os tokens guardados.</summary>
     Task SignOutAsync(string emailAddress, CancellationToken cancellationToken = default);
 }

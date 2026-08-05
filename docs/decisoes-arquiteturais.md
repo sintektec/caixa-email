@@ -179,3 +179,32 @@ O `SyncToken` e o `CTag` são tratados como blob de texto. São uma URI no CalDA
 devolve sem interpretar. Extrair número, comparar ordem ou gerar um valor quebra nos três, e
 quebra em silêncio: o servidor aceita o token inventado e devolve o conjunto errado de
 mudanças.
+
+## 14. Um formato de domínio na porta de agenda, três protocolos atrás dela
+
+`ICalendarSyncProvider` troca `CalendarEventData`. Só o CalDAV fala iCalendar; o Microsoft
+Graph e a Google Calendar API falam JSON com campos nomeados. Obrigá-los a sintetizar um
+documento iCalendar para o motor reinterpretar seria inventar um formato intermediário — e uma
+segunda chance de errar em cada caminho. O documento cru viaja junto quando existe, para ser
+preservado, não para ser lido de novo. Ver D-030.
+
+**A precedência precisou de regra própria, e é a parte que mais custa se estiver errada.** O
+`SEQUENCE` da RFC 5545 protege contra convite antigo que chega atrasado (D-024). O Graph não o
+expõe, e a Google não o expõe na API. `RemoteVersion` carrega os dois critérios possíveis, e
+`AllowsVersion` só compara o que existir dos dois lados: `SEQUENCE` com `SEQUENCE`, instante com
+instante. Comparar um contador de revisão com um instante produziria recusa arbitrária, porque
+um servidor que reescreve o objeto ao gravar move o segundo sem tocar no primeiro. Ver D-029.
+
+**O Graph obrigou a abrir mão do `delta`.** O único disponível em `v1.0` é
+`/me/calendarView/delta`, que exige janela de datas e expande a recorrência em ocorrências. Este
+produto guarda o mestre com a `RRULE` e expande ao desenhar a grade — é o que permite editar "a
+série". A leitura passou a ser `events` com `$filter` em `lastModifiedDateTime`, que preserva o
+mestre e não reporta exclusão; a exclusão fica com a passada completa periódica, que é o que
+`IsFullEnumeration` autoriza. Ver D-031.
+
+**A escrita de recorrência no Graph não existe de propósito.** Traduzir `RRULE` para o objeto
+de recorrência dele exige mapear exceções, contagem e limite por data, e um mapeamento parcial
+gravaria no servidor uma série diferente da que o usuário vê. Compromisso recorrente criado
+aqui sobe como encontro único — visivelmente errado e corrigível, ao contrário de uma série
+silenciosamente errada. A leitura no sentido inverso recusa o que não sabe traduzir, pelo mesmo
+critério.

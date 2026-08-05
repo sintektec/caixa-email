@@ -369,6 +369,93 @@ public class AccountSetupViewModelTests
         viewModel.GoBack();
         viewModel.Step.Should().Be(AccountSetupStep.Address, "a primeira etapa não tem anterior");
     }
+
+    // ---- Servidor de agenda -------------------------------------------------------------
+
+    /// <summary>
+    /// Só o CalDAV pede endereço. Graph e Calendar API têm endereço fixo e conhecido, e
+    /// pedir que o usuário o digite seria pedir que ele acerte um valor que o programa já
+    /// sabe.
+    /// </summary>
+    [Theory]
+    [InlineData(CalendarProviderKind.CalDav, true)]
+    [InlineData(CalendarProviderKind.MicrosoftGraph, false)]
+    [InlineData(CalendarProviderKind.GoogleCalendar, false)]
+    public void ProtocoloDeAgenda_DecideSeOEnderecoEPedido(
+        CalendarProviderKind protocolo, bool pedeEndereco)
+    {
+        var viewModel = CreateViewModel();
+        viewModel.SyncCalendar = true;
+        viewModel.SelectedCalendarProtocol =
+            viewModel.CalendarProtocols.Single(p => p.Provider == protocolo);
+
+        viewModel.RequiresCalendarUrl.Should().Be(pedeEndereco);
+    }
+
+    /// <summary>
+    /// Basic sobre HTTP é a senha em claro no fio, e o host vem do que o usuário digitou.
+    /// </summary>
+    [Fact]
+    public void EnderecoDeAgenda_EmHttpSimples_ERecusado()
+    {
+        var viewModel = CreateViewModel();
+        viewModel.SyncCalendar = true;
+        viewModel.CalendarUrl = "http://dav.exemplo.com/";
+
+        viewModel.CalendarUrlError.Should().Contain("https://");
+    }
+
+    [Fact]
+    public void EnderecoDeAgenda_EmHttps_EAceito()
+    {
+        var viewModel = CreateViewModel();
+        viewModel.SyncCalendar = true;
+        viewModel.CalendarUrl = "https://dav.exemplo.com/";
+
+        viewModel.CalendarUrlError.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// O erro só vale para quem pede endereço: no Graph o campo nem aparece, e um erro sobre
+    /// ele confundiria quem escolheu o protocolo certo.
+    /// </summary>
+    [Fact]
+    public void EnderecoDeAgenda_ComProtocoloQueNaoOPede_NaoAcusaErro()
+    {
+        var viewModel = CreateViewModel();
+        viewModel.SyncCalendar = true;
+        viewModel.SelectedCalendarProtocol = viewModel.CalendarProtocols
+            .Single(p => p.Provider == CalendarProviderKind.MicrosoftGraph);
+        viewModel.CalendarUrl = "endereço inválido";
+
+        viewModel.CalendarUrlError.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// Graph e Google não têm endereço a digitar, mas a conta precisa de um valor não vazio
+    /// para distinguir "sem servidor de agenda" de "com servidor".
+    /// </summary>
+    [Fact]
+    public void EnderecoEfetivo_ComProtocoloDeEnderecoFixo_UsaODoServico()
+    {
+        var viewModel = CreateViewModel();
+        viewModel.SyncCalendar = true;
+        viewModel.SelectedCalendarProtocol = viewModel.CalendarProtocols
+            .Single(p => p.Provider == CalendarProviderKind.GoogleCalendar);
+
+        viewModel.EffectiveCalendarUrl.Should().Be("https://www.googleapis.com/calendar/v3/");
+    }
+
+    /// <summary>Sem marcar a sincronização, nada de agenda é pedido nem validado.</summary>
+    [Fact]
+    public void AgendaDesligada_NaoPedeEnderecoNemAcusaErro()
+    {
+        var viewModel = CreateViewModel();
+
+        viewModel.SyncCalendar.Should().BeFalse();
+        viewModel.RequiresCalendarUrl.Should().BeFalse();
+        viewModel.CalendarUrlError.Should().BeEmpty();
+    }
 }
 
 /// <summary>Relógio fixo, para tornar os testes determinísticos.</summary>

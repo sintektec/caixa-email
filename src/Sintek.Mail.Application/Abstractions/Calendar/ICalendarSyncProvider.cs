@@ -1,5 +1,6 @@
 using Sintek.Mail.Domain.Entities;
 using Sintek.Mail.Domain.Enums;
+using Sintek.Mail.Domain.Services;
 
 namespace Sintek.Mail.Application.Abstractions.Calendar;
 
@@ -18,17 +19,55 @@ public readonly record struct RemoteCalendarDescriptor(
     string? CTag,
     string? SyncToken);
 
-/// <summary>Uma alteração de recurso trazida do servidor.</summary>
+/// <summary>
+/// Uma alteração de recurso trazida do servidor.
+/// </summary>
 /// <param name="Href">Endereço do recurso — a identidade de rede.</param>
 /// <param name="ETag">ETag declarado, verbatim.</param>
-/// <param name="ICalendar">Documento iCalendar, quando já veio junto.</param>
+/// <param name="Event">
+/// O compromisso já interpretado. Nulo quando a listagem trouxe só <c>href</c> e
+/// <c>ETag</c>, e o conteúdo vem depois em <see cref="ICalendarSyncProvider.FetchResourcesAsync"/>.
+/// </param>
+/// <param name="ICalendar">
+/// Documento iCalendar íntegro, <b>quando o protocolo é iCalendar</b>. O Graph e a Google
+/// falam JSON e deixam este campo nulo — não há documento a preservar, e sintetizar um
+/// criaria uma segunda interpretação da norma para divergir da primeira.
+/// </param>
+/// <param name="Version">Como o servidor declara a versão deste recurso.</param>
 /// <param name="Change">Se foi criado/alterado ou removido.</param>
 public readonly record struct RemoteCalendarChange(
-    string Href, string? ETag, string? ICalendar, RemoteChangeKind Change);
+    string Href,
+    string? ETag,
+    CalendarEventData? Event,
+    string? ICalendar,
+    RemoteVersion Version,
+    RemoteChangeKind Change)
+{
+    /// <summary>Uma remoção, que não carrega conteúdo.</summary>
+    public static RemoteCalendarChange Removed(string href)
+        => new(href, null, null, null, RemoteVersion.Unknown, RemoteChangeKind.Removed);
+
+    /// <summary>Uma listagem que trouxe só a identidade e o ETag.</summary>
+    public static RemoteCalendarChange Listed(string href, string? etag)
+        => new(href, etag, null, null, RemoteVersion.Unknown, RemoteChangeKind.Upserted);
+
+    /// <summary>Um recurso com o conteúdo junto.</summary>
+    public static RemoteCalendarChange Upserted(
+        string href, string? etag, CalendarEventData data, RemoteVersion version,
+        string? iCalendar = null)
+        => new(href, etag, data, iCalendar, version, RemoteChangeKind.Upserted);
+
+    /// <summary>Se o conteúdo já veio e não precisa de um segundo pedido.</summary>
+    public bool HasContent => Event is not null;
+}
 
 /// <summary>Resultado de uma passada de leitura no servidor.</summary>
 /// <param name="Changes">Alterações trazidas.</param>
-/// <param name="SyncToken">Token a guardar para a próxima passada.</param>
+/// <param name="SyncToken">
+/// Token a guardar para a próxima passada. <b>Opaco para o motor</b>: cada provedor decide o
+/// que cabe nele — uma URI no CalDAV, um <c>syncToken</c> na Google, e no Graph a marca-d'água
+/// de alteração mais a data da última passada completa.
+/// </param>
 /// <param name="CTag">Marca da coleção a guardar.</param>
 /// <param name="HasMore">
 /// Se o servidor truncou o lote e a passada precisa ser repetida com o token novo.
@@ -66,17 +105,20 @@ public readonly record struct RemoteCalendarChanges(
 /// de saber o que ficou lá; guardar o que foi enviado faria o <c>If-Match</c> seguinte
 /// falhar para sempre.
 /// </param>
+/// <param name="Version">Versão que o recurso passou a ter, quando o servidor a declara.</param>
 public readonly record struct RemoteWriteResult(
     bool Succeeded,
     string? Href,
     string? ETag,
     bool IsConflict,
     string? ErrorMessage,
-    string? ICalendar = null)
+    string? ICalendar = null,
+    RemoteVersion Version = default)
 {
     /// <summary>Sucesso.</summary>
-    public static RemoteWriteResult Success(string href, string? etag, string? iCalendar = null)
-        => new(true, href, etag, false, null, iCalendar);
+    public static RemoteWriteResult Success(
+        string href, string? etag, string? iCalendar = null, RemoteVersion version = default)
+        => new(true, href, etag, false, null, iCalendar, version);
 
     /// <summary>Recusa por pré-condição: o servidor mudou desde o ETag conhecido.</summary>
     public static RemoteWriteResult Conflict(string message) => new(false, null, null, true, message);
@@ -96,6 +138,12 @@ public readonly record struct RemoteWriteResult(
 /// Microsoft Graph. A Google mantém CalDAV como compatibilidade declaradamente parcial e
 /// recomenda a Calendar API. CalDAV continua sendo o padrão aberto que cobre todo o resto —
 /// Nextcloud, Fastmail, iCloud, SOGo, Radicale. Ver D-026.
+/// </para>
+/// <para>
+/// <b>A porta troca <see cref="CalendarEventData"/>, não texto.</b> Só um dos três protocolos
+/// fala iCalendar; obrigar os outros a sintetizar um documento para o motor reinterpretar
+/// seria inventar um formato intermediário e uma segunda chance de errar. O documento cru
+/// viaja junto quando existe, para ser preservado — não para ser lido de novo.
 /// </para>
 /// <para>
 /// <b>O token de sincronização é opaco em todos os três</b>, e nos três existe o caso de o
@@ -138,14 +186,11 @@ public interface ICalendarSyncProvider
         IReadOnlyCollection<string> hrefs,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Cria um recurso novo no servidor.
-    /// </summary>
-    /// <param name="iCalendar">Documento completo a gravar.</param>
+    /// <summary>Cria um recurso novo no servidor.</summary>
     Task<RemoteWriteResult> CreateAsync(
         Account account,
         RemoteCalendar calendar,
-        string iCalendar,
+        CalendarEventData calendarEvent,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -160,7 +205,7 @@ public interface ICalendarSyncProvider
         RemoteCalendar calendar,
         string href,
         string? knownETag,
-        string iCalendar,
+        CalendarEventData calendarEvent,
         CancellationToken cancellationToken = default);
 
     /// <summary>Exclui um recurso.</summary>

@@ -483,9 +483,7 @@ CalDAV, e Graph e Google ficam desenhados atrás dela (D-026).
 - Conflito visível na agenda, com escolha entre a versão local e a do servidor (D-027).
 - Servidor de agenda no assistente de contas, testado junto com IMAP e SMTP.
 
-**Fora, para a fase seguinte:** as implementações de Microsoft Graph e Google Calendar. O
-Graph exige decidir a precedência **sem `SEQUENCE`** — ele não o expõe —, e isso é decisão
-nova, não adaptação da regra de D-024.
+**Entregue na fase 14:** as implementações de Microsoft Graph e Google Calendar.
 
 ### As armadilhas do protocolo que custaram desenho
 
@@ -517,6 +515,62 @@ bytes saem em UTF-8.
 
 ---
 
+## Fase 14 — Microsoft Graph e Google Calendar
+
+**Entregue.** Os três protocolos de agenda ficam completos, atrás do mesmo
+`ICalendarSyncProvider`.
+
+**A porta mudou junto, e a mudança é o ponto.** Ela passou a trocar `CalendarEventData`, não
+texto iCalendar. Só um dos três protocolos fala iCalendar; obrigar os outros a sintetizar um
+documento para o motor reinterpretar seria inventar um formato intermediário e uma segunda
+chance de errar em cada caminho. O documento cru viaja junto quando existe, para ser
+preservado, e quem serializa é o adaptador CalDAV (D-030).
+
+### A precedência que D-026 deixou em aberto
+
+`RemoteVersion` carrega os dois critérios possíveis — `SEQUENCE` e instante de alteração — e
+`AllowsVersion` **só compara o que existir dos dois lados**. Com `SEQUENCE` dos dois lados vale
+D-024. Sem ele, vale o instante, com igual sendo aceito porque a granularidade de
+`lastModifiedDateTime` faz duas alterações próximas caírem no mesmo valor. Sem critério comum,
+aplica-se: chegar até a comparação já significa que o `ETag` mudou. Comparar um contador de
+revisão com um instante produziria recusa arbitrária (D-029).
+
+### Duas descobertas que mudaram o desenho antes da primeira linha
+
+**O `delta` do Graph não serve, e isso não é preferência.** O único disponível em `v1.0` é
+`/me/calendarView/delta`, que exige janela de datas e **expande a recorrência em ocorrências**:
+uma reunião semanal de um ano vira 52 objetos sem `RRULE`. Este produto guarda o mestre com a
+regra e expande ao desenhar a grade — é o que permite editar "a série", e é o que a agenda
+local já faz com o convite que chega por e-mail. A leitura passou a ser `events` com `$filter`
+em `lastModifiedDateTime`, que preserva o mestre. O preço é que essa consulta não reporta
+exclusão, e daí a passada completa periódica — que é exatamente o que `IsFullEnumeration`
+existe para autorizar (D-031).
+
+**A Google é o caso limpo.** O `syncToken` cobre alterações e exclusões na mesma listagem, a
+exclusão como `status: "cancelled"`, e o token vencido responde 410 com `fullSyncRequired`.
+`singleEvents` fica em falso — o padrão — para preservar o mestre da série, e não pode variar
+entre a passada inicial e a incremental sem invalidar o token.
+
+### Escopo de OAuth: os dois provedores fazem o oposto um do outro
+
+No Entra ID o token é emitido **por recurso**: pedir `outlook.office.com/IMAP.AccessAsUser.All`
+e `graph.microsoft.com/Calendars.ReadWrite` na mesma chamada é recusado, e o token do IMAP não
+abre o Graph. O consentimento interativo passou a pedir os dois em sequência, e falhar no de
+agenda não invalida o do e-mail — a conta é cadastrada e a agenda espera o consentimento. Na
+Google é um token só, com todos os escopos consentidos, e pedir um subconjunto não produziria
+outro token: produziria outra ida ao consentimento, sem ganho nenhum.
+
+### O que ficou de fora, e por quê
+
+**A escrita de recorrência no Graph.** Traduzir `RRULE` para o objeto de recorrência dele exige
+mapear exceções, contagem e limite por data, e um mapeamento parcial gravaria no servidor uma
+série diferente da que o usuário vê. Compromisso recorrente criado aqui sobe como encontro
+único — visivelmente errado e corrigível, ao contrário de uma série silenciosamente errada. A
+leitura no sentido inverso existe e recusa o que não sabe traduzir (`relativeMonthly`,
+`relativeYearly`), pelo mesmo critério.
+
+---
+
 ## Origem do escopo
 
 As fases 1 a 7 e 9 a 10 vêm da especificação em `spec/`. Duas adições posteriores, pedidas
@@ -528,8 +582,8 @@ pelo usuário e registradas aqui para que a origem não se perca:
   existe a infraestrutura de que precisa.
 - **Assistência por IA** — ausente da especificação. Virou a fase 8, depois da pesquisa (que
   ela consome) e antes do acabamento.
-- **Contatos e agenda** — pedidos pelo usuário depois da fase 10. Viraram as fases 11 e 12, e
-  a sincronização de agenda com servidor virou a 13.
+- **Contatos e agenda** — pedidos pelo usuário depois da fase 10. Viraram as fases 11 e 12; a
+  sincronização de agenda com servidor virou a 13, e os provedores em nuvem a 14.
 - **Agenda e contatos** — ausentes da especificação, que menciona apenas "agendar envio"
   (recurso diferente, entregue na fase 9). Viraram as fases 11 e 12. A ordem inverte a em
   que foram pedidos de propósito: os contatos são pequenos, melhoram o compositor que já

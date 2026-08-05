@@ -141,7 +141,15 @@ global, porque o mesmo contato pode legitimamente existir em duas contas.
 `EventAttendees`: `CalendarEventId`, `Address`, `DisplayName?`, `Role`, `Response`.
 
 Acrescentados na fase 13, para o espelho remoto: `RemoteCalendarId?`, `RemoteHref?`,
-`RemoteETag?`, `RawICalendar?`, `SyncState`.
+`RemoteETag?`, `RawICalendar?`, `SyncState`. E na fase 14, `RemoteLastModifiedAt?`.
+
+`RemoteLastModifiedAt` é o critério de precedência de quem **não expõe `SEQUENCE`** — o
+Microsoft Graph e a Google. Fica nulo no caminho do CalDAV e do convite por e-mail, onde o
+`Sequence` é quem manda. Os dois convivem porque a comparação escolhe o que existir dos dois
+lados: comparar um contador de revisão com um instante produziria recusa arbitrária (D-029).
+
+`RawICalendar` também fica nulo no Graph e na Google: lá não há documento de terceiros a
+preservar, e a API devolve campos nomeados em vez de um documento inteiro (D-030).
 
 Índice único `(AccountId, Uid)`: o `UID` é a identidade do evento na norma, e é por ele que
 a atualização enviada pelo organizador encontra o compromisso local. Único por conta porque

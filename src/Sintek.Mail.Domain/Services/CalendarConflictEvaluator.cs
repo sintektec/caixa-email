@@ -27,6 +27,35 @@ public enum CalendarSyncDecision
     Conflict = 5,
 }
 
+/// <summary>
+/// Como um servidor declara a versão de um compromisso.
+/// </summary>
+/// <param name="Sequence">
+/// O <c>SEQUENCE</c> da RFC 5545. Existe em tudo que carrega iCalendar — CalDAV, convite por
+/// e-mail — e não existe no Microsoft Graph.
+/// </param>
+/// <param name="LastModifiedAt">
+/// Instante da última alteração declarado pelo servidor. É o que sobra quando não há
+/// <c>SEQUENCE</c>.
+/// </param>
+/// <remarks>
+/// Os dois campos são opcionais porque nem todo servidor declara os dois, e nenhum declara
+/// os mesmos. Comparar peras com maçãs é justamente o que este tipo existe para impedir:
+/// um <c>SEQUENCE</c> não se compara com um instante.
+/// </remarks>
+public readonly record struct RemoteVersion(int? Sequence, DateTimeOffset? LastModifiedAt)
+{
+    /// <summary>Servidor que não declara versão alguma.</summary>
+    public static RemoteVersion Unknown => default;
+
+    /// <summary>Versão declarada por <c>SEQUENCE</c>, como no iCalendar.</summary>
+    public static RemoteVersion FromSequence(int sequence) => new(sequence, null);
+
+    /// <summary>Versão declarada por instante de alteração, como no Graph e na Google.</summary>
+    public static RemoteVersion FromTimestamp(DateTimeOffset lastModifiedAt)
+        => new(null, lastModifiedAt);
+}
+
 /// <summary>O que a sincronização sabe sobre um compromisso ao decidir.</summary>
 /// <param name="LocalState">Estado local perante o servidor.</param>
 /// <param name="KnownETag">ETag que o cliente guardou na última sincronização.</param>
@@ -129,5 +158,45 @@ public static class CalendarConflictEvaluator
     /// expõe e obriga a decidir por outro critério. Ver D-026.
     /// </remarks>
     public static bool AllowsSequence(int localSequence, int remoteSequence)
-        => remoteSequence >= localSequence;
+        => AllowsVersion(
+            RemoteVersion.FromSequence(localSequence), RemoteVersion.FromSequence(remoteSequence));
+
+    /// <summary>
+    /// Se a versão recebida do servidor pode sobrescrever a local.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Só se compara o que é do mesmo tipo.</b> Um <c>SEQUENCE</c> é um contador de
+    /// revisão do evento; um instante de alteração é outra coisa inteiramente, e um servidor
+    /// que reescreve o objeto ao gravar move o segundo sem mexer no primeiro. Comparar os
+    /// dois entre si produziria recusa arbitrária.
+    /// </para>
+    /// <para>
+    /// <b>Quando não há critério comum, aplica-se.</b> Chegar até aqui já significa que o
+    /// <c>ETag</c> mudou — o servidor está afirmando que o recurso é outro. Recusar por falta
+    /// de versão comparável deixaria a cópia local parada para sempre num servidor que
+    /// simplesmente não declara versão. É o lado certo do erro: o caro é perder alteração,
+    /// não reaplicar uma igual.
+    /// </para>
+    /// <para>
+    /// <b>Igual é aceito, nos dois critérios.</b> Um organizador que reemita o convite sem
+    /// incrementar o <c>SEQUENCE</c> — o que a norma proíbe e acontece — teria a correção
+    /// perdida; e no Graph a granularidade de <c>lastModifiedDateTime</c> faz duas
+    /// alterações próximas caírem no mesmo instante. Ver D-029.
+    /// </para>
+    /// </remarks>
+    public static bool AllowsVersion(RemoteVersion local, RemoteVersion incoming)
+    {
+        if (local.Sequence is { } localSequence && incoming.Sequence is { } incomingSequence)
+        {
+            return incomingSequence >= localSequence;
+        }
+
+        if (local.LastModifiedAt is { } localStamp && incoming.LastModifiedAt is { } incomingStamp)
+        {
+            return incomingStamp >= localStamp;
+        }
+
+        return true;
+    }
 }

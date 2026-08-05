@@ -6,14 +6,14 @@
 
 ## Fase atual
 
-**Fases 1 a 13 concluídas.** O roadmap da especificação está inteiro implementado, e as
-três fases acrescentadas a pedido do usuário — contatos, agenda e sincronização de agenda
-com servidor — também.
+**Fases 1 a 14 concluídas.** O roadmap da especificação está inteiro implementado, e as
+quatro fases acrescentadas a pedido do usuário — contatos, agenda, sincronização de agenda com
+servidor e os provedores em nuvem — também.
 
 ## Marco atual
 
-**865 testes verdes no núcleo multiplataforma** (169 → 272 → 336 → 426 → 441 → 478 → 485
-→ 530 → 535 → 569 → 584 → 587 → 692 → 790 → 865 ao longo das treze fases).
+**919 testes verdes no núcleo multiplataforma** (169 → 272 → 336 → 426 → 441 → 478 → 485
+→ 530 → 535 → 569 → 584 → 587 → 692 → 790 → 865 → 919 ao longo das catorze fases).
 
 A fase 7 entregou a filtragem local inteira: `RuleEvaluator` puro no Domain (campos,
 operadores e combinação E/OU da seção 6.5), `ApplyArrivalRulesHandler` aplicando bloqueio
@@ -84,7 +84,25 @@ recusa media type com parâmetro (`text/calendar; charset=utf-8` lançava `Forma
 toda escrita), e o `StringWriter` comum declara `encoding="utf-16"` no XML enquanto os bytes
 saem em UTF-8.
 
-Distribuição: Domain 225, Application 304, Infrastructure 142, Presentation 141, Persistence 55.
+A fase 14 fechou os três protocolos de agenda. O Microsoft Graph e a Google Calendar API
+entraram atrás do mesmo `ICalendarSyncProvider`, e a porta mudou junto: ela passou a trocar
+`CalendarEventData`, não texto iCalendar (D-030). Só um dos três fala iCalendar — obrigar os
+outros a sintetizar um documento para o motor reinterpretar seria inventar um formato
+intermediário e uma segunda chance de errar em cada caminho.
+
+**Duas descobertas mudaram o desenho antes de a primeira linha ser escrita.** O único `delta`
+de calendário em `v1.0` do Graph é `calendarView/delta`, que exige janela de datas e **expande
+a recorrência em ocorrências** — uma reunião semanal de um ano vira 52 objetos sem `RRULE`, e o
+mestre com a regra é justamente o que este produto guarda. A leitura passou a ser `events` com
+`$filter` em `lastModifiedDateTime`, com passada completa periódica porque essa consulta não
+reporta exclusão (D-031). Na Google, ao contrário, o `syncToken` cobre tudo: alterações e
+exclusões na mesma listagem, a exclusão como `status: cancelled`, e 410 quando o token vence.
+
+A precedência sem `SEQUENCE` — a decisão que D-026 deixara em aberto — ficou em `RemoteVersion`
+e `AllowsVersion`: só se compara o que existir dos dois lados, `SEQUENCE` com `SEQUENCE` e
+instante com instante. Comparar os dois entre si produziria recusa arbitrária (D-029).
+
+Distribuição: Domain 231, Application 304, Infrastructure 180, Presentation 149, Persistence 55.
 
 > **Atenção:** houve troca de implementação em 04/08/2026 (ver `DECISIONS.md`, D-007). O que
 > este arquivo descrevia antes daquela data pertencia à versão anterior, que foi substituída.
@@ -132,12 +150,14 @@ Distribuição: Domain 225, Application 304, Infrastructure 142, Presentation 14
 1. **Revisar e integrar o PR #1.**
 2. **Validação manual em Windows 11** — o único item que resta, e que nenhuma sessão
    automatizada faz. Ver "Bloqueios".
-3. **Provedores Microsoft Graph e Google Calendar** — desenhados atrás do
-   `ICalendarSyncProvider`, ainda sem implementação. O Graph exige decidir a precedência sem
-   `SEQUENCE`, que é decisão nova e não adaptação (D-026).
+3. **Tradução de `RRULE` para o objeto de recorrência do Graph** — hoje o compromisso
+   recorrente criado aqui sobe ao Graph como encontro único, de propósito: um mapeamento
+   parcial gravaria uma série diferente da que o usuário vê (D-030). A leitura no sentido
+   inverso já existe e recusa o que não sabe traduzir.
 
-Não há pendência de código em nenhuma das treze fases. O que resta é **pendência humana**, registrada em "Bloqueios": validação manual em Windows 11 e teste
-contra servidores IMAP/SMTP/CalDAV reais com Client IDs de OAuth.
+Não há pendência de código em nenhuma das catorze fases. O que resta é **pendência humana**, registrada em "Bloqueios": validação manual em Windows 11 e teste
+contra servidores IMAP/SMTP/CalDAV reais, e contra Microsoft 365 e Google, com Client IDs de
+OAuth.
 
 Vale notar: o MSIX compila mas **ainda não foi executado**. Nenhuma sessão automatizada
 consegue fazer isso — exige uma máquina Windows 11 real. A validação funcional da interface

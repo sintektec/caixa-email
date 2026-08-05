@@ -65,7 +65,6 @@ internal static class TestFactories
         => new(
             Substitute.For<IRemoteCalendarRepository>(),
             Substitute.For<ICalendarRepository>(),
-            Substitute.For<Abstractions.Calendar.ICalendarSerializer>(),
             [],
             unitOfWork,
             clock,

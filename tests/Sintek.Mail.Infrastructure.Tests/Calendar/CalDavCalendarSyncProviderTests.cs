@@ -6,6 +6,8 @@ using Sintek.Mail.Application.Abstractions.Security;
 using Sintek.Mail.Domain.Entities;
 using Sintek.Mail.Domain.Enums;
 using Sintek.Mail.Domain.ValueObjects;
+using Sintek.Mail.Application.Abstractions.Calendar;
+using Sintek.Mail.Infrastructure.Calendar;
 using Sintek.Mail.Infrastructure.Calendar.CalDav;
 
 namespace Sintek.Mail.Infrastructure.Tests.Calendar;
@@ -48,8 +50,23 @@ public class CalDavCalendarSyncProviderTests
             Substitute.For<IOAuthProviderRegistry>(),
             NullLogger<CalDavTransport>.Instance);
 
-        return new CalDavCalendarSyncProvider(transport, NullLogger<CalDavCalendarSyncProvider>.Instance);
+        // Serializador real, não dublê: a escrita passa a montar o iCalendar dentro do
+        // provedor, e substituí-lo esconderia justamente o que passou a ser trabalho dele.
+        return new CalDavCalendarSyncProvider(
+            transport,
+            new IcalNetCalendarSerializer(NullLogger<IcalNetCalendarSerializer>.Instance),
+            NullLogger<CalDavCalendarSyncProvider>.Instance);
     }
+
+    private static CalendarEventData Compromisso(string uid = "uid-1", int sequence = 0)
+        => new()
+        {
+            Uid = uid,
+            Sequence = sequence,
+            Summary = "Reunião de projeto",
+            StartsAt = new DateTimeOffset(2026, 8, 10, 17, 0, 0, TimeSpan.Zero),
+            EndsAt = new DateTimeOffset(2026, 8, 10, 18, 0, 0, TimeSpan.Zero),
+        };
 
     private static RemoteCalendar CalendarioLocal(Guid accountId, string? syncToken = null, string? ctag = null)
     {
@@ -519,7 +536,7 @@ public class CalDavCalendarSyncProviderTests
         _handler.Reply(new CalDavReply(HttpStatusCode.Created, ETag: "\"123-000\""));
 
         var resultado = await CreateProvider().CreateAsync(
-            _account, CalendarioLocal(_account.Id), "BEGIN:VCALENDAR\r\nEND:VCALENDAR");
+            _account, CalendarioLocal(_account.Id), Compromisso());
 
         resultado.Succeeded.Should().BeTrue();
         resultado.ETag.Should().Be("\"123-000\"");
@@ -542,7 +559,7 @@ public class CalDavCalendarSyncProviderTests
             .Reply(new CalDavReply(HttpStatusCode.Created, ETag: "\"1\""));
 
         var resultado = await CreateProvider().CreateAsync(
-            _account, CalendarioLocal(_account.Id), "BEGIN:VCALENDAR\r\nEND:VCALENDAR");
+            _account, CalendarioLocal(_account.Id), Compromisso());
 
         resultado.Succeeded.Should().BeTrue();
         resultado.IsConflict.Should().BeFalse();
@@ -567,7 +584,7 @@ public class CalDavCalendarSyncProviderTests
             .Reply(new CalDavReply(HttpStatusCode.NoContent, ETag: "\"2\""));
 
         var resultado = await CreateProvider().CreateAsync(
-            _account, CalendarioLocal(_account.Id), "BEGIN:VCALENDAR\r\nEND:VCALENDAR");
+            _account, CalendarioLocal(_account.Id), Compromisso());
 
         resultado.Succeeded.Should().BeTrue();
         resultado.Href.Should().Be($"{Colecao}existente.ics");
@@ -588,7 +605,7 @@ public class CalDavCalendarSyncProviderTests
                 ETag: "\"depois-da-gravacao\"", ContentType: "text/calendar"));
 
         var resultado = await CreateProvider().CreateAsync(
-            _account, CalendarioLocal(_account.Id), "BEGIN:VCALENDAR\r\nEND:VCALENDAR");
+            _account, CalendarioLocal(_account.Id), Compromisso());
 
         resultado.ETag.Should().Be("\"depois-da-gravacao\"");
         resultado.ICalendar.Should().Contain("SEQUENCE:1");
@@ -609,7 +626,7 @@ public class CalDavCalendarSyncProviderTests
                 ETag: "\"forte\"", ContentType: "text/calendar"));
 
         var resultado = await CreateProvider().CreateAsync(
-            _account, CalendarioLocal(_account.Id), "BEGIN:VCALENDAR\r\nEND:VCALENDAR");
+            _account, CalendarioLocal(_account.Id), Compromisso());
 
         resultado.ETag.Should().Be("\"forte\"");
         _handler.Requests[1].Method.Should().Be("GET");
@@ -625,7 +642,7 @@ public class CalDavCalendarSyncProviderTests
         _handler.Reply(new CalDavReply(HttpStatusCode.Created, ETag: "2134-314"));
 
         var resultado = await CreateProvider().CreateAsync(
-            _account, CalendarioLocal(_account.Id), "BEGIN:VCALENDAR\r\nEND:VCALENDAR");
+            _account, CalendarioLocal(_account.Id), Compromisso());
 
         resultado.Succeeded.Should().BeTrue();
         resultado.ETag.Should().Be("2134-314");
@@ -638,7 +655,7 @@ public class CalDavCalendarSyncProviderTests
 
         var resultado = await CreateProvider().UpdateAsync(
             _account, CalendarioLocal(_account.Id), $"{Colecao}1.ics", "\"2134-314\"",
-            "BEGIN:VCALENDAR\r\nEND:VCALENDAR");
+            Compromisso());
 
         resultado.Succeeded.Should().BeTrue();
         _handler.Requests[0].Headers["If-Match"].Should().Be("\"2134-314\"");
@@ -651,7 +668,7 @@ public class CalDavCalendarSyncProviderTests
 
         var resultado = await CreateProvider().UpdateAsync(
             _account, CalendarioLocal(_account.Id), $"{Colecao}1.ics", "\"antigo\"",
-            "BEGIN:VCALENDAR\r\nEND:VCALENDAR");
+            Compromisso());
 
         resultado.Succeeded.Should().BeFalse();
         resultado.IsConflict.Should().BeTrue();
@@ -668,7 +685,7 @@ public class CalDavCalendarSyncProviderTests
 
         var resultado = await CreateProvider().UpdateAsync(
             _account, CalendarioLocal(_account.Id), $"{Colecao}1.ics", "\"1\"",
-            "BEGIN:VCALENDAR\r\nEND:VCALENDAR");
+            Compromisso());
 
         resultado.IsConflict.Should().BeTrue();
     }
@@ -713,7 +730,17 @@ public class CalDavCalendarSyncProviderTests
                   <d:prop>
                     <d:getetag>"fffff-abcd2"</d:getetag>
                     <c:calendar-data>BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Outro Cliente//EN
+            BEGIN:VEVENT
+            UID:reuniao-1@exemplo.com
+            SEQUENCE:3
+            DTSTAMP:20260805T120000Z
+            DTSTART:20260810T170000Z
+            DTEND:20260810T180000Z
+            SUMMARY:Reunião de projeto
             X-OUTRO-CLIENTE:preservar
+            END:VEVENT
             END:VCALENDAR</c:calendar-data>
                   </d:prop>
                   <d:status>HTTP/1.1 200 OK</d:status>
@@ -731,6 +758,13 @@ public class CalDavCalendarSyncProviderTests
 
         var achado = recursos.Should().ContainSingle().Subject;
         achado.Href.Should().Be($"{Colecao}1.ics");
+        achado.Event!.Uid.Should().Be("reuniao-1@exemplo.com");
+
+        // O SEQUENCE do documento é a versão que decide a precedência no caminho iCalendar.
+        achado.Version.Sequence.Should().Be(3);
+
+        // O documento cru viaja junto para ser preservado, não para ser lido de novo: o que
+        // este produto não modela morre se a reescrita partir só do modelo.
         achado.ICalendar.Should().Contain("X-OUTRO-CLIENTE:preservar");
 
         // O corpo pede o calendar-data vazio, sem filtro: reescrever um objeto sem as

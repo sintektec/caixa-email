@@ -42,6 +42,12 @@ public sealed class CalendarEventConfiguration : IEntityTypeConfiguration<Calend
         builder.Property(e => e.RemoteETag).HasMaxLength(512);
         builder.Property(e => e.SyncState).HasConversion<int>();
 
+        // Só o Graph e a Google preenchem RemoteLastModifiedAt: é o critério de precedência
+        // de quem não expõe SEQUENCE (D-029). Fica nulo no caminho do CalDAV e do convite
+        // por e-mail. LocalVersion é a leitura combinada dos dois critérios, calculada —
+        // mapeá-la duplicaria colunas que já existem.
+        builder.Ignore(e => e.LocalVersion);
+
         // O href é a identidade de rede do recurso, independente do UID: servidores nomeiam
         // o recurso como querem, e nem a Google nem o iCloud usam o UID. Único por coleção,
         // porque a mesma reunião pode estar espelhada em dois calendários remotos.

@@ -140,4 +140,76 @@ public class CalendarConflictEvaluatorTests
     [InlineData(3, 2, false)]
     public void AllowsSequence_VersaoMenorNuncaSobrescreveMaior(int local, int remoto, bool esperado)
         => CalendarConflictEvaluator.AllowsSequence(local, remoto).Should().Be(esperado);
+
+    // ---- Precedência sem SEQUENCE (D-029) ---------------------------------------------
+
+    /// <summary>
+    /// Um <c>SEQUENCE</c> é contador de revisão; um instante de alteração é outra coisa. Um
+    /// servidor que reescreve o objeto ao gravar move o segundo sem tocar no primeiro, e
+    /// compará-los entre si produziria recusa arbitrária.
+    /// </summary>
+    [Fact]
+    public void AllowsVersion_CriteriosDeTiposDiferentes_Aplica()
+    {
+        var local = RemoteVersion.FromSequence(5);
+        var recebida = RemoteVersion.FromTimestamp(new DateTimeOffset(2020, 1, 1, 0, 0, 0, TimeSpan.Zero));
+
+        CalendarConflictEvaluator.AllowsVersion(local, recebida).Should().BeTrue();
+    }
+
+    [Fact]
+    public void AllowsVersion_InstanteMaisNovo_Aplica()
+    {
+        var local = RemoteVersion.FromTimestamp(new DateTimeOffset(2026, 8, 5, 12, 0, 0, TimeSpan.Zero));
+        var recebida = RemoteVersion.FromTimestamp(new DateTimeOffset(2026, 8, 5, 13, 0, 0, TimeSpan.Zero));
+
+        CalendarConflictEvaluator.AllowsVersion(local, recebida).Should().BeTrue();
+    }
+
+    [Fact]
+    public void AllowsVersion_InstanteMaisAntigo_ERecusada()
+    {
+        var local = RemoteVersion.FromTimestamp(new DateTimeOffset(2026, 8, 5, 13, 0, 0, TimeSpan.Zero));
+        var recebida = RemoteVersion.FromTimestamp(new DateTimeOffset(2026, 8, 5, 12, 0, 0, TimeSpan.Zero));
+
+        CalendarConflictEvaluator.AllowsVersion(local, recebida).Should().BeFalse();
+    }
+
+    /// <summary>
+    /// A granularidade do <c>lastModifiedDateTime</c> faz duas alterações próximas caírem no
+    /// mesmo instante; recusar a igual perderia a segunda.
+    /// </summary>
+    [Fact]
+    public void AllowsVersion_MesmoInstante_Aplica()
+    {
+        var stamp = RemoteVersion.FromTimestamp(new DateTimeOffset(2026, 8, 5, 12, 0, 0, TimeSpan.Zero));
+
+        CalendarConflictEvaluator.AllowsVersion(stamp, stamp).Should().BeTrue();
+    }
+
+    /// <summary>
+    /// Chegar até aqui já significa que o ETag mudou. Recusar por falta de versão comparável
+    /// deixaria a cópia local parada para sempre num servidor que não declara versão.
+    /// </summary>
+    [Fact]
+    public void AllowsVersion_ServidorSemVersaoDeclarada_Aplica()
+    {
+        var local = RemoteVersion.FromTimestamp(new DateTimeOffset(2026, 8, 5, 12, 0, 0, TimeSpan.Zero));
+
+        CalendarConflictEvaluator.AllowsVersion(local, RemoteVersion.Unknown).Should().BeTrue();
+    }
+
+    /// <summary>
+    /// Compromisso que veio de iCalendar tem SEQUENCE e não tem instante; o do Graph tem o
+    /// contrário. Quando os dois lados têm SEQUENCE, é ele quem decide — mesmo havendo
+    /// instante junto.
+    /// </summary>
+    [Fact]
+    public void AllowsVersion_ComOsDoisCriterios_OSequencePrevalece()
+    {
+        var local = new RemoteVersion(5, new DateTimeOffset(2026, 8, 5, 12, 0, 0, TimeSpan.Zero));
+        var recebida = new RemoteVersion(3, new DateTimeOffset(2026, 8, 5, 23, 0, 0, TimeSpan.Zero));
+
+        CalendarConflictEvaluator.AllowsVersion(local, recebida).Should().BeFalse();
+    }
 }

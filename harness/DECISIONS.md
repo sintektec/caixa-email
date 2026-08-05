@@ -633,3 +633,96 @@ nulo trata as duas primeiras como a terceira.
 **Consequências:** o provedor carrega a responsabilidade de declarar o que fez, e um
 provedor que declare errado apaga a agenda do usuário. É por isso que os dois caminhos do
 cliente CalDAV — `sync-collection` e `CTag` — têm teste dedicado para esse campo.
+
+---
+
+## D-029 — Precedência sem `SEQUENCE`: instante de alteração, e só entre iguais (2026-08-05)
+
+**Status:** aceita
+
+**Decisão:** `RemoteVersion` carrega os dois critérios possíveis — `Sequence` e
+`LastModifiedAt` — e `CalendarConflictEvaluator.AllowsVersion` **só compara o que existir dos
+dois lados**. Com `SEQUENCE` dos dois lados vale D-024. Sem ele, vale o instante de alteração,
+com igual sendo aceito. Sem critério comum, aplica-se.
+
+**Motivo:** D-026 já registrava que o Graph não expõe `SEQUENCE` e que isso exigiria decisão
+nova. É esta. Três pontos que não são óbvios:
+
+Comparar um `SEQUENCE` com um instante produziria recusa arbitrária — são grandezas
+diferentes, e um servidor que reescreve o objeto ao gravar move o segundo sem tocar no
+primeiro. Daí a comparação só acontecer entre critérios do mesmo tipo.
+
+Igual é aceito nos dois. No `SEQUENCE` é a mesma escolha de D-024, pelo mesmo motivo. No
+instante é porque a granularidade de `lastModifiedDateTime` faz duas alterações próximas
+caírem no mesmo valor, e recusar a segunda perderia a correção.
+
+Sem critério comum, aplica-se. Chegar até a comparação já significa que o `ETag` mudou — o
+servidor está afirmando que o recurso é outro. Recusar por falta de versão comparável deixaria
+a cópia local parada para sempre num servidor que não declara versão nenhuma. É o lado certo
+do erro: o caro é perder alteração, não reaplicar uma igual.
+
+**Consequências:** o caminho do Graph e o da Google ficam mais frouxos que o do CalDAV. Um
+convite antigo reentregue pelo Graph pode sobrescrever, se o servidor tiver reescrito o
+`lastModifiedDateTime`. Não há como fazer melhor com o que a API expõe — e `changeKey`, que
+seria o análogo, é opaco e não ordenável.
+
+**Alternativas rejeitadas:** recusar tudo o que não trouxer `SEQUENCE` (travaria o Graph
+inteiro); tratar ausência de versão como versão zero (faria toda atualização do Graph parecer
+regressão); usar o `changeKey` (é opaco, não ordena, e serve só para igualdade).
+
+---
+
+## D-030 — A porta de agenda troca `CalendarEventData`, não texto (2026-08-05)
+
+**Status:** aceita
+
+**Decisão:** `ICalendarSyncProvider` recebe e devolve `CalendarEventData`. O documento
+iCalendar íntegro viaja junto **quando existe**, em `RemoteCalendarChange.ICalendar`, para ser
+preservado — não para ser lido de novo. O motor não serializa nem interpreta formato algum; o
+`ICalendarSerializer` passou a ser dependência do adaptador CalDAV, que é quem fala iCalendar.
+
+**Motivo:** Só um dos três protocolos fala iCalendar. Obrigar Graph e Google a sintetizar um
+documento para o motor reinterpretar seria inventar um formato intermediário e uma segunda
+chance de errar em cada caminho — exatamente o que D-023 evita ao não ter um conector por
+produto.
+
+**Consequências:** `RawICalendar` fica nulo no Graph e na Google. Lá não há documento a
+preservar, e a preocupação com propriedades desconhecidas — o motivo de o campo existir — não
+se aplica: a API devolve campos nomeados, não um documento de terceiros.
+
+Consequência secundária, e visível: **compromisso recorrente criado aqui sobe ao Graph como
+encontro único.** Traduzir `RRULE` para o objeto de recorrência do Graph exige mapear exceções,
+contagem e limite por data, e um mapeamento parcial gravaria no servidor uma série diferente da
+que o usuário vê. Um encontro único é visivelmente errado e corrigível; uma série
+silenciosamente errada faz a pessoa faltar a reuniões. A leitura no sentido inverso existe e
+recusa o que não sabe traduzir, pelo mesmo critério.
+
+---
+
+## D-031 — Graph lê por `events` com `$filter`, não por `calendarView/delta` (2026-08-05)
+
+**Status:** aceita
+
+**Decisão:** o provedor do Graph lê `GET /me/calendars/{id}/events` com `$filter` em
+`lastModifiedDateTime`, e faz uma passada completa quando não há marca-d'água ou quando a
+última passou de 24 horas. O `delta` não é usado.
+
+**Motivo:** o único `delta` de calendário em `v1.0` é `/me/calendarView/delta`, e ele **exige
+janela de datas e expande a recorrência em ocorrências**. Uma reunião semanal de um ano vira 52
+objetos sem `RRULE`. Este produto guarda o mestre com a regra e expande ao desenhar a grade —
+é o que permite editar "a série", e é o que a agenda local já faz com o convite que chega por
+e-mail. Usar `calendarView` destruiria isso e ainda esconderia tudo o que caísse fora da janela.
+
+**Consequências:** a consulta por `$filter` **não reporta exclusão** — o recurso simplesmente
+some da listagem. Daí a passada completa periódica, que é o que `IsFullEnumeration` autoriza
+(D-028). O intervalo de 24 horas é o atraso máximo com que uma exclusão feita no servidor é
+notada aqui; encurtá-lo custa listar a agenda inteira com mais frequência.
+
+O token de sincronização do Graph, por isso, não é um token de servidor: é o estado que este
+provedor guarda (marca-d'água e data da última passada completa), serializado em JSON. Ele
+continua opaco para o motor, que é o que a porta promete.
+
+**Alternativas rejeitadas:** `calendarView/delta` (destrói o mestre de série); expandir
+localmente o que o `calendarView` devolve (seria reconstruir a `RRULE` a partir das ocorrências
+— adivinhação); assinar notificações de mudança do Graph (exige endpoint público para receber
+o webhook, que um cliente desktop não tem).

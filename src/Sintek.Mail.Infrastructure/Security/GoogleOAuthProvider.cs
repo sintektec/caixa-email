@@ -22,6 +22,18 @@ public sealed class GoogleOAuthProvider : IOAuthProvider
     /// <summary>Escopo que habilita IMAP e SMTP; o Gmail recusa tokens com escopo menor.</summary>
     private const string MailScope = "https://mail.google.com/";
 
+    /// <summary>
+    /// Escopo de leitura e escrita da agenda.
+    /// </summary>
+    /// <remarks>
+    /// <b>Vai junto do de e-mail, diferente do Entra.</b> A Google emite um token só, com
+    /// todos os escopos consentidos, e o mesmo token abre o Gmail e a Calendar API. Pedir os
+    /// dois de uma vez é o caminho certo aqui — e é o oposto do que o Entra aceita.
+    /// </remarks>
+    private const string CalendarScope = "https://www.googleapis.com/auth/calendar";
+
+    private static readonly string[] AllScopes = [MailScope, CalendarScope];
+
     private readonly OAuthClientOptions _options;
     private readonly ICredentialStore _credentials;
     private readonly ILogger<GoogleOAuthProvider> _logger;
@@ -52,7 +64,7 @@ public sealed class GoogleOAuthProvider : IOAuthProvider
 
         var credential = await GoogleWebAuthorizationBroker.AuthorizeAsync(
             new ClientSecrets { ClientId = _options.ClientId },
-            [MailScope],
+            AllScopes,
             emailAddress,
             cancellationToken,
             new CredentialStoreDataStore(_credentials)).ConfigureAwait(false);
@@ -69,15 +81,29 @@ public sealed class GoogleOAuthProvider : IOAuthProvider
     }
 
     /// <inheritdoc />
-    public async Task<OAuthAccessToken> GetAccessTokenAsync(
+    public Task<OAuthAccessToken> GetAccessTokenAsync(
         string emailAddress, CancellationToken cancellationToken = default)
+        => GetAccessTokenAsync(emailAddress, AllScopes, cancellationToken);
+
+    /// <summary>
+    /// Devolve o token da conta.
+    /// </summary>
+    /// <remarks>
+    /// Os escopos pedidos são ignorados de propósito: a Google já emitiu um token único com
+    /// tudo o que o usuário consentiu, e pedir um subconjunto não produziria outro token —
+    /// produziria outra ida ao consentimento, sem ganho nenhum.
+    /// </remarks>
+    public async Task<OAuthAccessToken> GetAccessTokenAsync(
+        string emailAddress,
+        IReadOnlyCollection<string> scopes,
+        CancellationToken cancellationToken = default)
     {
         EnsureConfigured();
 
         var flow = new GoogleAuthorizationCodeFlow(new GoogleAuthorizationCodeFlow.Initializer
         {
             ClientSecrets = new ClientSecrets { ClientId = _options.ClientId },
-            Scopes = [MailScope],
+            Scopes = AllScopes,
             DataStore = new CredentialStoreDataStore(_credentials),
         });
 

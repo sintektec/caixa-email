@@ -67,6 +67,18 @@ vence — descarta o trabalho de alguém, e a pessoa só descobre quando procura
 e não acha. É a postura de `InvalidEmailAction.WarnAndConfirm`: onde a decisão custa caro,
 quem decide é o usuário (D-027).
 
+**A porta de agenda troca `CalendarEventData`, não texto.** Só o CalDAV fala iCalendar; o
+Graph e a Google falam JSON. Obrigá-los a sintetizar um documento para o motor reinterpretar
+seria inventar um formato intermediário e uma segunda chance de errar em cada caminho. O
+documento cru viaja junto **quando existe** — para ser preservado, não para ser lido de novo —
+e quem serializa é o adaptador CalDAV (D-030).
+
+**Precedência só compara critérios do mesmo tipo.** `CalendarConflictEvaluator.AllowsVersion`
+usa `SEQUENCE` contra `SEQUENCE` e instante contra instante. Um `SEQUENCE` é contador de
+revisão e um instante de alteração é outra grandeza — um servidor que reescreve o objeto ao
+gravar move o segundo sem tocar no primeiro, e comparar os dois produziria recusa arbitrária.
+Sem critério comum, aplica-se: chegar até a comparação já significa que o `ETag` mudou (D-029).
+
 **Ausência de um recurso só significa exclusão em passada completa.** Quem declara isso é o
 provedor, em `RemoteCalendarChanges.IsFullEnumeration` — o motor **não** deduz do token
 nulo. Três situações devolvem zero alterações e significam coisas opostas: passada
@@ -232,6 +244,23 @@ ETag forte quando o servidor modifica o objeto ao gravar — e eles modificam: n
 fuso, injetam `SEQUENCE`, reescrevem `DTSTAMP`. Guardar um ETag adivinhado faz o `If-Match`
 seguinte falhar com 412 para sempre, ou pior: sobrescrever em silêncio o que o servidor
 gravou.
+
+**No Entra ID o token é emitido por recurso, e no Google não.** Pedir
+`outlook.office.com/IMAP.AccessAsUser.All` e `graph.microsoft.com/Calendars.ReadWrite` na mesma
+chamada do MSAL é recusado — são públicos diferentes, e o token do IMAP não abre o Graph. Daí
+`IOAuthProvider.GetAccessTokenAsync` ter a sobrecarga que recebe escopos, e o consentimento
+interativo da Microsoft pedir os dois em sequência. A Google faz o oposto: um token só, com
+todos os escopos consentidos, e pedir um subconjunto não produziria outro token — produziria
+outra ida ao consentimento, sem ganho nenhum.
+
+**O `delta` de calendário do Graph expande a recorrência.** O único disponível em `v1.0` é
+`/me/calendarView/delta`, que exige janela de datas e devolve **ocorrências**, não o mestre com
+`RRULE`. Uma reunião semanal de um ano vira 52 objetos. A leitura usa `events` com `$filter` em
+`lastModifiedDateTime`, que preserva o mestre — ao custo de não reportar exclusão, que fica com
+a passada completa periódica (D-031).
+
+**`JsonNode.ToJsonString()` escapa não-ASCII.** "Reunião" sai como `Reuni\u00E3o`. É JSON
+válido e as duas APIs aceitam; o que quebra é a asserção de teste escrita com o acento literal.
 
 **`dotnet ef migrations add --no-build` usa o assembly de `Debug`.** Compilar só em `Release`
 antes de criar a migração faz o EF ler o modelo antigo e gerar a migração anterior de novo —

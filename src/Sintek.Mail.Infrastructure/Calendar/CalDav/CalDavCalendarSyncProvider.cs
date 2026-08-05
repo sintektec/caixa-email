@@ -6,6 +6,7 @@ using Sintek.Mail.Application.Abstractions.Calendar;
 using Sintek.Mail.Application.Abstractions.Mail;
 using Sintek.Mail.Domain.Entities;
 using Sintek.Mail.Domain.Enums;
+using Sintek.Mail.Domain.Services;
 
 namespace Sintek.Mail.Infrastructure.Calendar.CalDav;
 
@@ -52,12 +53,16 @@ public sealed class CalDavCalendarSyncProvider : ICalendarSyncProvider
     private const int MaxCreateAttempts = 3;
 
     private readonly CalDavTransport _transport;
+    private readonly ICalendarSerializer _serializer;
     private readonly ILogger<CalDavCalendarSyncProvider> _logger;
 
     public CalDavCalendarSyncProvider(
-        CalDavTransport transport, ILogger<CalDavCalendarSyncProvider> logger)
+        CalDavTransport transport,
+        ICalendarSerializer serializer,
+        ILogger<CalDavCalendarSyncProvider> logger)
     {
         _transport = transport;
+        _serializer = serializer;
         _logger = logger;
     }
 
@@ -277,12 +282,14 @@ public sealed class CalDavCalendarSyncProvider : ICalendarSyncProvider
     public async Task<RemoteWriteResult> CreateAsync(
         Account account,
         RemoteCalendar calendar,
-        string iCalendar,
+        CalendarEventData calendarEvent,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(account);
         ArgumentNullException.ThrowIfNull(calendar);
-        ArgumentException.ThrowIfNullOrWhiteSpace(iCalendar);
+        ArgumentNullException.ThrowIfNull(calendarEvent);
+
+        var iCalendar = _serializer.WriteRequest(calendarEvent);
 
         var authentication = await RequireAuthenticationAsync(account, cancellationToken)
             .ConfigureAwait(false);
@@ -317,8 +324,8 @@ public sealed class CalDavCalendarSyncProvider : ICalendarSyncProvider
                 // O UID já existe em outro recurso da mesma coleção, e o erro diz onde.
                 // Gravar lá é o caminho — criar de novo repetiria o mesmo 403 para sempre.
                 return await UpdateAsync(
-                    account, calendar, CalDavHref.Key(existingUri), null, iCalendar, cancellationToken)
-                    .ConfigureAwait(false);
+                    account, calendar, CalDavHref.Key(existingUri), null, calendarEvent,
+                    cancellationToken).ConfigureAwait(false);
             }
 
             if (!response.IsSuccess)
@@ -340,13 +347,15 @@ public sealed class CalDavCalendarSyncProvider : ICalendarSyncProvider
         RemoteCalendar calendar,
         string href,
         string? knownETag,
-        string iCalendar,
+        CalendarEventData calendarEvent,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(account);
         ArgumentNullException.ThrowIfNull(calendar);
         ArgumentException.ThrowIfNullOrWhiteSpace(href);
-        ArgumentException.ThrowIfNullOrWhiteSpace(iCalendar);
+        ArgumentNullException.ThrowIfNull(calendarEvent);
+
+        var iCalendar = _serializer.WriteRequest(calendarEvent);
 
         var authentication = await RequireAuthenticationAsync(account, cancellationToken)
             .ConfigureAwait(false);
@@ -739,7 +748,7 @@ public sealed class CalDavCalendarSyncProvider : ICalendarSyncProvider
     }
 
     /// <summary>Lê uma <c>&lt;D:response&gt;</c> de recurso.</summary>
-    private static RemoteCalendarChange? ReadResourceChange(XElement element, Uri requestUri)
+    private RemoteCalendarChange? ReadResourceChange(XElement element, Uri requestUri)
     {
         var key = CalDavHref.KeyOf(requestUri, element.Element(DavXml.Dav + "href")?.Value);
 
@@ -752,7 +761,7 @@ public sealed class CalDavCalendarSyncProvider : ICalendarSyncProvider
 
         if (status == (int)HttpStatusCode.NotFound)
         {
-            return new RemoteCalendarChange(key, null, null, RemoteChangeKind.Removed);
+            return RemoteCalendarChange.Removed(key);
         }
 
         if (status is >= 400)
@@ -763,14 +772,34 @@ public sealed class CalDavCalendarSyncProvider : ICalendarSyncProvider
         }
 
         var etag = DavXml.PropertyText(element, DavXml.Dav + "getetag");
-        var data = DavXml.PropertyText(element, DavXml.CalDav + "calendar-data");
+        var document = DavXml.PropertyText(element, DavXml.CalDav + "calendar-data");
 
-        if (etag is null && data is null)
+        if (etag is null && document is null)
         {
             return null;
         }
 
-        return new RemoteCalendarChange(key, etag, data, RemoteChangeKind.Upserted);
+        if (document is null)
+        {
+            // A listagem trouxe só a identidade; o conteúdo vem no calendar-multiget.
+            return RemoteCalendarChange.Listed(key, etag);
+        }
+
+        // A leitura nunca lança: o documento vem de uma coleção que outro cliente escreveu,
+        // e um .ics malformado entre milhares é rotina.
+        if (_serializer.Read(document) is not { Events.Count: > 0 } parsed)
+        {
+            _logger.LogWarning("Recurso {Recurso} descartado por não ser interpretável.", key);
+
+            return null;
+        }
+
+        var data = parsed.Events[0];
+
+        // O CalDAV carrega o iCalendar íntegro, então o SEQUENCE está lá — é ele que decide
+        // a precedência (D-024), e não o instante de alteração.
+        return RemoteCalendarChange.Upserted(
+            key, etag, data, RemoteVersion.FromSequence(data.Sequence), document);
     }
 
     /// <summary>

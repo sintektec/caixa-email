@@ -74,6 +74,28 @@ public static class DependencyInjection
             Application.Abstractions.Calendar.ICalendarSyncProvider,
             Calendar.CalDav.CalDavCalendarSyncProvider>();
 
+        // Graph e Google Calendar falam JSON sobre HTTPS com endereço fixo e conhecido — não
+        // com um host escolhido pelo usuário. Ainda assim o redirecionamento fica desligado:
+        // o HttpClient descarta o Authorization ao mudar de host, e um token de acesso vazado
+        // para o host errado é pior do que uma requisição que falha.
+        services.AddHttpClient<Calendar.Rest.CalendarRestClient>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(60);
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("Sintek.Mail/1.0");
+        })
+        .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+        {
+            AllowAutoRedirect = false,
+        });
+
+        services.AddTransient<
+            Application.Abstractions.Calendar.ICalendarSyncProvider,
+            Calendar.Rest.GraphCalendarSyncProvider>();
+
+        services.AddTransient<
+            Application.Abstractions.Calendar.ICalendarSyncProvider,
+            Calendar.Rest.GoogleCalendarSyncProvider>();
+
         services.AddSingleton<IDnsResolver, DnsClientResolver>();
         services.AddSingleton<DnsSrvLocator>();
 

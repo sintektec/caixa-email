@@ -451,3 +451,46 @@ Migração exige o pacote, e a versão precisa acompanhar o EF Core do projeto.
   precedência sem `SEQUENCE` — decisão nova, não adaptação de D-024.
 - O que continua pendente é humano: validação manual em Windows 11 e teste contra servidores
   IMAP/SMTP/CalDAV reais com Client IDs de OAuth.
+
+---
+
+## 2026-08-05 — Sessão 9 (continuação): fase 14, Microsoft Graph e Google Calendar
+
+**O que foi feito:**
+- Os três protocolos de agenda ficam completos atrás do `ICalendarSyncProvider`.
+- **A porta mudou junto:** passou a trocar `CalendarEventData` em vez de texto iCalendar. Só
+  um dos três fala iCalendar; obrigar os outros a sintetizar um documento para o motor
+  reinterpretar seria inventar um formato intermediário. O documento cru viaja junto quando
+  existe, para ser preservado, e o `ICalendarSerializer` virou dependência do adaptador
+  CalDAV — que é quem fala o formato (D-030).
+- `RemoteVersion` e `AllowsVersion` no domínio: a precedência que D-026 deixara em aberto. Só
+  se compara o que existir dos dois lados, `SEQUENCE` com `SEQUENCE` e instante com instante
+  (D-029). `CalendarEvent` ganhou `RemoteLastModifiedAt` e a migração
+  `CalendarVersionPrecedence`.
+- `CalendarRestClient` compartilhado, `GraphCalendarSyncProvider`, `GraphSyncToken`,
+  `GraphRecurrence` e `GoogleCalendarSyncProvider`.
+- Escopo de OAuth por recurso: `IOAuthProvider.GetAccessTokenAsync` ganhou a sobrecarga que
+  recebe escopos, e o consentimento interativo da Microsoft passou a pedir os de agenda em
+  sequência — falhar neles não invalida o do e-mail.
+- Escolha de protocolo no assistente de contas, com endereço pedido só no CalDAV.
+- 919 testes (Domain 231, Application 304, Infrastructure 180, Presentation 149,
+  Persistence 55). D-029 a D-031 registradas.
+
+**Duas medições mudaram o desenho antes da primeira linha:**
+- O único `delta` de calendário em `v1.0` do Graph é `/me/calendarView/delta`, e ele exige
+  janela de datas e **expande a recorrência em ocorrências** — destruiria o mestre com `RRULE`
+  que este produto guarda. A leitura ficou em `events` com `$filter` em
+  `lastModifiedDateTime`, com passada completa periódica porque essa consulta não reporta
+  exclusão (D-031).
+- No Entra ID o token é por recurso e não se pode misturar públicos numa chamada; na Google é
+  um token só com todos os escopos. Os dois provedores fazem o oposto um do outro.
+
+**O que ficou de fora, de propósito:** a escrita de recorrência no Graph. Um mapeamento
+parcial de `RRULE` gravaria no servidor uma série diferente da que o usuário vê; um encontro
+único é visivelmente errado e corrigível. A leitura no sentido inverso recusa o que não sabe
+traduzir, pelo mesmo critério.
+
+**Próxima sessão:**
+- Tradução completa de `RRULE` para o objeto de recorrência do Graph, se houver interesse.
+- O que continua pendente é humano: validação manual em Windows 11 e teste contra servidores
+  reais — IMAP/SMTP, CalDAV, Microsoft 365 e Google — com Client IDs de OAuth.

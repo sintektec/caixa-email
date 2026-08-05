@@ -270,7 +270,15 @@ public sealed partial class AccountSetupViewModel : ObservableObject
     /// <summary>Se a conta também sincroniza a agenda com um servidor.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CalendarUrlError))]
+    [NotifyPropertyChangedFor(nameof(RequiresCalendarUrl))]
     private bool _syncCalendar;
+
+    /// <summary>Protocolo escolhido para a agenda.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CalendarUrlError))]
+    [NotifyPropertyChangedFor(nameof(RequiresCalendarUrl))]
+    [NotifyPropertyChangedFor(nameof(CalendarProtocolHint))]
+    private CalendarProtocolOption _selectedCalendarProtocol = CalendarProtocolOption.Options[0];
 
     /// <inheritdoc cref="UserName" />
     /// <summary>
@@ -330,6 +338,38 @@ public sealed partial class AccountSetupViewModel : ObservableObject
     [ObservableProperty]
     private bool _needsNewDirectory;
 
+    /// <summary>Protocolos de agenda oferecidos.</summary>
+    public IReadOnlyList<CalendarProtocolOption> CalendarProtocols => CalendarProtocolOption.Options;
+
+    /// <summary>
+    /// Se o protocolo escolhido precisa de um endereço digitado.
+    /// </summary>
+    /// <remarks>
+    /// Só o CalDAV precisa: o Graph e a Calendar API têm endereço fixo e conhecido, e pedir
+    /// que o usuário o digite seria pedir que ele acerte um valor que o programa já sabe.
+    /// </remarks>
+    public bool RequiresCalendarUrl
+        => SyncCalendar && SelectedCalendarProtocol.Provider == CalendarProviderKind.CalDav;
+
+    /// <summary>Explicação do que o protocolo escolhido exige.</summary>
+    public string CalendarProtocolHint => SelectedCalendarProtocol.Hint;
+
+    /// <summary>
+    /// O endereço que vai para o cadastro.
+    /// </summary>
+    /// <remarks>
+    /// Graph e Google não têm endereço a digitar, mas a conta precisa de um valor não vazio
+    /// para que <c>ConfigureCalendar</c> ligue a sincronização — é ele que distingue "sem
+    /// servidor de agenda" de "com servidor". O endereço fixo do serviço cumpre esse papel.
+    /// </remarks>
+    public string? EffectiveCalendarUrl => SelectedCalendarProtocol.Provider switch
+    {
+        CalendarProviderKind.CalDav => CalendarUrl,
+        CalendarProviderKind.MicrosoftGraph => "https://graph.microsoft.com/v1.0/",
+        CalendarProviderKind.GoogleCalendar => "https://www.googleapis.com/calendar/v3/",
+        _ => null,
+    };
+
     /// <summary>
     /// Erro de validação do endereço de agenda, exibido enquanto se digita.
     /// </summary>
@@ -341,7 +381,7 @@ public sealed partial class AccountSetupViewModel : ObservableObject
     {
         get
         {
-            if (!SyncCalendar || string.IsNullOrWhiteSpace(CalendarUrl))
+            if (!SyncCalendar || !RequiresCalendarUrl || string.IsNullOrWhiteSpace(CalendarUrl))
             {
                 return string.Empty;
             }
@@ -499,9 +539,9 @@ public sealed partial class AccountSetupViewModel : ObservableObject
                     UserName = UserName,
                     Password = Password,
                     CalendarProvider = SyncCalendar
-                        ? CalendarProviderKind.CalDav
+                        ? SelectedCalendarProtocol.Provider
                         : CalendarProviderKind.None,
-                    CalendarUrl = SyncCalendar ? CalendarUrl : null,
+                    CalendarUrl = SyncCalendar ? EffectiveCalendarUrl : null,
                 },
                 cancellationToken).ConfigureAwait(true);
 
@@ -539,6 +579,12 @@ public sealed partial class AccountSetupViewModel : ObservableObject
             return;
         }
 
+        if (SyncCalendar && RequiresCalendarUrl && string.IsNullOrWhiteSpace(CalendarUrl))
+        {
+            StatusMessage = "Informe o endereço do servidor de agenda.";
+            return;
+        }
+
         IsBusy = true;
 
         try
@@ -560,9 +606,9 @@ public sealed partial class AccountSetupViewModel : ObservableObject
                     UserName = UserName,
                     Password = Password,
                     CalendarProvider = SyncCalendar
-                        ? CalendarProviderKind.CalDav
+                        ? SelectedCalendarProtocol.Provider
                         : CalendarProviderKind.None,
-                    CalendarUrl = SyncCalendar ? CalendarUrl : null,
+                    CalendarUrl = SyncCalendar ? EffectiveCalendarUrl : null,
                 },
                 cancellationToken).ConfigureAwait(true);
 

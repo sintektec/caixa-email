@@ -7,6 +7,7 @@ using Sintek.Mail.Application.Sync;
 using Sintek.Mail.Application.Tests.UseCases;
 using Sintek.Mail.Domain.Entities;
 using Sintek.Mail.Domain.Enums;
+using Sintek.Mail.Domain.Services;
 using Sintek.Mail.Domain.ValueObjects;
 
 namespace Sintek.Mail.Application.Tests.Sync;
@@ -23,7 +24,7 @@ internal sealed class ScriptedCalendarProvider : ICalendarSyncProvider
 
     public List<RemoteCalendarDescriptor> Collections { get; } = [];
 
-    public Dictionary<string, string> Resources { get; } = new(StringComparer.Ordinal);
+    public Dictionary<string, CalendarEventData> Resources { get; } = new(StringComparer.Ordinal);
 
     public List<string> Created { get; } = [];
 
@@ -62,11 +63,13 @@ internal sealed class ScriptedCalendarProvider : ICalendarSyncProvider
         return Task.FromResult<IReadOnlyList<RemoteCalendarChange>>(
             [.. hrefs
                 .Where(Resources.ContainsKey)
-                .Select(h => new RemoteCalendarChange(h, "\"1\"", Resources[h], RemoteChangeKind.Upserted))]);
+                .Select(h => RemoteCalendarChange.Upserted(
+                    h, "\"1\"", Resources[h],
+                    RemoteVersion.FromSequence(Resources[h].Sequence)))]);
     }
 
     public Task<RemoteWriteResult> CreateAsync(
-        Account account, RemoteCalendar calendar, string iCalendar,
+        Account account, RemoteCalendar calendar, CalendarEventData calendarEvent,
         CancellationToken cancellationToken = default)
     {
         if (TakeConflict() is { } conflict)
@@ -76,14 +79,14 @@ internal sealed class ScriptedCalendarProvider : ICalendarSyncProvider
 
         var href = $"https://dav.exemplo.com/cal/{Created.Count}.ics";
         Created.Add(href);
-        Resources[href] = iCalendar;
+        Resources[href] = calendarEvent;
 
         return Task.FromResult(RemoteWriteResult.Success(href, "\"novo\""));
     }
 
     public Task<RemoteWriteResult> UpdateAsync(
-        Account account, RemoteCalendar calendar, string href, string? knownETag, string iCalendar,
-        CancellationToken cancellationToken = default)
+        Account account, RemoteCalendar calendar, string href, string? knownETag,
+        CalendarEventData calendarEvent, CancellationToken cancellationToken = default)
     {
         if (TakeConflict() is { } conflict)
         {
@@ -91,7 +94,7 @@ internal sealed class ScriptedCalendarProvider : ICalendarSyncProvider
         }
 
         Updated.Add(href);
-        Resources[href] = iCalendar;
+        Resources[href] = calendarEvent;
 
         return Task.FromResult(RemoteWriteResult.Success(href, "\"atualizado\""));
     }
@@ -137,7 +140,6 @@ public class CalendarSyncServiceTests
 
     private readonly InMemoryCalendarRepository _events = new();
     private readonly InMemoryRemoteCalendarRepository _calendars = new();
-    private readonly ICalendarSerializer _serializer = Substitute.For<ICalendarSerializer>();
     private readonly IUnitOfWork _unitOfWork = Substitute.For<IUnitOfWork>();
     private readonly ScriptedCalendarProvider _provider = new();
     private readonly FakeTimeProvider _clock = new(Now);
@@ -152,31 +154,22 @@ public class CalendarSyncServiceTests
         _provider.Collections.Add(new RemoteCalendarDescriptor(
             Colecao, "Agenda", "#FF5733FF", IsReadOnly: false, CTag: "1", SyncToken: null));
 
-        _serializer.WriteRequest(Arg.Any<CalendarEventData>()).Returns("BEGIN:VCALENDAR\r\nEND:VCALENDAR");
     }
 
     private CalendarSyncService CreateService()
         => new(
-            _calendars, _events, _serializer, [_provider], _unitOfWork, _clock,
+            _calendars, _events, [_provider], _unitOfWork, _clock,
             NullLogger<CalendarSyncService>.Instance);
 
     private void GivenDocument(string href, string uid, DateTimeOffset startsAt, int sequence = 0)
-    {
-        _provider.Resources[href] = $"ICS:{uid}";
-
-        _serializer.Read($"ICS:{uid}").Returns(new CalendarDocument(
-            CalendarMethod.Request,
-            [
-                new CalendarEventData
-                {
-                    Uid = uid,
-                    Sequence = sequence,
-                    Summary = "Reunião de projeto",
-                    StartsAt = startsAt,
-                    EndsAt = startsAt.AddHours(1),
-                },
-            ]));
-    }
+        => _provider.Resources[href] = new CalendarEventData
+        {
+            Uid = uid,
+            Sequence = sequence,
+            Summary = "Reunião de projeto",
+            StartsAt = startsAt,
+            EndsAt = startsAt.AddHours(1),
+        };
 
     private RemoteCalendar GivenLocalCalendar(string? syncToken = null)
     {
@@ -231,7 +224,7 @@ public class CalendarSyncServiceTests
         GivenDocument(href, "uid-1", Inicio);
 
         _provider.EnqueueChanges(new RemoteCalendarChanges(
-            [new RemoteCalendarChange(href, "\"1\"", null, RemoteChangeKind.Upserted)],
+            [RemoteCalendarChange.Listed(href, "\"1\"")],
             "token-1", "2", HasMore: false, IsFullEnumeration: true));
 
         var resultado = await CreateService().SyncAsync(_account, _provider);
@@ -264,7 +257,7 @@ public class CalendarSyncServiceTests
         await _events.AddAsync(existente);
 
         _provider.EnqueueChanges(new RemoteCalendarChanges(
-            [new RemoteCalendarChange(href, "\"1\"", null, RemoteChangeKind.Upserted)],
+            [RemoteCalendarChange.Listed(href, "\"1\"")],
             "token-2", "2", HasMore: false, IsFullEnumeration: true));
 
         var resultado = await CreateService().SyncAsync(_account, _provider);
@@ -344,7 +337,7 @@ public class CalendarSyncServiceTests
         await _events.AddAsync(local);
 
         _provider.EnqueueChanges(new RemoteCalendarChanges(
-            [new RemoteCalendarChange(href, null, null, RemoteChangeKind.Removed)],
+            [RemoteCalendarChange.Removed(href)],
             "token-3", "3", HasMore: false, IsFullEnumeration: false));
 
         var resultado = await CreateService().SyncAsync(_account, _provider);
@@ -453,11 +446,11 @@ public class CalendarSyncServiceTests
         GivenDocument(segundo, "uid-2", Inicio.AddDays(1));
 
         _provider.EnqueueChanges(new RemoteCalendarChanges(
-            [new RemoteCalendarChange(primeiro, "\"1\"", null, RemoteChangeKind.Upserted)],
+            [RemoteCalendarChange.Listed(primeiro, "\"1\"")],
             "token-a", "1", HasMore: true, IsFullEnumeration: true));
 
         _provider.EnqueueChanges(new RemoteCalendarChanges(
-            [new RemoteCalendarChange(segundo, "\"1\"", null, RemoteChangeKind.Upserted)],
+            [RemoteCalendarChange.Listed(segundo, "\"1\"")],
             "token-b", "2", HasMore: false, IsFullEnumeration: false));
 
         var resultado = await CreateService().SyncAsync(_account, _provider);
@@ -487,7 +480,7 @@ public class CalendarSyncServiceTests
         GivenDocument(href, "uid-1", Inicio.AddHours(4), sequence: 3);
 
         _provider.EnqueueChanges(new RemoteCalendarChanges(
-            [new RemoteCalendarChange(href, "\"2\"", null, RemoteChangeKind.Upserted)],
+            [RemoteCalendarChange.Listed(href, "\"2\"")],
             "token-6", "6", HasMore: false, IsFullEnumeration: false));
 
         var resultado = await CreateService().SyncAsync(_account, _provider);
@@ -568,14 +561,14 @@ public class CalendarSyncServiceTests
             => _inner.FetchResourcesAsync(account, calendar, hrefs, cancellationToken);
 
         public Task<RemoteWriteResult> CreateAsync(
-            Account account, RemoteCalendar calendar, string iCalendar,
+            Account account, RemoteCalendar calendar, CalendarEventData calendarEvent,
             CancellationToken cancellationToken = default)
-            => _inner.CreateAsync(account, calendar, iCalendar, cancellationToken);
+            => _inner.CreateAsync(account, calendar, calendarEvent, cancellationToken);
 
         public Task<RemoteWriteResult> UpdateAsync(
-            Account account, RemoteCalendar calendar, string href, string? knownETag, string iCalendar,
-            CancellationToken cancellationToken = default)
-            => _inner.UpdateAsync(account, calendar, href, knownETag, iCalendar, cancellationToken);
+            Account account, RemoteCalendar calendar, string href, string? knownETag,
+            CalendarEventData calendarEvent, CancellationToken cancellationToken = default)
+            => _inner.UpdateAsync(account, calendar, href, knownETag, calendarEvent, cancellationToken);
 
         public Task<RemoteWriteResult> DeleteAsync(
             Account account, RemoteCalendar calendar, string href, string? knownETag,

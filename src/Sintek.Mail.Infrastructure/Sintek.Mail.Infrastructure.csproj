@@ -18,6 +18,15 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!--
+      O formato do token de sincronização do Graph é detalhe interno deste adaptador — ele é
+      opaco para o motor de propósito. Os testes precisam construí-lo para verificar quando a
+      passada é completa, e isso não justifica torná-lo API pública.
+    -->
+    <InternalsVisibleTo Include="Sintek.Mail.Infrastructure.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="MailKit" />
     <PackageReference Include="MimeKit" />
     <PackageReference Include="HtmlSanitizer" />

@@ -168,6 +168,26 @@ public sealed class CalendarEvent : Entity
     /// <summary>Estado perante o servidor.</summary>
     public CalendarSyncState SyncState { get; private set; } = CalendarSyncState.LocalOnly;
 
+    /// <summary>
+    /// Instante de alteração declarado pelo servidor, quando ele declara um.
+    /// </summary>
+    /// <remarks>
+    /// É o critério de precedência de quem não expõe <c>SEQUENCE</c> — o Microsoft Graph e a
+    /// Google. Fica nulo no caminho do CalDAV e do convite por e-mail, onde o
+    /// <see cref="Sequence"/> é quem manda. Ver D-029.
+    /// </remarks>
+    public DateTimeOffset? RemoteLastModifiedAt { get; private set; }
+
+    /// <summary>
+    /// A versão que este compromisso tem hoje, para comparar com a que o servidor manda.
+    /// </summary>
+    /// <remarks>
+    /// Leva os dois critérios porque a comparação escolhe o que existir dos dois lados: quem
+    /// veio de iCalendar tem <c>SEQUENCE</c> e não tem instante; quem veio do Graph tem o
+    /// contrário.
+    /// </remarks>
+    public Services.RemoteVersion LocalVersion => new(Sequence, RemoteLastModifiedAt);
+
     /// <summary>Participantes.</summary>
     public IReadOnlyCollection<EventAttendee> Attendees => _attendees;
 
@@ -502,13 +522,21 @@ public sealed class CalendarEvent : Entity
     /// devolver 412 para sempre.
     /// </remarks>
     public void MarkRemoteSynced(
-        string remoteHref, string? remoteETag, string? rawICalendar, DateTimeOffset now)
+        string remoteHref,
+        string? remoteETag,
+        string? rawICalendar,
+        DateTimeOffset now,
+        DateTimeOffset? remoteLastModifiedAt = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(remoteHref);
 
         RemoteHref = remoteHref.Trim();
         RemoteETag = Normalize(remoteETag);
         RawICalendar = string.IsNullOrWhiteSpace(rawICalendar) ? RawICalendar : rawICalendar;
+
+        // Nulo preserva o que já havia: uma gravação que o servidor confirmou sem declarar
+        // instante não apaga o critério de precedência que estava valendo.
+        RemoteLastModifiedAt = remoteLastModifiedAt ?? RemoteLastModifiedAt;
         SyncState = CalendarSyncState.Synced;
         Touch(now);
     }
@@ -578,6 +606,10 @@ public sealed class CalendarEvent : Entity
     public void ResolveConflictAcceptingRemote(DateTimeOffset now)
     {
         RemoteETag = null;
+
+        // O instante conhecido vai junto, pelo mesmo motivo do ETag: mantê-lo faria a
+        // precedência de D-029 recusar a versão do servidor que o usuário acabou de aceitar.
+        RemoteLastModifiedAt = null;
         SyncState = CalendarSyncState.Synced;
         Touch(now);
     }
