@@ -343,6 +343,48 @@ public class GraphCalendarSyncProviderTests
         pedido.Body.Should().Contain("\"subject\":\"Reuni\\u00E3o\"");
     }
 
+    /// <summary>
+    /// As três situações da recorrência no corpo enviado, e a diferença entre a segunda e a
+    /// terceira é o que impede de apagar no servidor uma série que ninguém pediu para apagar.
+    /// </summary>
+    /// <remarks>
+    /// Num <c>PATCH</c>, campo ausente significa "não mexa". Por isso a remoção precisa do
+    /// nulo explícito — sem ele, o usuário apaga a repetição, salva, e ela volta na
+    /// sincronização seguinte. E por isso mesmo a regra <i>intraduzível</i> exige o oposto:
+    /// mandar nulo ali apagaria do servidor a série que não soubemos ler.
+    /// </remarks>
+    [Theory]
+    [InlineData("FREQ=WEEKLY;BYDAY=MO", true, false)]
+    [InlineData(null, false, true)]
+    [InlineData("FREQ=MONTHLY;BYDAY=2TU", false, false)]
+    public async Task UpdateAsync_Recorrencia_EnviaSerieNuloOuNada(
+        string? rrule, bool esperaSerie, bool esperaNulo)
+    {
+        _handler.Reply(new RestReply(HttpStatusCode.OK, """{ "id": "evt-1" }"""));
+
+        await CreateProvider().UpdateAsync(
+            _account, CalendarioLocal(_account.Id), "evt-1", null,
+            new Application.Abstractions.Calendar.CalendarEventData
+            {
+                Uid = "uid-1",
+                Summary = "Reunião",
+                RecurrenceRule = rrule,
+                StartsAt = new DateTimeOffset(2026, 8, 10, 17, 0, 0, TimeSpan.Zero),
+                EndsAt = new DateTimeOffset(2026, 8, 10, 18, 0, 0, TimeSpan.Zero),
+            });
+
+        var corpo = _handler.Requests[0].Body!;
+
+        corpo.Contains("\"pattern\"", StringComparison.Ordinal).Should().Be(esperaSerie);
+        corpo.Contains("\"recurrence\":null", StringComparison.Ordinal).Should().Be(esperaNulo);
+
+        if (!esperaSerie && !esperaNulo)
+        {
+            corpo.Should().NotContain("\"recurrence\"",
+                "regra sem tradução fiel deixa o campo de fora — mandar nulo apagaria a série do servidor");
+        }
+    }
+
     [Fact]
     public async Task UpdateAsync_PrecondicaoRecusada_EConflitoNaoFalha()
     {

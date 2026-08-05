@@ -764,3 +764,48 @@ cita as duas chaves —, que é o que dá para verificar sem falar com a Google.
 **Alternativas rejeitadas:** guardar no `ICredentialStore` (falsa proteção, e problema de
 inicialização); embutir no binário (impede cada organização de registrar o próprio aplicativo,
 que é o desenho desde a fase 1).
+
+## D-033
+
+**A tradução `RRULE` → Graph só escreve o que ela própria consegue reler.**
+
+`GraphRecurrence.ToRecurrence` fecha a lacuna deixada por D-030: compromisso recorrente criado
+aqui passa a subir ao Graph como série, e não mais como encontro único. O critério que define o
+que ela aceita não é "o que o Graph suporta", e sim **o conjunto que `ToRRule` produz** —
+diária, semanal com dias, mensal por dia do mês, anual, com contagem ou data-limite.
+
+O motivo é a ida e a volta. Escrever um padrão que a leitura não entende faria o compromisso
+subir como série e voltar como encontro único na sincronização seguinte: a divergência
+apareceria sozinha, sem ninguém ter tocado no compromisso, e o usuário veria o próprio trabalho
+se desfazer. Por isso os padrões `relativeMonthly` e `relativeYearly` ("a segunda terça do mês")
+seguem fora dos **dois** lados — entram juntos ou não entram.
+
+Completar do `DTSTART` o que a regra omite **não é adivinhação**: a RFC 5545 §3.3.10 manda
+derivar dele as partes `BY*` ausentes, e o Graph apenas exige escrito o que a norma deixa
+implícito. Uma `FREQ=MONTHLY` sem `BYMONTHDAY` repete no dia do mês em que a série começou, e é
+isso que `dayOfMonth` recebe.
+
+Parte `BY*` que não valha para a frequência **recusa a regra inteira**, mesmo quando a tradução
+saberia lê-la em outro contexto. Isto não é rigor decorativo: foi o defeito que o teste pegou.
+`FREQ=MONTHLY;BYDAY=2TU` caía no ramo mensal, que só olhava `BYMONTHDAY`, e o `BYDAY` era
+descartado em silêncio — a regra virava "dia 10 de todo mês". Não é tradução incompleta, é outra
+série, com aparência de correta.
+
+No corpo enviado a recorrência tem **três estados, não dois**, e a diferença entre o segundo e o
+terceiro é o que protege a série no servidor:
+
+| Situação | O que vai no corpo |
+|---|---|
+| Regra traduzível | o objeto de recorrência |
+| Nenhuma regra | `"recurrence": null` |
+| Regra sem tradução fiel | **o campo não vai** |
+
+Num `PATCH` do Graph, campo ausente significa "não mexa". Sem o nulo explícito, a remoção da
+repetição não se propagaria: o usuário apaga, salva, e ela volta na sincronização seguinte. E
+pelo mesmo motivo a regra intraduzível exige o oposto — mandar nulo ali apagaria do servidor a
+série que não soubemos ler, e o custo dos dois erros não é simétrico.
+
+**Alternativas rejeitadas:** traduzir tudo que o Graph aceita (quebra a ida e volta, e é o que
+D-030 já recusava); ignorar a parte `BY*` desconhecida em vez de recusar a regra (produz série
+diferente com aparência correta, que é o pior resultado possível); omitir sempre o campo de
+recorrência (mantém o defeito de a remoção nunca chegar ao servidor).

@@ -157,10 +157,11 @@ servidor de token. Corrigido, com teste que trava a regra.
 1. **Revisar e integrar o PR #1.**
 2. **Validação manual em Windows 11** — o único item que resta, e que nenhuma sessão
    automatizada faz. Ver "Bloqueios".
-3. **Tradução de `RRULE` para o objeto de recorrência do Graph** — hoje o compromisso
-   recorrente criado aqui sobe ao Graph como encontro único, de propósito: um mapeamento
-   parcial gravaria uma série diferente da que o usuário vê (D-030). A leitura no sentido
-   inverso já existe e recusa o que não sabe traduzir.
+A **tradução de `RRULE` para o objeto de recorrência do Graph**, que era o item 3 desta
+lista, foi feita: `GraphRecurrence.ToRecurrence` escreve o conjunto que `ToRRule` relê —
+diária, semanal com dias, mensal por dia do mês, anual, com contagem ou data-limite — e
+recusa o resto. Compromisso recorrente criado aqui não sobe mais como encontro único
+(D-033). Os padrões `relative*` seguem fora dos dois lados, juntos.
 
 Não há pendência de código em nenhuma das catorze fases. O que resta é **pendência humana**, registrada em "Bloqueios": validação manual em Windows 11 e teste
 contra servidores IMAP/SMTP/CalDAV reais, e contra Microsoft 365 e Google, com Client IDs de

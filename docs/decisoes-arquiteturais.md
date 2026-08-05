@@ -202,9 +202,18 @@ série". A leitura passou a ser `events` com `$filter` em `lastModifiedDateTime`
 mestre e não reporta exclusão; a exclusão fica com a passada completa periódica, que é o que
 `IsFullEnumeration` autoriza. Ver D-031.
 
-**A escrita de recorrência no Graph não existe de propósito.** Traduzir `RRULE` para o objeto
-de recorrência dele exige mapear exceções, contagem e limite por data, e um mapeamento parcial
-gravaria no servidor uma série diferente da que o usuário vê. Compromisso recorrente criado
-aqui sobe como encontro único — visivelmente errado e corrigível, ao contrário de uma série
-silenciosamente errada. A leitura no sentido inverso recusa o que não sabe traduzir, pelo mesmo
-critério.
+**A escrita de recorrência no Graph só produz o que a leitura relê.** `ToRecurrence` aceita
+exatamente o conjunto que `ToRRule` devolve — diária, semanal com dias, mensal por dia do mês,
+anual, com contagem ou data-limite — e nada além. O critério não é o que o Graph suporta: um
+padrão que a leitura não entendesse faria o compromisso subir como série e voltar como encontro
+único na sincronização seguinte, uma divergência que aparece sozinha, sem ninguém ter tocado
+nele. Por isso os padrões `relative*` ("a segunda terça do mês") ficam fora dos dois lados —
+entram juntos ou não entram.
+
+Duas consequências que parecem detalhe e não são. Primeira: parte `BY*` que não valha para a
+frequência recusa a regra inteira. `FREQ=MONTHLY;BYDAY=2TU` descartado em silêncio não vira
+tradução incompleta, vira "dia 10 de todo mês" — outra série, com aparência de correta.
+Segunda: a recorrência tem três estados no corpo enviado, não dois. Regra traduzível manda o
+objeto; ausência de regra manda `null` explícito, porque num `PATCH` campo ausente significa
+"não mexa" e a remoção nunca chegaria ao servidor; regra sem tradução fiel **omite o campo**,
+porque mandar nulo ali apagaria a série que não soubemos ler. Ver D-033.

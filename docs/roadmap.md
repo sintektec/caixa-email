@@ -562,12 +562,16 @@ outro token: produziria outra ida ao consentimento, sem ganho nenhum.
 
 ### O que ficou de fora, e por quê
 
-**A escrita de recorrência no Graph.** Traduzir `RRULE` para o objeto de recorrência dele exige
-mapear exceções, contagem e limite por data, e um mapeamento parcial gravaria no servidor uma
-série diferente da que o usuário vê. Compromisso recorrente criado aqui sobe como encontro
-único — visivelmente errado e corrigível, ao contrário de uma série silenciosamente errada. A
-leitura no sentido inverso existe e recusa o que não sabe traduzir (`relativeMonthly`,
-`relativeYearly`), pelo mesmo critério.
+**Os padrões `relative*` de recorrência do Graph** — "a segunda terça do mês", "a última
+sexta". Ficam fora dos **dois** sentidos da tradução, e é isso que os mantém coerentes: o que
+`ToRecurrence` escreve, `ToRRule` relê e devolve igual. Um padrão escrito que a leitura não
+entendesse faria o compromisso subir como série e voltar como encontro único na sincronização
+seguinte — divergência que aparece sozinha, sem ninguém ter tocado nele. Entram juntos, com
+teste de ida e volta, ou não entram. Ver D-033.
+
+**As exceções de série** (`EXDATE`, ocorrência editada isoladamente). O modelo não as carrega:
+`CalendarEventData` tem `RecurrenceRule` e mais nada sobre repetição. O Graph as representa
+como objetos de instância separados, e suportá-las é mudança de modelo, não de tradutor.
 
 ---
 

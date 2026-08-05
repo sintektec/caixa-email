@@ -620,11 +620,26 @@ public sealed class GraphCalendarSyncProvider : ICalendarSyncProvider
             payload["attendees"] = attendees;
         }
 
-        // A recorrência não é enviada: traduzir RRULE para o objeto do Graph exige mapear
-        // exceções, contagem e limite por data, e um mapeamento parcial gravaria uma série
-        // diferente da que o usuário vê. Compromisso recorrente criado aqui sobe como
-        // encontro único até haver a tradução completa — visível e corrigível, ao contrário
-        // de uma série silenciosamente errada.
+        // Três situações, e a diferença entre a segunda e a terceira é o que impede de
+        // apagar no servidor uma série que ninguém pediu para apagar.
+        if (GraphRecurrence.ToRecurrence(data.RecurrenceRule, data.StartsAt) is { } recurrence)
+        {
+            // 1. Regra traduzível: sobe como série.
+            payload["recurrence"] = recurrence;
+        }
+        else if (string.IsNullOrWhiteSpace(data.RecurrenceRule))
+        {
+            // 2. Não há regra nenhuma. O nulo explícito é obrigatório: num PATCH, campo
+            // ausente significa "não mexa", então omiti-lo faria a recorrência sobreviver a
+            // uma remoção feita aqui — o usuário apaga a repetição, salva, e ela volta na
+            // sincronização seguinte.
+            payload["recurrence"] = null;
+        }
+
+        // 3. Há regra, mas sem tradução fiel — e aqui o campo fica de fora de propósito. É o
+        // único caso em que omitir é o certo: enviar nulo apagaria do servidor a série que
+        // não soubemos ler, e o custo dos dois erros não é simétrico. O compromisso segue
+        // como encontro único deste lado, que é visível e corrigível.
         return payload.ToJsonString();
     }
 

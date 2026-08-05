@@ -85,6 +85,21 @@ nulo. Três situações devolvem zero alterações e significam coisas opostas: 
 incremental sem novidade, servidor sem `sync-collection` respondendo "o `CTag` não mudou", e
 passada completa de coleção esvaziada. Só a terceira autoriza apagar (D-028).
 
+**Tradução de recorrência só escreve o que ela própria relê.** `GraphRecurrence.ToRecurrence`
+aceita exatamente o conjunto que `ToRRule` produz — o critério não é o que o Graph suporta.
+Escrever um padrão que a leitura não entende faz o compromisso subir como série e voltar como
+encontro único na sincronização seguinte, e a divergência aparece sozinha, sem ninguém ter
+tocado nele. Por isso os `relative*` estão fora dos dois lados: entram juntos, com teste de ida
+e volta, ou não entram. Parte `BY*` que não valha para a frequência recusa a regra inteira —
+`FREQ=MONTHLY;BYDAY=2TU` descartado em silêncio vira "dia 10 de todo mês", que não é tradução
+incompleta, é outra série (D-033).
+
+**No corpo do Graph, recorrência tem três estados, não dois.** Regra traduzível manda o objeto;
+**ausência** de regra manda `null` explícito; regra **sem tradução fiel** omite o campo. Num
+`PATCH`, campo ausente significa "não mexa" — sem o nulo, apagar a repetição não se propaga e
+ela volta na sincronização seguinte. E mandar nulo no terceiro caso apagaria do servidor a série
+que não soubemos ler. O custo dos dois erros não é simétrico.
+
 ## Armadilhas conhecidas
 
 **O pacote de SQLite é `Microsoft.Data.Sqlite.Core`, não `Microsoft.Data.Sqlite`.** O
