@@ -76,6 +76,17 @@ public sealed partial class DomainDirectoryEditorViewModel : ObservableObject
     [ObservableProperty]
     private bool _isActive = true;
 
+    /// <summary>
+    /// Se o conteúdo deste diretório pode ser enviado a um provedor de IA em nuvem.
+    /// </summary>
+    /// <remarks>
+    /// Começa desligado e assim permanece até o usuário marcar. O Diretório de Domínio é
+    /// a unidade de política do produto justamente porque a confidencialidade varia de
+    /// cliente para cliente — é aqui que a decisão pertence.
+    /// </remarks>
+    [ObservableProperty]
+    private bool _allowsCloudAssistant;
+
     /// <summary>Mensagem de erro ou aviso.</summary>
     [ObservableProperty]
     private string? _statusMessage;
@@ -184,6 +195,7 @@ public sealed partial class DomainDirectoryEditorViewModel : ObservableObject
         AllowSubdomains = directory.AllowSubdomains;
         IsFavorite = directory.IsFavorite;
         IsActive = directory.IsActive;
+        AllowsCloudAssistant = directory.AllowsCloudAssistant;
 
         Aliases.Clear();
 
@@ -235,6 +247,7 @@ public sealed partial class DomainDirectoryEditorViewModel : ObservableObject
                         InvalidEmailAction = InvalidEmailAction,
                         AllowSubdomains = AllowSubdomains,
                         IsActive = IsActive,
+                        AllowsCloudAssistant = AllowsCloudAssistant,
                         Aliases = [.. Aliases],
                     },
                     cancellationToken).ConfigureAwait(true);

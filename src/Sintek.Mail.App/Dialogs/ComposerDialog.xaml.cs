@@ -20,9 +20,10 @@ public sealed partial class ComposerDialog : ContentDialog
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _autoSaveTimer;
     private bool _editorReady;
 
-    public ComposerDialog(ComposerViewModel viewModel)
+    public ComposerDialog(ComposerViewModel viewModel, AssistantViewModel assistant)
     {
         ViewModel = viewModel;
+        Assistant = assistant;
 
         InitializeComponent();
     }
@@ -30,9 +31,39 @@ public sealed partial class ComposerDialog : ContentDialog
     /// <summary>ViewModel do compositor.</summary>
     public ComposerViewModel ViewModel { get; }
 
+    /// <summary>ViewModel dos recursos de IA.</summary>
+    public AssistantViewModel Assistant { get; }
+
     /// <summary>Prepara o compositor antes de exibir.</summary>
-    public Task InitializeAsync(Guid accountId, DraftKind kind = DraftKind.New, Guid? sourceMessageId = null)
-        => ViewModel.InitializeAsync(accountId, kind, sourceMessageId);
+    public async Task InitializeAsync(
+        Guid accountId, DraftKind kind = DraftKind.New, Guid? sourceMessageId = null)
+    {
+        await ViewModel.InitializeAsync(accountId, kind, sourceMessageId).ConfigureAwait(true);
+        await Assistant.InitializeAsync(accountId).ConfigureAwait(true);
+    }
+
+    /// <summary>Reescreve o texto do editor com o assistente.</summary>
+    /// <remarks>
+    /// O que está no editor entra antes: reescrever o estado antigo devolveria ao usuário
+    /// um texto que ele já tinha mudado.
+    /// </remarks>
+    private async void OnRewriteClick(object sender, RoutedEventArgs e)
+    {
+        await SyncEditorToViewModelAsync().ConfigureAwait(true);
+
+        var rewritten = await Assistant.RewriteAsync(ViewModel.BodyText).ConfigureAwait(true);
+
+        if (rewritten is null || !_editorReady)
+        {
+            return;
+        }
+
+        ViewModel.BodyHtml = System.Net.WebUtility.HtmlEncode(rewritten)
+            .Replace("\n", "<br>", StringComparison.Ordinal);
+        ViewModel.BodyText = rewritten;
+
+        EditorView.CoreWebView2.NavigateToString(BuildEditorDocument());
+    }
 
     /// <summary>
     /// Monta o editor e liga o rascunho automático quando o diálogo abre.
@@ -257,7 +288,9 @@ public sealed partial class ComposerDialog : ContentDialog
 
     /// <summary>Cria o compositor com as dependências do contêiner.</summary>
     public static ComposerDialog Create(XamlRoot xamlRoot)
-        => new(App.Services.GetRequiredService<ComposerViewModel>())
+        => new(
+            App.Services.GetRequiredService<ComposerViewModel>(),
+            App.Services.GetRequiredService<AssistantViewModel>())
         {
             XamlRoot = xamlRoot,
         };

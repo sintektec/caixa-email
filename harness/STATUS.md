@@ -6,13 +6,12 @@
 
 ## Fase atual
 
-**Fase 7 — Automação e filtragem local: concluída.** Ver `docs/roadmap.md` para as fases
-8 a 10.
+**Fase 8 — Assistência por IA: concluída.** Ver `docs/roadmap.md` para as fases 9 e 10.
 
 ## Marco atual
 
-**535 testes verdes no núcleo multiplataforma** (169 → 272 → 336 → 426 → 441 → 478 → 485
-→ 530 → 535 ao longo das fases).
+**569 testes verdes no núcleo multiplataforma** (169 → 272 → 336 → 426 → 441 → 478 → 485
+→ 530 → 535 → 569 ao longo das fases).
 
 A fase 7 entregou a filtragem local inteira: `RuleEvaluator` puro no Domain (campos,
 operadores e combinação E/OU da seção 6.5), `ApplyArrivalRulesHandler` aplicando bloqueio
@@ -25,7 +24,14 @@ silêncio. Antes dela, as pendências das fases 4 e 6 foram fechadas: editor ric
 (WebView2 contenteditable), rascunho automático por período de silêncio e pesquisas salvas
 na barra lateral.
 
-Distribuição: Domain 161, Application 189, Infrastructure 85, Presentation 77, Persistence 23.
+A fase 8 entregou a assistência por IA na ordem que o roadmap exigia: política antes dos
+recursos. `AssistantGateway` é a porta única — escolhe o provedor (local primeiro,
+sempre), aplica o consentimento do Diretório de Domínio e registra os envios externos em
+auditoria antes de eles saírem, com provedor, tarefa e tamanho, nunca conteúdo. Os
+provedores falam a API no formato OpenAI: local via runtime na máquina, nuvem com a chave
+vinda do cofre. Recursos: resumo, sugestão de resposta e reescrita no compositor.
+
+Distribuição: Domain 161, Application 207, Infrastructure 94, Presentation 84, Persistence 23.
 
 > **Atenção:** houve troca de implementação em 04/08/2026 (ver `DECISIONS.md`, D-007). O que
 > este arquivo descrevia antes daquela data pertencia à versão anterior, que foi substituída.
@@ -40,23 +46,26 @@ Distribuição: Domain 161, Application 189, Infrastructure 85, Presentation 77,
       `Sintek.Mail.CrossPlatform.slnf` para o que compila fora do Windows
 - [x] **Domain** — sem dependência de projeto ou pacote. VOs `EmailAddress`/`EmailDomain`,
       entidades, `DomainMembershipEvaluator` (os cinco modos) e `FolderRestrictionResolver`
-      (herança pela árvore de pastas). **130 testes**
+      (herança pela árvore de pastas), `SenderTrustEvaluator` e `RuleEvaluator`. **161 testes**
 - [x] **Application** — portas, `MoveMessageHandler` (as quatro ações configuráveis), ciclo
       de vida completo de conta (`AddAccount`, `TestAccountConnection`, `UpdateAccount`,
       `RemoveAccount`) e de Diretório de Domínio (`Create`, `Update`, `Remove`,
       `ChangeDomainName`), `SetFolderRestrictionHandler` e o motor de sincronização
-      (`SyncAccountHandler`, `FolderMirrorService`, `MessageSyncService`, `SyncSchedule`).
-      **95 testes**
+      (`SyncAccountHandler`, `FolderMirrorService`, `MessageSyncService`, `SyncSchedule`),
+      pesquisa, regras, organização e o `AssistantGateway` da fase 8. **207 testes**
 - [x] **Persistence** — EF Core 10, SQLCipher, mapeamentos de todas as entidades, migrações
-      (inicial, FTS5 e a reconstrução com external content) e `Fts5SearchService`.
+      (inicial, FTS5, reconstrução com external content, listas de remetentes e consentimento
+      de IA) e `Fts5SearchService`.
       **23 testes**, incluindo a leitura dos bytes crus do arquivo para provar a
       criptografia e a pesquisa completa contra o banco migrado de verdade
 - [x] **Infrastructure** — MailKit IMAP/SMTP, sanitizador de HTML, provedores OAuth
       Microsoft e Google, descoberta automática em cinco etapas, serialização MIME,
-      `OutboxProcessor` completo e o laço `AccountSyncWorker`. **61 testes**
+      `OutboxProcessor` completo, o laço `AccountSyncWorker` e os provedores de IA local e
+      em nuvem. **94 testes**
 - [x] **Presentation** — ViewModels multiplataforma: assistente de contas, editor de
       Diretórios de Domínio, lista de contas, fila de sincronização, árvore de navegação,
-      lista de mensagens e painel de leitura. **41 testes**
+      lista de mensagens, painel de leitura, compositor, pesquisa, regras, organização e o
+      painel de IA. **84 testes**
 - [x] **Infrastructure.Windows** — Credential Manager via CsWin32; chave do banco
 - [x] **App WinUI 3** — janela principal com árvore hierárquica e painel de leitura travado;
       diálogos de assistente de conta, editor de diretório, configurações e fila de
@@ -68,13 +77,10 @@ Distribuição: Domain 161, Application 189, Infrastructure 85, Presentation 77,
 ## Próximos passos
 
 1. **Revisar e integrar o PR #1.**
-2. **Fase 8 — Assistência por IA:** infraestrutura de privacidade primeiro
-   (`IAssistantProvider`, modelo local como padrão, consentimento por Diretório de
-   Domínio, auditoria de envios externos), recursos depois.
+2. **Fase 9 — Acabamento:** acessibilidade, temas, desempenho em caixas grandes e o que
+   a validação manual apontar.
 
-Não há pendência de código nas fases 1 a 7 — copiar para pasta, encaminhamento automático
-e a avaliação de condição sobre o corpo baixado fecharam as últimas. O que resta é
-**pendência humana**, registrada em "Bloqueios": validação manual em Windows 11 e teste
+Não há pendência de código nas fases 1 a 8. O que resta é **pendência humana**, registrada em "Bloqueios": validação manual em Windows 11 e teste
 contra servidores IMAP/SMTP reais com Client IDs de OAuth.
 
 Vale notar: o MSIX compila mas **ainda não foi executado**. Nenhuma sessão automatizada

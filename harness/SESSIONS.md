@@ -281,3 +281,24 @@ não commitado.
 
 **Próxima sessão:**
 - Fase 8 (Assistência por IA), conforme decisão do usuário.
+
+---
+
+## 2026-08-05 — Sessão 9 (continuação): Fase 8 (Assistência por IA)
+
+**O que foi feito:**
+- Política antes dos recursos, como o roadmap exigia (D-017): `IAssistantProvider` com
+  `AssistantLocality`, `AssistantGateway` como porta única, consentimento em
+  `DomainDirectory.AllowsCloudAssistant` (migração `CloudAssistantConsent`, padrão falso)
+  e auditoria do envio externo antes da chamada, sem conteúdo.
+- Provedores na Infrastructure falando a API no formato OpenAI: `LocalAssistantProvider`
+  (Ollama/LM Studio/llama.cpp na máquina) e `CloudAssistantProvider` (chave do cofre).
+- Recursos: resumo, sugestão de resposta e reescrita no compositor, com corte de 12 mil
+  caracteres e envio só do texto puro.
+- Interface: botões de IA no leitor (visíveis só quando há assistente utilizável), faixa
+  de recusa com atalho para as configurações do diretório, caixa de consentimento no
+  diálogo de Diretório de Domínio e "Reescrever com IA" no compositor.
+- 535 → 569 testes.
+
+**Próxima sessão:**
+- Fase 9 (Acabamento) ou validação manual em Windows, conforme decisão do usuário.

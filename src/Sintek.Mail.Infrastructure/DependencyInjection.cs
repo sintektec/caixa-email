@@ -29,6 +29,8 @@ public static class DependencyInjection
         ArgumentNullException.ThrowIfNull(configuration);
 
         services.Configure<OAuthOptions>(configuration.GetSection(OAuthOptions.SectionName));
+        services.Configure<Assistant.AssistantOptions>(
+            configuration.GetSection(Assistant.AssistantOptions.SectionName));
 
         services.AddSingleton<IHtmlSanitizer, MessageHtmlSanitizer>();
 
@@ -71,6 +73,16 @@ public static class DependencyInjection
 
         // Singleton: é um laço de vida longa que cria o próprio escopo a cada ciclo.
         services.AddSingleton<AccountSyncWorker>();
+
+        // Os dois provedores de IA são sempre registrados, como os de OAuth: quem decide
+        // se algum pode rodar é o AssistantGateway, consultando disponibilidade e o
+        // consentimento do Diretório de Domínio. O local vem primeiro na coleção, o que
+        // reforça na ordem o que a política já garante.
+        services.AddHttpClient();
+        services.AddSingleton<Application.Abstractions.Assistant.IAssistantProvider,
+            Assistant.LocalAssistantProvider>();
+        services.AddSingleton<Application.Abstractions.Assistant.IAssistantProvider,
+            Assistant.CloudAssistantProvider>();
 
         return services;
     }

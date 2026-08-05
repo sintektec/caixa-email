@@ -512,7 +512,39 @@
                     <AppBarButton Icon="Delete" Label="Excluir" />
                     <AppBarButton Icon="Save" Label="Arquivar" />
                     <AppBarButton Icon="Tag" Label="Categorizar" />
+                    <AppBarSeparator />
+
+                    <!--
+                        Os botões de IA só aparecem quando há assistente utilizável para a
+                        conta: modelo local instalado, ou nuvem com o Diretório de Domínio
+                        autorizando. Mostrá-los sempre convidaria ao erro que a fase inteira
+                        existe para evitar.
+                    -->
+                    <AppBarButton Icon="Message" Label="Resumir"
+                                  Visibility="{x:Bind Assistant.IsAvailable, Mode=OneWay}"
+                                  Command="{x:Bind Assistant.SummarizeCommand}"
+                                  AutomationProperties.Name="Resumir a mensagem com IA" />
+                    <AppBarButton Icon="Comment" Label="Sugerir resposta"
+                                  Visibility="{x:Bind Assistant.IsAvailable, Mode=OneWay}"
+                                  Command="{x:Bind Assistant.SuggestReplyCommand}"
+                                  AutomationProperties.Name="Sugerir uma resposta com IA" />
                 </CommandBar>
+
+                <!--
+                    Recusa por falta de consentimento não é erro: é a escolha registrada no
+                    Diretório de Domínio, e a faixa oferece o caminho para revê-la.
+                -->
+                <InfoBar Grid.Row="1" VerticalAlignment="Bottom"
+                         IsOpen="{x:Bind Assistant.HasStatusMessage, Mode=OneWay}"
+                         Severity="Informational"
+                         Message="{x:Bind Assistant.StatusMessage, Mode=OneWay}"
+                         IsClosable="True">
+                    <InfoBar.ActionButton>
+                        <Button Content="Configurações do diretório"
+                                Visibility="{x:Bind Assistant.NeedsCloudConsent, Mode=OneWay}"
+                                Click="OnOpenDirectorySettingsClick" />
+                    </InfoBar.ActionButton>
+                </InfoBar>
 
                 <!--
                     Barra de imagens remotas: só aparece quando a mensagem as contém e o
@@ -538,6 +570,20 @@
                 <controls:WebView2 Grid.Row="3"
                                    x:Name="MessageBodyView"
                                    AutomationProperties.Name="Conteúdo da mensagem" />
+
+                <!-- Resultado da IA: texto puro, acima do corpo, fechável -->
+                <InfoBar Grid.Row="3" VerticalAlignment="Top"
+                         IsOpen="{x:Bind Assistant.HasResult, Mode=OneWay}"
+                         Severity="Success"
+                         Title="Assistente"
+                         IsClosable="True">
+                    <InfoBar.Content>
+                        <TextBlock Margin="0,8,0,8"
+                                   Text="{x:Bind Assistant.Result, Mode=OneWay}"
+                                   TextWrapping="Wrap"
+                                   IsTextSelectionEnabled="True" />
+                    </InfoBar.Content>
+                </InfoBar>
 
                 <ScrollViewer Grid.Row="4"
                               Margin="16,8"

@@ -40,6 +40,15 @@ public sealed record UpdateDomainDirectoryCommand
     public bool IsActive { get; init; } = true;
 
     /// <summary>
+    /// Se o conteúdo deste diretório pode ser enviado a um provedor de IA em nuvem.
+    /// </summary>
+    /// <remarks>
+    /// Falso por padrão, inclusive aqui: um comando que esquecesse de preencher o campo
+    /// revogaria o consentimento em vez de concedê-lo — o erro seguro dos dois.
+    /// </remarks>
+    public bool AllowsCloudAssistant { get; init; }
+
+    /// <summary>
     /// Conjunto completo de domínios adicionais desejado.
     /// </summary>
     /// <remarks>
@@ -151,6 +160,7 @@ public sealed class UpdateDomainDirectoryHandler
                 now);
 
             directory.SetActive(command.IsActive, now);
+            directory.SetCloudAssistantConsent(command.AllowsCloudAssistant, now);
 
             await _audit.RecordAsync(
                 AuditLogEntry.Record(
@@ -158,7 +168,9 @@ public sealed class UpdateDomainDirectoryHandler
                     $"Diretório de Domínio '{directory.DomainName.Value}' alterado: modo de validação " +
                     $"{command.ValidationMode}, ação {command.InvalidEmailAction}, subdomínios " +
                     $"{(command.AllowSubdomains ? "permitidos" : "recusados")}, ativo " +
-                    $"{(command.IsActive ? "sim" : "não")}. Domínios adicionais: +{addedCount}/-{removedCount}.",
+                    $"{(command.IsActive ? "sim" : "não")}, IA em nuvem " +
+                    $"{(command.AllowsCloudAssistant ? "autorizada" : "não autorizada")}. " +
+                    $"Domínios adicionais: +{addedCount}/-{removedCount}.",
                     now,
                     entityType: nameof(DomainDirectory),
                     entityId: directory.Id,

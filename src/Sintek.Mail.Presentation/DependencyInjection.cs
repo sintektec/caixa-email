@@ -32,6 +32,7 @@ public static class DependencyInjection
         services.AddTransient<SearchViewModel>();
         services.AddTransient<RulesViewModel>();
         services.AddTransient<OrganizationViewModel>();
+        services.AddTransient<AssistantViewModel>();
 
         return services;
     }

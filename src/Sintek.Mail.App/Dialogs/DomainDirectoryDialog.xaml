@@ -63,6 +63,19 @@
             <CheckBox Content="Diretório ativo"
                       IsChecked="{x:Bind ViewModel.IsActive, Mode=TwoWay}" />
 
+            <!--
+                O consentimento de IA em nuvem vive aqui porque o Diretório de Domínio é a
+                unidade de política do produto: a confidencialidade varia de cliente para
+                cliente, e é neste lugar que o usuário já pensa sobre isso.
+            -->
+            <CheckBox Content="Permitir enviar conteúdo deste domínio a serviços de IA em nuvem"
+                      IsChecked="{x:Bind ViewModel.AllowsCloudAssistant, Mode=TwoWay}" />
+
+            <TextBlock Text="Desligado, os recursos de IA usam apenas o modelo instalado nesta máquina e nada trafega. Cada envio a um serviço externo fica registrado na auditoria."
+                       Style="{ThemeResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       TextWrapping="Wrap" />
+
             <TextBlock Text="Domínios adicionais aceitos"
                        Style="{ThemeResource BodyStrongTextBlockStyle}" />
 

@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Sintek.Mail.Application.Services;
 using Sintek.Mail.Application.Sync;
 using Sintek.Mail.Application.UseCases.Accounts;
+using Sintek.Mail.Application.UseCases.Assistant;
 using Sintek.Mail.Application.UseCases.Domains;
 using Sintek.Mail.Application.UseCases.Folders;
 using Sintek.Mail.Application.UseCases.Messages;
@@ -51,6 +52,9 @@ public static class DependencyInjection
         services.AddScoped<RemoveAccountHandler>();
 
         services.AddScoped<SavedSearchesHandler>();
+
+        services.AddScoped<AssistantGateway>();
+        services.AddScoped<AssistantFeaturesHandler>();
 
         services.AddScoped<ApplyArrivalRulesHandler>();
         services.AddScoped<ManageRulesHandler>();

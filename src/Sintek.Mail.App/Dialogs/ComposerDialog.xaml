@@ -121,7 +121,17 @@
                 <Button Content="Aplicar modelo"
                         Click="OnApplyTemplateClick"
                         AutomationProperties.Name="Aplicar o modelo escolhido" />
+
+                <Button Content="Reescrever com IA"
+                        Click="OnRewriteClick"
+                        Visibility="{x:Bind Assistant.IsAvailable, Mode=OneWay}"
+                        AutomationProperties.Name="Reescrever o texto com o assistente" />
             </StackPanel>
+
+            <InfoBar IsOpen="{x:Bind Assistant.HasStatusMessage, Mode=OneWay}"
+                     Severity="Informational"
+                     Message="{x:Bind Assistant.StatusMessage, Mode=OneWay}"
+                     IsClosable="True" />
 
             <ItemsControl ItemsSource="{x:Bind ViewModel.Attachments, Mode=OneWay}">
                 <ItemsControl.ItemTemplate>

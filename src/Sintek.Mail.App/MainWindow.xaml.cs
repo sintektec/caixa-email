@@ -25,12 +25,14 @@ public sealed partial class MainWindow : Window
         ShellViewModel shell,
         MessageListViewModel messageList,
         ReadingPaneViewModel reading,
-        SearchViewModel search)
+        SearchViewModel search,
+        AssistantViewModel assistant)
     {
         Shell = shell;
         MessageList = messageList;
         Reading = reading;
         Search = search;
+        Assistant = assistant;
 
         InitializeComponent();
 
@@ -58,6 +60,9 @@ public sealed partial class MainWindow : Window
 
     /// <summary>ViewModel da pesquisa.</summary>
     public SearchViewModel Search { get; }
+
+    /// <summary>ViewModel dos recursos de IA.</summary>
+    public AssistantViewModel Assistant { get; }
 
     /// <summary>Se há mensagem de status a exibir na faixa de aviso.</summary>
     public bool HasStatusMessage => !string.IsNullOrWhiteSpace(Shell.StatusMessage);
@@ -133,6 +138,19 @@ public sealed partial class MainWindow : Window
 
         await Reading.LoadMessageAsync(MessageList.SelectedMessage.MessageId).ConfigureAwait(true);
         await RenderBodyAsync().ConfigureAwait(true);
+
+        if (Shell.SelectedNode?.AccountId is { } accountId)
+        {
+            await Assistant.InitializeAsync(accountId, MessageList.SelectedMessage.MessageId)
+                .ConfigureAwait(true);
+        }
+    }
+
+    /// <summary>Leva o usuário ao diretório onde o consentimento de IA é decidido.</summary>
+    private async void OnOpenDirectorySettingsClick(object sender, RoutedEventArgs e)
+    {
+        await DomainDirectoryDialog.Create(RootGrid.XamlRoot).ShowAsync();
+        await Shell.LoadNavigationAsync().ConfigureAwait(true);
     }
 
     /// <summary>

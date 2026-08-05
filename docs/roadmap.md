@@ -144,7 +144,7 @@ classificador local competindo com isso perde, e o modo de perder é o pior poss
 positivo esconde mensagem legítima numa pasta que o usuário não olha. O papel do cliente é
 respeitar o veredito do servidor, tornar a correção fácil e avisar sobre disfarce.
 
-## Fase 8 — Assistência por IA
+## Fase 8 — Assistência por IA ✅
 
 Recursos de IA sobre a caixa postal: resumo de mensagem longa e de conversa, sugestão de
 resposta, redação assistida no compositor, classificação sugerida para as regras automáticas
@@ -172,6 +172,25 @@ Por isso a fase começa pela infraestrutura, não pelos recursos:
 Só depois disso os recursos. Ordená-los antes produziria um atalho difícil de desfazer: uma
 chamada em nuvem enfiada no meio do compositor, sem consentimento, que ninguém lembra de
 remover.
+
+**Entregue exatamente nessa ordem.** `AssistantGateway` é a porta única: nenhum recurso
+fala com provedor diretamente, pelo mesmo motivo que toda movimentação passa pelo
+`MoveMessageHandler`. A escolha é local primeiro, sempre — autorizar a nuvem diz que
+*pode*, não que *deve*, e preferi-la por ser melhor transformaria o consentimento em
+formalidade. O consentimento mora em `DomainDirectory.AllowsCloudAssistant`, nasce falso
+(migração `CloudAssistantConsent` com `defaultValue: false`, o que vale também para os
+diretórios já existentes) e é revogável; conta sem diretório resolvível não é autorizada.
+Cada envio externo entra na auditoria **antes** de sair — registrar depois perderia a
+chamada que falhou no meio do caminho — com provedor, tarefa e tamanho, nunca o conteúdo.
+
+Os provedores falam HTTP no formato OpenAI, o mesmo que Ollama, LM Studio, llama.cpp e os
+serviços em nuvem expõem: compatibilidade com o que o usuário já tenha instalado, sem
+embutir um runtime nativo de centenas de megabytes no instalador. A chave do provedor de
+nuvem sai do cofre do sistema a cada chamada, como as senhas de conta.
+
+Recursos entregues: resumo de mensagem, sugestão de resposta e reescrita no compositor. O
+corpo é cortado em 12 mil caracteres antes de sair e vai como texto puro — marcação não
+ajuda o modelo e infla o que deixa a máquina; endereços de participantes ficam de fora.
 
 ## Fase 9 — Acabamento
 

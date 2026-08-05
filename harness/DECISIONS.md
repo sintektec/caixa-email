@@ -338,3 +338,37 @@ como ignoradas, com o motivo — nunca silenciosamente perdidas.
 **Alternativas rejeitadas:** reavaliar regras no download do corpo (a mensagem já teria
 sido triada; reclassificar depois moveria mensagens que o usuário já viu); classificador
 local de spam (decisão da fase 7 no roadmap — o veredito é do servidor).
+
+---
+
+## D-017 — Assistência por IA: porta única, local primeiro, consentimento por diretório (2026-08-05)
+
+**Status:** aceita
+
+**Decisão:** Todo recurso de IA passa por `AssistantGateway`. Ele escolhe o provedor
+— **local disponível primeiro, sempre** —, e só usa provedor em nuvem quando o
+`DomainDirectory` da conta tem `AllowsCloudAssistant` verdadeiro. Cada envio externo é
+gravado em auditoria **antes** da chamada, com provedor, tarefa e tamanho do conteúdo;
+nunca com o conteúdo. O consentimento nasce falso, inclusive para diretórios já
+existentes (`defaultValue: false` na migração), e é revogável.
+
+**Motivo:** O produto inteiro é construído sobre conteúdo não sair da máquina em claro —
+SQLCipher, segredos no cofre, auditoria sem conteúdo. Mandar corpo de mensagem para um
+modelo em nuvem inverte isso, e num cliente organizado por domínio a confidencialidade
+varia de cliente para cliente: o Diretório de Domínio já é a unidade de política e é onde
+o usuário pensa sobre o assunto.
+
+A porta única existe pelo mesmo motivo do `MoveMessageHandler`: uma segunda versão da
+política divergiria da primeira, e a divergência sempre acaba com alguém mandando à nuvem
+o que o diretório proíbe. E preferir a nuvem por ser melhor transformaria o consentimento
+em formalidade — o usuário concordou que *pode*, não que *deve*.
+
+**Consequências:** com modelo local instalado, o provedor de nuvem nunca é usado, mesmo
+autorizado; quem quiser o contrário precisa desinstalar o local. Conta sem diretório
+resolvível não é autorizada — na dúvida, o conteúdo fica na máquina.
+
+**Alternativas rejeitadas:** consentimento global da aplicação (perderia a granularidade
+que é a razão de ser do produto); consentimento por conta (o diretório já agrupa as contas
+que compartilham política, e duplicar a decisão por conta convidaria à divergência);
+registrar o envio depois da chamada (perderia exatamente o caso que importa — a chamada
+que saiu e falhou no meio).

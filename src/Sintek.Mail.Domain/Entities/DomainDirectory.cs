@@ -58,6 +58,18 @@ public sealed class DomainDirectory : Entity
     /// <summary>Marcado como favorito na árvore de navegação.</summary>
     public bool IsFavorite { get; private set; }
 
+    /// <summary>
+    /// Se o conteúdo das mensagens deste diretório pode ser enviado a um provedor de IA
+    /// em nuvem.
+    /// </summary>
+    /// <remarks>
+    /// Nasce <b>falso</b> e só muda por ato explícito do usuário. Todo o desenho do
+    /// produto é sobre conteúdo não sair da máquina em claro — banco cifrado, segredos
+    /// fora dele, auditoria sem conteúdo. Ligar isto por padrão inverteria a promessa em
+    /// silêncio.
+    /// </remarks>
+    public bool AllowsCloudAssistant { get; private set; }
+
     /// <summary>Posição manual na árvore de navegação.</summary>
     public int SortOrder { get; private set; }
 
@@ -241,6 +253,21 @@ public sealed class DomainDirectory : Entity
     public void SetActive(bool isActive, DateTimeOffset now)
     {
         IsActive = isActive;
+        Touch(now);
+    }
+
+    /// <summary>
+    /// Autoriza — ou revoga — o envio de conteúdo deste diretório a um provedor de IA em
+    /// nuvem.
+    /// </summary>
+    /// <remarks>
+    /// O consentimento vive no Diretório de Domínio porque ele já é a unidade de política
+    /// do produto: a confidencialidade varia de cliente para cliente, e é aqui que o
+    /// usuário já pensa sobre isso. Um diretório pode permitir e outro não.
+    /// </remarks>
+    public void SetCloudAssistantConsent(bool allowed, DateTimeOffset now)
+    {
+        AllowsCloudAssistant = allowed;
         Touch(now);
     }
 }

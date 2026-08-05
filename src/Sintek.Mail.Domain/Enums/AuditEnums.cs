@@ -69,6 +69,18 @@ public enum AuditEventType
 
     /// <summary>Ação de regra que não pôde ser executada — o motivo vai na descrição.</summary>
     RuleActionSkipped = 17,
+
+    /// <summary>
+    /// Conteúdo enviado a um provedor de IA em nuvem, com o consentimento do Diretório de
+    /// Domínio. Registra identificadores e destino — nunca o conteúdo.
+    /// </summary>
+    AssistantCloudRequest = 18,
+
+    /// <summary>
+    /// Pedido de IA recusado porque o Diretório de Domínio não autoriza processamento em
+    /// nuvem.
+    /// </summary>
+    AssistantBlockedByConsent = 19,
 }
 
 /// <summary>Gravidade de um evento de auditoria.</summary>
