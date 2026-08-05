@@ -133,9 +133,18 @@ public sealed class RecipientHistoryHandler
     /// Monta as sugestões para o que o usuário digitou.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Catálogo e histórico entram juntos, e o <see cref="RecipientSuggestionRanker"/>
     /// decide a ordem. Endereço fora do Diretório de Domínio da conta vem marcado, nunca
     /// omitido.
+    /// </para>
+    /// <para>
+    /// O histórico tem teto (<see cref="SuggestionCandidateLimit"/>) e o catálogo não, e a
+    /// assimetria é deliberada: o histórico cresce sozinho e sem limite, então cortá-lo pela
+    /// recência descarta o que já não seria sugerido de todo modo; o catálogo é cadastrado à
+    /// mão, e não sugerir um contato que o usuário digitou seria pior do que percorrer a
+    /// lista inteira.
+    /// </para>
     /// </remarks>
     public async Task<IReadOnlyList<RecipientSuggestion>> SuggestAsync(
         Guid accountId,
