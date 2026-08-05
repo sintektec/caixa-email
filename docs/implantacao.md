@@ -197,17 +197,28 @@ de que o fluxo foi confundido com o de daemon.
 Há um modelo pronto no repositório. Na pasta `src/Sintek.Mail.App`:
 
 ```
-copy appsettings.Local.example.json appsettings.Local.json
+copy appsettings.Local.json.exemplo appsettings.Local.json
 ```
 
-Depois preencha o valor no arquivo copiado. Só o `appsettings.Local.json` está no
-`.gitignore` — o modelo é versionado justamente por não ter segredo dentro.
+**A chave vai na cópia, nunca no modelo.** Só o nome `appsettings.Local.json` está no
+`.gitignore`; o modelo é versionado, e é por isso que ele não termina em `.json` — a
+aplicação não o lê, e o que for escrito nele vai para o repositório.
 
-> **Nunca preencha o `ClientSecret` no `appsettings.json`.** A proteção contra segredos do
-> GitHub detecta o **par** Client ID + Client secret e recusa o envio; o Client ID sozinho
-> nunca dispara nada, porque não é segredo — ele aparece na URL de consentimento. Se o
-> bloqueio aparecer, a saída é tirar a chave do arquivo, não liberar a exceção: liberada, ela
-> fica no histórico do git para sempre e precisa ser revogada no Google Cloud.
+> **Dois arquivos parecem o lugar certo e não são: o `appsettings.json` e o modelo.**
+>
+> No `appsettings.json`, a chave completa o par Client ID + Client secret, e a proteção
+> contra segredos do GitHub recusa o envio na hora. O Client ID sozinho nunca dispara nada —
+> não é segredo, aparece na URL de consentimento.
+>
+> No **modelo**, não há par, então a proteção do GitHub deixa passar — quem pega é o
+> detector de alta entropia do GitGuardian, já com o commit na origem. Foi o que aconteceu
+> uma vez neste repositório.
+>
+> Em qualquer um dos dois casos a saída é a mesma, e liberar a exceção não é opção: **tire a
+> chave do arquivo e revogue-a no Google Cloud.** Reescrever o histórico não basta — o commit
+> continua acessível pela URL da origem até a coleta de lixo do GitHub, e o valor já passou
+> por logs de webhook e notificação. Gerar uma chave nova leva um minuto; supor que ninguém
+> viu não tem volta.
 
 O arquivo completo, para referência — o `ClientSecret` só existe no bloco Google, e nenhum
 dos outros valores precisa ser repetido se já estiver no `appsettings.json`:
