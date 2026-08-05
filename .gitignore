@@ -50,6 +50,9 @@ Attachments/
 appsettings.Local.json
 oauth-clients.json
 
-# Gerado pelo Visual Studio ao abrir o projeto. Traz caminhos e perfis da máquina de
-# quem abriu, que não valem para mais ninguém.
+# Gerados pelas ferramentas do WinUI ao abrir o projeto, não por nós. O CI publica
+# passando o RID na linha de comando (`dotnet restore -r win-x64`), então nada no
+# repositório depende deles. Se algum dia um perfil precisar valer para todo mundo,
+# a saída é versioná-lo e tirar esta linha — não deixá-lo entrar por acidente.
+src/Sintek.Mail.App/Properties/PublishProfiles/
 launchSettings.json
