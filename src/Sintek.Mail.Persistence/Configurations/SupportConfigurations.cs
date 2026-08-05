@@ -105,6 +105,36 @@ public sealed class OutboxOperationConfiguration : IEntityTypeConfiguration<Outb
     }
 }
 
+/// <summary>Mapeamento das listas de remetentes bloqueados e confiáveis.</summary>
+public sealed class SenderReputationConfiguration : IEntityTypeConfiguration<SenderReputation>
+{
+    public void Configure(EntityTypeBuilder<SenderReputation> builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        builder.ToTable("SenderReputations");
+        builder.HasKey(s => s.Id);
+
+        builder.Property(s => s.Kind).HasConversion<int>();
+
+        builder.Property(s => s.Address)
+            .HasConversion(
+                Converters.ValueObjectConverters.NullableEmailAddressConverter,
+                Converters.ValueObjectConverters.EmailAddressComparer)
+            .HasMaxLength(320);
+
+        builder.Property(s => s.Domain)
+            .HasConversion(
+                Converters.ValueObjectConverters.NullableEmailDomainConverter,
+                Converters.ValueObjectConverters.EmailDomainComparer)
+            .HasMaxLength(253);
+
+        // A avaliação na chegada busca por tipo; os alvos são poucos e filtram em memória.
+        builder.HasIndex(s => s.Kind);
+        builder.HasIndex(s => s.AccountId);
+    }
+}
+
 /// <summary>Mapeamento das pesquisas salvas.</summary>
 public sealed class SavedSearchConfiguration : IEntityTypeConfiguration<SavedSearch>
 {

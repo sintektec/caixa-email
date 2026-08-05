@@ -118,6 +118,13 @@
                                               SelectedItem="{x:Bind Search.SelectedDomain, Mode=TwoWay}"
                                               AutomationProperties.Name="Filtro por Diretório de Domínio" />
 
+                                    <ComboBox Header="Categoria"
+                                              HorizontalAlignment="Stretch"
+                                              ItemsSource="{x:Bind Search.CategoryOptions, Mode=OneWay}"
+                                              DisplayMemberPath="Label"
+                                              SelectedItem="{x:Bind Search.SelectedCategory, Mode=TwoWay}"
+                                              AutomationProperties.Name="Filtro por categoria" />
+
                                     <ComboBox Header="Leitura"
                                               HorizontalAlignment="Stretch"
                                               ItemsSource="{x:Bind Search.ReadStates}"
@@ -387,11 +394,14 @@
                             <Grid Padding="4,6" RowSpacing="2"
                                   AutomationProperties.Name="{x:Bind AccessibleDescription}">
                                 <Grid.ContextFlyout>
-                                    <MenuFlyout>
+                                    <!-- O submenu de categorias é montado na abertura: a
+                                         lista vem do banco e muda em tempo de execução -->
+                                    <MenuFlyout Opening="OnMessageContextFlyoutOpening">
                                         <MenuFlyoutItem Text="Marcar como spam"
                                                         Click="OnMarkAsSpamClick" Tag="{x:Bind}" />
                                         <MenuFlyoutItem Text="Não é spam"
                                                         Click="OnMarkAsNotSpamClick" Tag="{x:Bind}" />
+                                        <MenuFlyoutSubItem Text="Categorizar" Tag="{x:Bind}" />
                                     </MenuFlyout>
                                 </Grid.ContextFlyout>
                                 <Grid.RowDefinitions>

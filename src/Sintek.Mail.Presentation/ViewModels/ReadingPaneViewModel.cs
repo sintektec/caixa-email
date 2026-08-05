@@ -46,15 +46,18 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
     private readonly IMessageRepository _messages;
     private readonly IHtmlSanitizer _sanitizer;
     private readonly DownloadMessageContentHandler _download;
+    private readonly Application.UseCases.Organization.ManageSenderReputationHandler _reputation;
 
     public ReadingPaneViewModel(
         IMessageRepository messages,
         IHtmlSanitizer sanitizer,
-        DownloadMessageContentHandler download)
+        DownloadMessageContentHandler download,
+        Application.UseCases.Organization.ManageSenderReputationHandler reputation)
     {
         _messages = messages;
         _sanitizer = sanitizer;
         _download = download;
+        _reputation = reputation;
     }
 
     [ObservableProperty]
@@ -167,6 +170,16 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
             // Sempre parte do original: reaproveitar o HTML já higienizado impediria que
             // uma atualização das regras de sanitização valesse para mensagens antigas.
             RemoteContentAllowed = message.Body?.RemoteContentAllowed ?? false;
+
+            // Remetente confiável libera o conteúdo remoto sem perguntar — é para isso que
+            // a lista existe. A autorização vale só para a exibição; nada é gravado.
+            if (!RemoteContentAllowed && message.FromAddress is not null)
+            {
+                RemoteContentAllowed = await _reputation
+                    .IsTrustedAsync(message.FromAddress, message.AccountId, cancellationToken)
+                    .ConfigureAwait(true);
+            }
+
             ApplySanitizedBody(message.Body?.HtmlBody, message.Body?.TextBody);
 
             Attachments.Clear();

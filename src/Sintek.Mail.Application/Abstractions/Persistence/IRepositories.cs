@@ -177,6 +177,91 @@ public interface IOutboxRepository
     Task<long> NextSequenceAsync(Guid accountId, CancellationToken cancellationToken = default);
 }
 
+/// <summary>Acesso às regras automáticas.</summary>
+public interface IRuleRepository
+{
+    /// <summary>Carrega uma regra com condições e ações.</summary>
+    Task<Rule?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>Lista todas as regras, para a tela de gestão.</summary>
+    Task<IReadOnlyList<Rule>> ListAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lista as regras ativas aplicáveis a uma conta, em ordem de prioridade — o que o
+    /// motor avalia a cada mensagem que chega.
+    /// </summary>
+    Task<IReadOnlyList<Rule>> ListEnabledForAccountAsync(
+        Guid accountId, Guid domainDirectoryId, CancellationToken cancellationToken = default);
+
+    /// <summary>Registra uma regra.</summary>
+    Task AddAsync(Rule rule, CancellationToken cancellationToken = default);
+
+    /// <summary>Remove uma regra.</summary>
+    void Remove(Rule rule);
+}
+
+/// <summary>Acesso às categorias e à sua aplicação em mensagens.</summary>
+public interface ICategoryRepository
+{
+    /// <summary>Carrega uma categoria.</summary>
+    Task<Category?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>Lista as categorias visíveis para uma conta: as globais e as dela.</summary>
+    Task<IReadOnlyList<Category>> ListAsync(
+        Guid? accountId = null, CancellationToken cancellationToken = default);
+
+    /// <summary>Registra uma categoria.</summary>
+    Task AddAsync(Category category, CancellationToken cancellationToken = default);
+
+    /// <summary>Remove uma categoria.</summary>
+    void Remove(Category category);
+
+    /// <summary>Se a mensagem já tem a categoria aplicada.</summary>
+    Task<bool> IsAssignedAsync(
+        Guid messageId, Guid categoryId, CancellationToken cancellationToken = default);
+
+    /// <summary>Aplica uma categoria a uma mensagem.</summary>
+    Task AssignAsync(MessageCategory link, CancellationToken cancellationToken = default);
+
+    /// <summary>Retira uma categoria de uma mensagem.</summary>
+    Task<bool> UnassignAsync(
+        Guid messageId, Guid categoryId, CancellationToken cancellationToken = default);
+}
+
+/// <summary>Acesso aos modelos de mensagem.</summary>
+public interface IMessageTemplateRepository
+{
+    /// <summary>Carrega um modelo.</summary>
+    Task<MessageTemplate?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>Lista os modelos visíveis para uma conta: os globais e os dela.</summary>
+    Task<IReadOnlyList<MessageTemplate>> ListAsync(
+        Guid? accountId = null, CancellationToken cancellationToken = default);
+
+    /// <summary>Registra um modelo.</summary>
+    Task AddAsync(MessageTemplate template, CancellationToken cancellationToken = default);
+
+    /// <summary>Remove um modelo.</summary>
+    void Remove(MessageTemplate template);
+}
+
+/// <summary>Acesso às listas de remetentes bloqueados e confiáveis.</summary>
+public interface ISenderReputationRepository
+{
+    /// <summary>Carrega uma entrada.</summary>
+    Task<SenderReputation?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>Lista as entradas, opcionalmente de um só tipo.</summary>
+    Task<IReadOnlyList<SenderReputation>> ListAsync(
+        SenderReputationKind? kind = null, CancellationToken cancellationToken = default);
+
+    /// <summary>Registra uma entrada.</summary>
+    Task AddAsync(SenderReputation entry, CancellationToken cancellationToken = default);
+
+    /// <summary>Remove uma entrada.</summary>
+    void Remove(SenderReputation entry);
+}
+
 /// <summary>Acesso às pesquisas salvas.</summary>
 public interface ISavedSearchRepository
 {

@@ -60,6 +60,15 @@ public enum AuditEventType
 
     /// <summary>Operação da fila de saída esgotou as tentativas.</summary>
     OutboxOperationDead = 14,
+
+    /// <summary>Regra automática satisfeita e aplicada a uma mensagem.</summary>
+    RuleApplied = 15,
+
+    /// <summary>Mensagem de remetente bloqueado desviada para o lixo eletrônico.</summary>
+    SenderBlocked = 16,
+
+    /// <summary>Ação de regra que não pôde ser executada — o motivo vai na descrição.</summary>
+    RuleActionSkipped = 17,
 }
 
 /// <summary>Gravidade de um evento de auditoria.</summary>

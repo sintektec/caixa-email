@@ -24,17 +24,20 @@ public sealed partial class SearchViewModel : ObservableObject
     private readonly SavedSearchesHandler _savedSearchesHandler;
     private readonly IAccountRepository _accounts;
     private readonly IDomainDirectoryRepository _directories;
+    private readonly ICategoryRepository _categories;
 
     public SearchViewModel(
         ISearchService searchService,
         SavedSearchesHandler savedSearchesHandler,
         IAccountRepository accounts,
-        IDomainDirectoryRepository directories)
+        IDomainDirectoryRepository directories,
+        ICategoryRepository categories)
     {
         _searchService = searchService;
         _savedSearchesHandler = savedSearchesHandler;
         _accounts = accounts;
         _directories = directories;
+        _categories = categories;
 
         SelectedReadState = ReadStates[0];
         SelectedFlagState = FlagStates[0];
@@ -92,6 +95,13 @@ public sealed partial class SearchViewModel : ObservableObject
     /// <summary>Diretório de Domínio selecionado no filtro.</summary>
     [ObservableProperty]
     private ScopeFilterOption? _selectedDomain;
+
+    /// <summary>Categorias disponíveis, com "Todas" em primeiro.</summary>
+    public ObservableCollection<ScopeFilterOption> CategoryOptions { get; } = [];
+
+    /// <summary>Categoria selecionada no filtro.</summary>
+    [ObservableProperty]
+    private ScopeFilterOption? _selectedCategory;
 
     /// <summary>Opções do filtro de leitura.</summary>
     public IReadOnlyList<TriStateFilterOption> ReadStates => SelectionOptions.ReadStateFilters;
@@ -159,8 +169,16 @@ public sealed partial class SearchViewModel : ObservableObject
             DomainOptions.Add(new ScopeFilterOption(directory.Id, directory.DomainName.Value));
         }
 
+        CategoryOptions.Clear();
+        CategoryOptions.Add(new ScopeFilterOption(null, "Todas as categorias"));
+        foreach (var category in await _categories.ListAsync(null, cancellationToken).ConfigureAwait(true))
+        {
+            CategoryOptions.Add(new ScopeFilterOption(category.Id, category.Name));
+        }
+
         SelectedAccount = AccountOptions[0];
         SelectedDomain = DomainOptions[0];
+        SelectedCategory = CategoryOptions[0];
 
         await RefreshSavedSearchesAsync(cancellationToken).ConfigureAwait(true);
     }
@@ -181,6 +199,7 @@ public sealed partial class SearchViewModel : ObservableObject
         ReceivedUntil = ReceivedUntil?.AddDays(1).AddTicks(-1),
         AccountId = SelectedAccount?.Value,
         DomainDirectoryId = SelectedDomain?.Value,
+        CategoryId = SelectedCategory?.Value,
         IsRead = SelectedReadState.Value,
         IsFlagged = SelectedFlagState.Value,
         HasAttachments = SelectedAttachmentState.Value,
@@ -301,6 +320,8 @@ public sealed partial class SearchViewModel : ObservableObject
             ?? AccountOptions.FirstOrDefault();
         SelectedDomain = DomainOptions.FirstOrDefault(o => o.Value == query.DomainDirectoryId)
             ?? DomainOptions.FirstOrDefault();
+        SelectedCategory = CategoryOptions.FirstOrDefault(o => o.Value == query.CategoryId)
+            ?? CategoryOptions.FirstOrDefault();
 
         SelectedReadState = ReadStates.First(o => o.Value == query.IsRead);
         SelectedFlagState = FlagStates.First(o => o.Value == query.IsFlagged);
@@ -324,6 +345,7 @@ public sealed partial class SearchViewModel : ObservableObject
         ReceivedUntil = null;
         SelectedAccount = AccountOptions.FirstOrDefault();
         SelectedDomain = DomainOptions.FirstOrDefault();
+        SelectedCategory = CategoryOptions.FirstOrDefault();
         SelectedReadState = ReadStates[0];
         SelectedFlagState = FlagStates[0];
         SelectedAttachmentState = AttachmentStates[0];

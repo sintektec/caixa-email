@@ -40,6 +40,18 @@ public sealed partial class SettingsDialog : ContentDialog
         Hide();
     }
 
+    private void OnRulesClick(object sender, RoutedEventArgs e)
+    {
+        FollowUp = SettingsFollowUp.Rules;
+        Hide();
+    }
+
+    private void OnOrganizationClick(object sender, RoutedEventArgs e)
+    {
+        FollowUp = SettingsFollowUp.Organization;
+        Hide();
+    }
+
     private async void OnToggleAccountClick(object sender, RoutedEventArgs e)
         => await ViewModel.ToggleSelectedAccountAsync().ConfigureAwait(true);
 
@@ -68,4 +80,10 @@ public enum SettingsFollowUp
 
     /// <summary>Editor de Diretório de Domínio.</summary>
     DomainDirectory,
+
+    /// <summary>Gestão de regras automáticas.</summary>
+    Rules,
+
+    /// <summary>Categorias, modelos e listas de remetentes.</summary>
+    Organization,
 }

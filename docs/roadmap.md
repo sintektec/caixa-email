@@ -105,15 +105,30 @@ primeiro); selecionar uma aplica os critérios aos filtros e executa no painel c
 filtro por categoria já funciona no serviço, mas só ganhará seletor na interface quando a
 fase 7 criar a gestão de categorias.
 
-## Fase 7 — Automação e filtragem local
+## Fase 7 — Automação e filtragem local ✅
 
-Editor de regras automáticas, motor de avaliação na chegada de mensagens, categorias
-coloridas com atalhos, modelos de mensagem e resolução de prioridade quando mais de um
-Diretório de Domínio corresponder.
+Editor de regras automáticas, motor de avaliação na chegada (`RuleEvaluator` puro no
+Domain; `ApplyArrivalRulesHandler` na Aplicação, ligado ao `MessageSyncService` e ativo só
+na Caixa de Entrada), categorias coloridas com atalhos e aplicação pelo menu de contexto,
+modelos de mensagem aplicáveis no compositor.
 
-Inclui listas de **remetentes e domínios bloqueados e confiáveis**, avaliadas pelo mesmo
-motor de regras. Remetente confiável libera imagens remotas sem perguntar; bloqueado vai
-direto para o lixo eletrônico.
+As listas de **remetentes e domínios bloqueados e confiáveis** entraram
+(`SenderReputation`, migração `SenderReputationLists`): bloqueado vai direto para o lixo
+eletrônico pelo mesmo caminho de "Marcar como spam" — mover *e* aplicar `$Junk`, antes de
+qualquer regra rodar; confiável libera as imagens remotas no painel de leitura sem
+perguntar. Entrada por domínio cobre os subdomínios.
+
+Toda movimentação decidida por regra passa pelo `MoveMessageHandler`; quando a pasta de
+destino é restrita e a mensagem não pertence ao domínio, a ação é registrada como ignorada
+em auditoria — não há usuário para confirmar durante a sincronização, e a regra de domínio
+prevalece sobre a regra do usuário. A concorrência entre regras (inclusive de Diretórios
+de Domínio diferentes) resolve-se pela prioridade configurável de cada regra, com
+"interromper as seguintes" como corte explícito.
+
+Pendências da fase: as ações de **copiar para pasta** e **encaminhamento automático**
+ainda não são executadas — a auditoria registra a ação como ignorada, com o motivo; e as
+condições de corpo avaliam sobre a prévia na chegada, porque o corpo completo ainda não
+foi baixado nesse momento.
 
 **O que esta fase deliberadamente não faz: um classificador de spam próprio.** Servidores
 corporativos — Exchange, Google Workspace — já classificam com dados que nenhum cliente

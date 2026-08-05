@@ -49,25 +49,33 @@ public class SyncAccountHandlerTests
             .Returns(Array.Empty<long>());
     }
 
-    private SyncAccountHandler CreateHandler() => new(
-        _accounts,
-        _folders,
-        _unitOfWork,
-        _imap,
-        _drainer,
-        new FolderMirrorService(_folders, _unitOfWork, _clock, NullLogger<FolderMirrorService>.Instance),
-        new MessageSyncService(
-            _messages,
+    private SyncAccountHandler CreateHandler()
+    {
+        var enqueuer = new OutboxEnqueuer(_outbox, _clock);
+        var moveMessage = new MoveMessageHandler(
+            _messages, _folders, _directories, _audit, _unitOfWork,
+            enqueuer, _clock, NullLogger<MoveMessageHandler>.Instance);
+
+        return new SyncAccountHandler(
+            _accounts,
             _folders,
             _unitOfWork,
             _imap,
-            new MoveMessageHandler(
-                _messages, _folders, _directories, _audit, _unitOfWork,
-                new OutboxEnqueuer(_outbox, _clock), _clock, NullLogger<MoveMessageHandler>.Instance),
+            _drainer,
+            new FolderMirrorService(_folders, _unitOfWork, _clock, NullLogger<FolderMirrorService>.Instance),
+            new MessageSyncService(
+                _messages,
+                _folders,
+                _unitOfWork,
+                _imap,
+                moveMessage,
+                TestFactories.NeutralArrivalRules(
+                    _messages, _folders, _unitOfWork, moveMessage, enqueuer, _clock),
+                _clock,
+                NullLogger<MessageSyncService>.Instance),
             _clock,
-            NullLogger<MessageSyncService>.Instance),
-        _clock,
-        NullLogger<SyncAccountHandler>.Instance);
+            NullLogger<SyncAccountHandler>.Instance);
+    }
 
     [Fact]
     public async Task Sincronizar_FilaDeSaida_EDrenadaAntesDeLerOServidor()

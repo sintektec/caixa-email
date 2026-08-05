@@ -42,16 +42,24 @@ public class MessageSyncServiceTests
             .Returns(Array.Empty<MessageParticipant>());
     }
 
-    private MessageSyncService CreateService() => new(
-        _messages,
-        _folders,
-        _unitOfWork,
-        _imap,
-        new MoveMessageHandler(
+    private MessageSyncService CreateService()
+    {
+        var enqueuer = new OutboxEnqueuer(_outbox, _clock);
+        var moveMessage = new MoveMessageHandler(
             _messages, _folders, _directories, _audit, _unitOfWork,
-            new OutboxEnqueuer(_outbox, _clock), _clock, NullLogger<MoveMessageHandler>.Instance),
-        _clock,
-        NullLogger<MessageSyncService>.Instance);
+            enqueuer, _clock, NullLogger<MoveMessageHandler>.Instance);
+
+        return new MessageSyncService(
+            _messages,
+            _folders,
+            _unitOfWork,
+            _imap,
+            moveMessage,
+            TestFactories.NeutralArrivalRules(
+                _messages, _folders, _unitOfWork, moveMessage, enqueuer, _clock),
+            _clock,
+            NullLogger<MessageSyncService>.Instance);
+    }
 
     private static Folder Inbox() => Folder.Create(AccountId, "INBOX", FolderType.Inbox, Now, remotePath: "INBOX");
 

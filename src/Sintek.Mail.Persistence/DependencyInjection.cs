@@ -45,6 +45,10 @@ public static class DependencyInjection
         services.AddScoped<IAuditLogRepository, AuditLogRepository>();
         services.AddScoped<ISavedSearchRepository, SavedSearchRepository>();
         services.AddScoped<ISearchService, Fts5SearchService>();
+        services.AddScoped<IRuleRepository, RuleRepository>();
+        services.AddScoped<ICategoryRepository, CategoryRepository>();
+        services.AddScoped<IMessageTemplateRepository, MessageTemplateRepository>();
+        services.AddScoped<ISenderReputationRepository, SenderReputationRepository>();
 
         return services;
     }

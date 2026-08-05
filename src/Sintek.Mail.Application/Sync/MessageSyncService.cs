@@ -58,6 +58,7 @@ public sealed class MessageSyncService
     private readonly IUnitOfWork _unitOfWork;
     private readonly IImapClient _imapClient;
     private readonly MoveMessageHandler _moveMessage;
+    private readonly UseCases.Rules.ApplyArrivalRulesHandler _arrivalRules;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<MessageSyncService> _logger;
 
@@ -67,6 +68,7 @@ public sealed class MessageSyncService
         IUnitOfWork unitOfWork,
         IImapClient imapClient,
         MoveMessageHandler moveMessage,
+        UseCases.Rules.ApplyArrivalRulesHandler arrivalRules,
         TimeProvider timeProvider,
         ILogger<MessageSyncService> logger)
     {
@@ -75,6 +77,7 @@ public sealed class MessageSyncService
         _unitOfWork = unitOfWork;
         _imapClient = imapClient;
         _moveMessage = moveMessage;
+        _arrivalRules = arrivalRules;
         _timeProvider = timeProvider;
         _logger = logger;
     }
@@ -241,9 +244,20 @@ public sealed class MessageSyncService
         var classification = await _moveMessage
             .ClassifyArrivalAsync(message, folder, cancellationToken).ConfigureAwait(false);
 
-        return classification.Outcome == MoveMessageOutcome.MovedToPending
-            ? UpsertOutcome.AddedAndRedirected
-            : UpsertOutcome.Added;
+        if (classification.Outcome == MoveMessageOutcome.MovedToPending)
+        {
+            return UpsertOutcome.AddedAndRedirected;
+        }
+
+        // Filtragem local — bloqueados e regras automáticas — só na Caixa de Entrada, que
+        // é onde a chegada acontece. Aplicá-la em Enviados ou Arquivados refaria decisões
+        // sobre mensagens que o usuário já organizou.
+        if (folder.FolderType == FolderType.Inbox)
+        {
+            await _arrivalRules.HandleAsync(message.Id, cancellationToken).ConfigureAwait(false);
+        }
+
+        return UpsertOutcome.Added;
     }
 
     /// <summary>

@@ -334,6 +334,164 @@ public sealed class OutboxRepository : IOutboxRepository
     }
 }
 
+/// <inheritdoc cref="IRuleRepository" />
+public sealed class RuleRepository : IRuleRepository
+{
+    private readonly MailDbContext _context;
+
+    public RuleRepository(MailDbContext context) => _context = context;
+
+    /// <inheritdoc />
+    public Task<Rule?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+        => _context.Rules
+            .Include(r => r.Conditions)
+            .Include(r => r.Actions)
+            .FirstOrDefaultAsync(r => r.Id == id, cancellationToken);
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<Rule>> ListAsync(CancellationToken cancellationToken = default)
+        => await _context.Rules
+            .Include(r => r.Conditions)
+            .Include(r => r.Actions)
+            .OrderBy(r => r.Priority)
+            .ThenBy(r => r.Name)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<Rule>> ListEnabledForAccountAsync(
+        Guid accountId, Guid domainDirectoryId, CancellationToken cancellationToken = default)
+        => await _context.Rules
+            .Include(r => r.Conditions)
+            .Include(r => r.Actions)
+            .Where(r => r.IsEnabled
+                && (r.AccountId == null || r.AccountId == accountId)
+                && (r.DomainDirectoryId == null || r.DomainDirectoryId == domainDirectoryId))
+            .OrderBy(r => r.Priority)
+            .ThenBy(r => r.Name)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+    /// <inheritdoc />
+    public async Task AddAsync(Rule rule, CancellationToken cancellationToken = default)
+        => await _context.Rules.AddAsync(rule, cancellationToken).ConfigureAwait(false);
+
+    /// <inheritdoc />
+    public void Remove(Rule rule) => _context.Rules.Remove(rule);
+}
+
+/// <inheritdoc cref="ICategoryRepository" />
+public sealed class CategoryRepository : ICategoryRepository
+{
+    private readonly MailDbContext _context;
+
+    public CategoryRepository(MailDbContext context) => _context = context;
+
+    /// <inheritdoc />
+    public Task<Category?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+        => _context.Categories.FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<Category>> ListAsync(
+        Guid? accountId = null, CancellationToken cancellationToken = default)
+        => await _context.Categories
+            .Where(c => c.AccountId == null || accountId == null || c.AccountId == accountId)
+            .OrderBy(c => c.SortOrder)
+            .ThenBy(c => c.Name)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+    /// <inheritdoc />
+    public async Task AddAsync(Category category, CancellationToken cancellationToken = default)
+        => await _context.Categories.AddAsync(category, cancellationToken).ConfigureAwait(false);
+
+    /// <inheritdoc />
+    public void Remove(Category category) => _context.Categories.Remove(category);
+
+    /// <inheritdoc />
+    public Task<bool> IsAssignedAsync(
+        Guid messageId, Guid categoryId, CancellationToken cancellationToken = default)
+        => _context.MessageCategories
+            .AnyAsync(mc => mc.MessageId == messageId && mc.CategoryId == categoryId, cancellationToken);
+
+    /// <inheritdoc />
+    public async Task AssignAsync(MessageCategory link, CancellationToken cancellationToken = default)
+        => await _context.MessageCategories.AddAsync(link, cancellationToken).ConfigureAwait(false);
+
+    /// <inheritdoc />
+    public async Task<bool> UnassignAsync(
+        Guid messageId, Guid categoryId, CancellationToken cancellationToken = default)
+    {
+        var link = await _context.MessageCategories
+            .FirstOrDefaultAsync(
+                mc => mc.MessageId == messageId && mc.CategoryId == categoryId, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (link is null)
+        {
+            return false;
+        }
+
+        _context.MessageCategories.Remove(link);
+        return true;
+    }
+}
+
+/// <inheritdoc cref="IMessageTemplateRepository" />
+public sealed class MessageTemplateRepository : IMessageTemplateRepository
+{
+    private readonly MailDbContext _context;
+
+    public MessageTemplateRepository(MailDbContext context) => _context = context;
+
+    /// <inheritdoc />
+    public Task<MessageTemplate?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+        => _context.MessageTemplates.FirstOrDefaultAsync(t => t.Id == id, cancellationToken);
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<MessageTemplate>> ListAsync(
+        Guid? accountId = null, CancellationToken cancellationToken = default)
+        => await _context.MessageTemplates
+            .Where(t => t.AccountId == null || accountId == null || t.AccountId == accountId)
+            .OrderBy(t => t.Name)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+    /// <inheritdoc />
+    public async Task AddAsync(MessageTemplate template, CancellationToken cancellationToken = default)
+        => await _context.MessageTemplates.AddAsync(template, cancellationToken).ConfigureAwait(false);
+
+    /// <inheritdoc />
+    public void Remove(MessageTemplate template) => _context.MessageTemplates.Remove(template);
+}
+
+/// <inheritdoc cref="ISenderReputationRepository" />
+public sealed class SenderReputationRepository : ISenderReputationRepository
+{
+    private readonly MailDbContext _context;
+
+    public SenderReputationRepository(MailDbContext context) => _context = context;
+
+    /// <inheritdoc />
+    public Task<SenderReputation?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+        => _context.SenderReputations.FirstOrDefaultAsync(s => s.Id == id, cancellationToken);
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<SenderReputation>> ListAsync(
+        SenderReputationKind? kind = null, CancellationToken cancellationToken = default)
+        => await _context.SenderReputations
+            .Where(s => kind == null || s.Kind == kind)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+    /// <inheritdoc />
+    public async Task AddAsync(SenderReputation entry, CancellationToken cancellationToken = default)
+        => await _context.SenderReputations.AddAsync(entry, cancellationToken).ConfigureAwait(false);
+
+    /// <inheritdoc />
+    public void Remove(SenderReputation entry) => _context.SenderReputations.Remove(entry);
+}
+
 /// <inheritdoc cref="ISavedSearchRepository" />
 public sealed class SavedSearchRepository : ISavedSearchRepository
 {

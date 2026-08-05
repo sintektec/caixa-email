@@ -62,6 +62,9 @@ public sealed class MailDbContext : DbContext
     /// <summary>Fila de saída.</summary>
     public DbSet<OutboxOperation> OutboxOperations => Set<OutboxOperation>();
 
+    /// <summary>Listas de remetentes bloqueados e confiáveis.</summary>
+    public DbSet<SenderReputation> SenderReputations => Set<SenderReputation>();
+
     /// <summary>Pesquisas salvas.</summary>
     public DbSet<SavedSearch> SavedSearches => Set<SavedSearch>();
 

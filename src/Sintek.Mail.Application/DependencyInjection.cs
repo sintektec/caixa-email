@@ -5,6 +5,8 @@ using Sintek.Mail.Application.UseCases.Accounts;
 using Sintek.Mail.Application.UseCases.Domains;
 using Sintek.Mail.Application.UseCases.Folders;
 using Sintek.Mail.Application.UseCases.Messages;
+using Sintek.Mail.Application.UseCases.Organization;
+using Sintek.Mail.Application.UseCases.Rules;
 using Sintek.Mail.Application.UseCases.Search;
 
 namespace Sintek.Mail.Application;
@@ -49,6 +51,12 @@ public static class DependencyInjection
         services.AddScoped<RemoveAccountHandler>();
 
         services.AddScoped<SavedSearchesHandler>();
+
+        services.AddScoped<ApplyArrivalRulesHandler>();
+        services.AddScoped<ManageRulesHandler>();
+        services.AddScoped<ManageCategoriesHandler>();
+        services.AddScoped<ManageTemplatesHandler>();
+        services.AddScoped<ManageSenderReputationHandler>();
 
         services.AddScoped<CreateDomainDirectoryHandler>();
         services.AddScoped<UpdateDomainDirectoryHandler>();

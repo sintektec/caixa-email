@@ -235,3 +235,25 @@ eletrônico e IA) registradas no roadmap.
 **Próxima sessão:**
 - Aguardar decisão do usuário: fase 7 (Automação e filtragem local), validação manual em
   Windows, ou revisão do PR #1.
+
+---
+
+## 2026-08-05 — Sessão 9 (continuação): pendências das fases 4/6 e Fase 7 (Automação)
+
+**O que foi feito:**
+- Pendências fechadas: editor rico no compositor (WebView2 contenteditable, barra de
+  formatação, CSP sem origem externa), rascunho automático por período de silêncio
+  (política no ViewModel, testável no Linux) e pesquisas salvas na barra lateral.
+- Fase 7: `RuleEvaluator` puro (campos/operadores/E-OU da 6.5), `ApplyArrivalRulesHandler`
+  na chegada (bloqueados primeiro, depois regras por prioridade; só Caixa de Entrada;
+  movimentação sempre via `MoveMessageHandler`, recusa vira auditoria — D-016).
+- `SenderReputation` (+migração `SenderReputationLists`): bloqueado → lixo eletrônico pelo
+  caminho do spam; confiável → imagens remotas liberadas no painel de leitura.
+- Gestão completa: `ManageRulesHandler` (definição validada, gravação reconstrói),
+  categorias (CRUD + menu de contexto "Categorizar" + filtro na pesquisa), modelos de
+  mensagem (CRUD + aplicação no compositor), diálogos WinUI encadeados das configurações.
+- 485 → 530 testes.
+
+**Próxima sessão:**
+- Aguardar decisão do usuário: fase 8 (Assistência por IA), validação manual em Windows,
+  ou revisão do PR #1.

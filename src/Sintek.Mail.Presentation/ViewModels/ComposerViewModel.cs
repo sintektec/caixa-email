@@ -46,6 +46,7 @@ public sealed partial class ComposerViewModel : ObservableObject
     private readonly IMessageRepository _messages;
     private readonly IAccountRepository _accounts;
     private readonly ComposeMessageHandler _compose;
+    private readonly Application.UseCases.Organization.ManageTemplatesHandler _templates;
     private readonly TimeProvider _timeProvider;
 
     private DateTimeOffset? _lastEditAt;
@@ -56,11 +57,13 @@ public sealed partial class ComposerViewModel : ObservableObject
         IMessageRepository messages,
         IAccountRepository accounts,
         ComposeMessageHandler compose,
+        Application.UseCases.Organization.ManageTemplatesHandler templates,
         TimeProvider timeProvider)
     {
         _messages = messages;
         _accounts = accounts;
         _compose = compose;
+        _templates = templates;
         _timeProvider = timeProvider;
     }
 
@@ -138,6 +141,9 @@ public sealed partial class ComposerViewModel : ObservableObject
     /// <summary>Anexos escolhidos.</summary>
     public ObservableCollection<ComposerAttachmentItem> Attachments { get; } = [];
 
+    /// <summary>Modelos de mensagem disponíveis.</summary>
+    public ObservableCollection<ScopeFilterOption> TemplateOptions { get; } = [];
+
     /// <summary>Se há mensagem a exibir na faixa de aviso.</summary>
     public bool HasStatusMessage => StatusMessage.Length > 0;
 
@@ -187,6 +193,46 @@ public sealed partial class ComposerViewModel : ObservableObject
         _inReplyTo = draft.InReplyTo;
         _references = draft.References;
         _threadId = draft.ThreadId;
+
+        TemplateOptions.Clear();
+        foreach (var template in await _templates.ListAsync(accountId, cancellationToken).ConfigureAwait(true))
+        {
+            TemplateOptions.Add(new ScopeFilterOption(template.Id, template.Name));
+        }
+    }
+
+    /// <summary>
+    /// Aplica um modelo à mensagem em edição.
+    /// </summary>
+    /// <remarks>
+    /// O corpo do modelo entra <b>antes</b> do texto existente — que em resposta é a
+    /// citação, e ela precisa continuar embaixo. O assunto só é preenchido se ainda estiver
+    /// vazio: sobrescrever o "Re:" de uma resposta quebraria o encadeamento visual.
+    /// </remarks>
+    public async Task<bool> ApplyTemplateAsync(
+        Guid templateId, CancellationToken cancellationToken = default)
+    {
+        var template = await _templates.GetAsync(templateId, cancellationToken).ConfigureAwait(true);
+
+        if (template is null)
+        {
+            StatusMessage = "O modelo não existe mais.";
+            return false;
+        }
+
+        if (Subject.Length == 0 && template.Subject.Length > 0)
+        {
+            Subject = template.Subject;
+        }
+
+        if (template.HtmlBody.Length > 0)
+        {
+            BodyHtml = BodyHtml.Length > 0
+                ? template.HtmlBody + "<br>" + BodyHtml
+                : template.HtmlBody;
+        }
+
+        return true;
     }
 
     /// <summary>

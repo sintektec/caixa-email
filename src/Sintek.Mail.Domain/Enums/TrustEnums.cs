@@ -1,5 +1,15 @@
 namespace Sintek.Mail.Domain.Enums;
 
+/// <summary>Natureza de uma entrada nas listas de remetentes.</summary>
+public enum SenderReputationKind
+{
+    /// <summary>Remetente bloqueado: a mensagem vai direto para o lixo eletrônico.</summary>
+    Blocked = 0,
+
+    /// <summary>Remetente confiável: o conteúdo remoto é liberado sem perguntar.</summary>
+    Trusted = 1,
+}
+
 /// <summary>
 /// Resultado de uma verificação de autenticação do remetente.
 /// </summary>

@@ -310,6 +310,20 @@ public sealed partial class MainWindow : Window
                     next = SettingsFollowUp.None;
                     break;
 
+                case SettingsFollowUp.Rules:
+                    var rules = RulesDialog.Create(RootGrid.XamlRoot);
+                    await rules.InitializeAsync().ConfigureAwait(true);
+                    await rules.ShowAsync();
+                    next = SettingsFollowUp.None;
+                    break;
+
+                case SettingsFollowUp.Organization:
+                    var organization = OrganizationDialog.Create(RootGrid.XamlRoot);
+                    await organization.InitializeAsync().ConfigureAwait(true);
+                    await organization.ShowAsync();
+                    next = SettingsFollowUp.None;
+                    break;
+
                 default:
                     var settings = SettingsDialog.Create(RootGrid.XamlRoot);
                     await settings.ShowAsync();
@@ -435,6 +449,57 @@ public sealed partial class MainWindow : Window
         var actions = App.Services.GetRequiredService<FolderActionsViewModel>();
         await actions.ToggleFavoriteAsync(node.EntityId, !node.IsFavorite).ConfigureAwait(true);
         await Shell.LoadNavigationAsync().ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// Preenche o submenu "Categorizar" com as categorias existentes no momento em que o
+    /// menu abre — a lista vive no banco e muda em tempo de execução.
+    /// </summary>
+    private async void OnMessageContextFlyoutOpening(object sender, object e)
+    {
+        if (sender is not MenuFlyout flyout)
+        {
+            return;
+        }
+
+        var subItem = flyout.Items.OfType<MenuFlyoutSubItem>().FirstOrDefault();
+
+        if (subItem?.Tag is not MessageListItemViewModel item)
+        {
+            return;
+        }
+
+        subItem.Items.Clear();
+
+        var handler = App.Services
+            .GetRequiredService<Sintek.Mail.Application.UseCases.Organization.ManageCategoriesHandler>();
+
+        foreach (var category in await handler.ListAsync(null).ConfigureAwait(true))
+        {
+            var menuItem = new MenuFlyoutItem { Text = category.Name };
+            var categoryId = category.Id;
+
+            menuItem.Click += async (_, _) =>
+            {
+                await handler.AssignAsync(item.MessageId, categoryId).ConfigureAwait(true);
+
+                if (MessageList.FolderId is { } folderId)
+                {
+                    await MessageList.LoadFolderAsync(folderId).ConfigureAwait(true);
+                }
+            };
+
+            subItem.Items.Add(menuItem);
+        }
+
+        if (subItem.Items.Count == 0)
+        {
+            subItem.Items.Add(new MenuFlyoutItem
+            {
+                Text = "Nenhuma categoria cadastrada",
+                IsEnabled = false,
+            });
+        }
     }
 
     private async void OnMarkAsSpamClick(object sender, RoutedEventArgs e)

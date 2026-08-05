@@ -6,25 +6,26 @@
 
 ## Fase atual
 
-**Fase 6 — Pesquisa: concluída.** Ver `docs/roadmap.md` para as fases 7 a 10.
+**Fase 7 — Automação e filtragem local: concluída.** Ver `docs/roadmap.md` para as fases
+8 a 10.
 
 ## Marco atual
 
-**478 testes verdes no núcleo multiplataforma** (169 → 272 → 336 → 426 → 441 → 478 ao
-longo das fases).
+**530 testes verdes no núcleo multiplataforma** (169 → 272 → 336 → 426 → 441 → 478 → 485
+→ 530 ao longo das fases).
 
-A fase 6 entregou a pesquisa completa da seção 6.4. O índice FTS5 foi reconstruído com
-*external content* (migração `RebuildSearchIndex`): o modo contentless original não tinha
-como indexar corpo, participantes e nomes de anexo, porque apagar uma entrada exige
-reapresentar os valores antigos — que vivem em outras tabelas. Agora a tabela física
-`MessagesSearch` espelha o texto pesquisável, os gatilhos das tabelas de origem a mantêm
-(inclusive no download sob demanda), e `Fts5SearchService` combina MATCH com os filtros
-estruturais: conta, pasta, Diretório de Domínio, categoria, intervalo de datas com
-normalização de fuso, lida, sinalizador, anexos, importância e status de sincronização.
-Pesquisas salvas atualizam pela identidade do nome, e a interface ganhou o flyout de
-pesquisa avançada e o modo de resultados no painel central.
+A fase 7 entregou a filtragem local inteira: `RuleEvaluator` puro no Domain (campos,
+operadores e combinação E/OU da seção 6.5), `ApplyArrivalRulesHandler` aplicando bloqueio
+de remetente e regras na chegada (só na Caixa de Entrada, ligado ao `MessageSyncService`),
+listas de remetentes bloqueados/confiáveis (`SenderReputation` + migração), categorias com
+gestão e aplicação pelo menu de contexto, modelos de mensagem no compositor, e os diálogos
+de regras e organização encadeados a partir das configurações. Movimentação decidida por
+regra passa pelo `MoveMessageHandler`; recusa pela regra de domínio vira auditoria, nunca
+silêncio. Antes dela, as pendências das fases 4 e 6 foram fechadas: editor rico
+(WebView2 contenteditable), rascunho automático por período de silêncio e pesquisas salvas
+na barra lateral.
 
-Distribuição: Domain 144, Application 165, Infrastructure 85, Presentation 61, Persistence 23.
+Distribuição: Domain 161, Application 184, Infrastructure 85, Presentation 77, Persistence 23.
 
 > **Atenção:** houve troca de implementação em 04/08/2026 (ver `DECISIONS.md`, D-007). O que
 > este arquivo descrevia antes daquela data pertencia à versão anterior, que foi substituída.
@@ -67,13 +68,11 @@ Distribuição: Domain 144, Application 165, Infrastructure 85, Presentation 61,
 ## Próximos passos
 
 1. **Revisar e integrar o PR #1.**
-2. **Fase 7 — Automação e filtragem local:** editor e motor de regras, categorias com
-   gestão na interface (o filtro de pesquisa por categoria já existe no serviço, à espera
-   do seletor), modelos de mensagem, listas de remetentes bloqueados/confiáveis.
-
-As pendências pontuais das fases 4 e 6 foram fechadas: editor rico (WebView2
-contenteditable), rascunho automático por período de silêncio e pesquisas salvas na barra
-lateral.
+2. **Fase 8 — Assistência por IA:** infraestrutura de privacidade primeiro
+   (`IAssistantProvider`, modelo local como padrão, consentimento por Diretório de
+   Domínio, auditoria de envios externos), recursos depois.
+3. Pendências pontuais da fase 7: ações de copiar para pasta e encaminhamento automático
+   (hoje auditadas como ignoradas); condições de corpo avaliam sobre a prévia na chegada.
 
 Vale notar: o MSIX compila mas **ainda não foi executado**. Nenhuma sessão automatizada
 consegue fazer isso — exige uma máquina Windows 11 real. A validação funcional da interface

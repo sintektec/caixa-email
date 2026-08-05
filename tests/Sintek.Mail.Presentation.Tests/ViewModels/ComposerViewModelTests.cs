@@ -42,14 +42,25 @@ public class ComposerViewModelTests
             .Returns(Folder.Create(_account.Id, "Caixa de Saída", FolderType.Outbox, Now, isLocalOnly: true));
     }
 
-    private ComposerViewModel CreateViewModel(TimeProvider? clock = null) => new(
-        _messages,
-        _accounts,
-        new ComposeMessageHandler(
-            _messages, _folders, _accounts, _unitOfWork,
-            new OutboxEnqueuer(_outbox, _clock), _clock,
-            NullLogger<ComposeMessageHandler>.Instance),
-        clock ?? _clock);
+    private readonly Sintek.Mail.Application.Abstractions.Persistence.IMessageTemplateRepository _templates =
+        Substitute.For<Sintek.Mail.Application.Abstractions.Persistence.IMessageTemplateRepository>();
+
+    private ComposerViewModel CreateViewModel(TimeProvider? clock = null)
+    {
+        _templates.ListAsync(Arg.Any<Guid?>(), Arg.Any<CancellationToken>())
+            .Returns(Array.Empty<MessageTemplate>());
+
+        return new ComposerViewModel(
+            _messages,
+            _accounts,
+            new ComposeMessageHandler(
+                _messages, _folders, _accounts, _unitOfWork,
+                new OutboxEnqueuer(_outbox, _clock), _clock,
+                NullLogger<ComposeMessageHandler>.Instance),
+            new Sintek.Mail.Application.UseCases.Organization.ManageTemplatesHandler(
+                _templates, _unitOfWork, _clock),
+            clock ?? _clock);
+    }
 
     /// <summary>Relógio ajustável, para simular a passagem do tempo entre digitações.</summary>
     private sealed class MovingClock(DateTimeOffset start) : TimeProvider

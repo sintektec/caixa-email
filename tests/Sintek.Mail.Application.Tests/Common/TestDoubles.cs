@@ -1,6 +1,57 @@
+using Microsoft.Extensions.Logging.Abstractions;
+using NSubstitute;
+using Sintek.Mail.Application.Abstractions.Persistence;
 using Sintek.Mail.Application.Abstractions.Security;
+using Sintek.Mail.Application.Services;
+using Sintek.Mail.Application.UseCases.Messages;
+using Sintek.Mail.Application.UseCases.Rules;
+using Sintek.Mail.Domain.Entities;
+using Sintek.Mail.Domain.Enums;
 
 namespace Sintek.Mail.Application.Tests;
+
+/// <summary>Fábricas de dependências compostas usadas por mais de um arquivo de teste.</summary>
+internal static class TestFactories
+{
+    /// <summary>
+    /// Motor de chegada neutro: sem regras e sem remetentes bloqueados. É o que os testes
+    /// de sincronização precisam para que a filtragem local não interfira no que eles
+    /// verificam.
+    /// </summary>
+    public static ApplyArrivalRulesHandler NeutralArrivalRules(
+        IMessageRepository messages,
+        IFolderRepository folders,
+        IUnitOfWork unitOfWork,
+        MoveMessageHandler moveMessage,
+        OutboxEnqueuer outbox,
+        TimeProvider clock)
+    {
+        var rules = Substitute.For<IRuleRepository>();
+        rules.ListEnabledForAccountAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns(Array.Empty<Rule>());
+
+        var reputations = Substitute.For<ISenderReputationRepository>();
+        reputations.ListAsync(Arg.Any<SenderReputationKind?>(), Arg.Any<CancellationToken>())
+            .Returns(Array.Empty<SenderReputation>());
+
+        return new ApplyArrivalRulesHandler(
+            rules,
+            reputations,
+            messages,
+            folders,
+            Substitute.For<IAccountRepository>(),
+            Substitute.For<ICategoryRepository>(),
+            Substitute.For<IAuditLogRepository>(),
+            unitOfWork,
+            moveMessage,
+            new MarkAsSpamHandler(
+                messages, folders, moveMessage, outbox, unitOfWork,
+                NullLogger<MarkAsSpamHandler>.Instance),
+            outbox,
+            clock,
+            NullLogger<ApplyArrivalRulesHandler>.Instance);
+    }
+}
 
 /// <summary>Relógio fixo, para tornar os testes determinísticos.</summary>
 internal sealed class FakeTimeProvider(DateTimeOffset now) : TimeProvider

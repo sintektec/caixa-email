@@ -22,19 +22,23 @@ public class SearchViewModelTests
     private readonly IUnitOfWork _unitOfWork = Substitute.For<IUnitOfWork>();
     private readonly IAccountRepository _accounts = Substitute.For<IAccountRepository>();
     private readonly IDomainDirectoryRepository _directories = Substitute.For<IDomainDirectoryRepository>();
+    private readonly ICategoryRepository _categories = Substitute.For<ICategoryRepository>();
 
     public SearchViewModelTests()
     {
         _accounts.ListActiveAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<Account>());
         _directories.ListAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<DomainDirectory>());
         _savedSearches.ListAsync(Arg.Any<CancellationToken>()).Returns(Array.Empty<SavedSearch>());
+        _categories.ListAsync(Arg.Any<Guid?>(), Arg.Any<CancellationToken>())
+            .Returns(Array.Empty<Category>());
     }
 
     private SearchViewModel CreateViewModel() => new(
         _searchService,
         new SavedSearchesHandler(_savedSearches, _unitOfWork, new FakeTimeProvider(Now)),
         _accounts,
-        _directories);
+        _directories,
+        _categories);
 
     [Fact]
     public void MontarCriterios_CamposEmBranco_ViramNulosENaoStringVazia()

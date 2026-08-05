@@ -32,6 +32,18 @@ public sealed record SyncStateFilterOption(MessageSyncState? Value, string Label
 /// <param name="Label">Texto apresentado ao usuário.</param>
 public sealed record ScopeFilterOption(Guid? Value, string Label);
 
+/// <inheritdoc cref="ValidationModeOption" />
+public sealed record RuleFieldOption(RuleField Value, string Label);
+
+/// <inheritdoc cref="ValidationModeOption" />
+public sealed record RuleOperatorOption(RuleOperator Value, string Label);
+
+/// <inheritdoc cref="ValidationModeOption" />
+public sealed record RuleActionOption(RuleActionType Value, string Label);
+
+/// <inheritdoc cref="ValidationModeOption" />
+public sealed record RuleMatchTypeOption(RuleMatchType Value, string Label);
+
 /// <summary>
 /// Rótulos das opções apresentadas nas listas de configuração.
 /// </summary>
@@ -123,6 +135,61 @@ public static class SelectionOptions
         new(MessageImportance.High, "Alta"),
         new(MessageImportance.Normal, "Normal"),
         new(MessageImportance.Low, "Baixa"),
+    ];
+
+    /// <summary>Campos disponíveis nas condições de regra, na ordem da seção 6.5.</summary>
+    public static IReadOnlyList<RuleFieldOption> RuleFields { get; } =
+    [
+        new(RuleField.Sender, "Remetente"),
+        new(RuleField.Recipient, "Destinatário (Para)"),
+        new(RuleField.Cc, "Em cópia (CC)"),
+        new(RuleField.Subject, "Assunto"),
+        new(RuleField.Body, "Corpo da mensagem"),
+        new(RuleField.AttachmentName, "Nome do anexo"),
+        new(RuleField.HasAttachment, "Presença de anexo"),
+        new(RuleField.ParticipantDomain, "Domínio de participante"),
+        new(RuleField.Size, "Tamanho (bytes)"),
+        new(RuleField.Importance, "Importância"),
+    ];
+
+    /// <summary>Operadores de comparação das condições.</summary>
+    public static IReadOnlyList<RuleOperatorOption> RuleOperators { get; } =
+    [
+        new(RuleOperator.Contains, "Contém"),
+        new(RuleOperator.NotContains, "Não contém"),
+        new(RuleOperator.Equals, "É igual a"),
+        new(RuleOperator.NotEquals, "É diferente de"),
+        new(RuleOperator.StartsWith, "Começa com"),
+        new(RuleOperator.EndsWith, "Termina com"),
+        new(RuleOperator.InDomain, "Pertence ao domínio"),
+        new(RuleOperator.IsTrue, "Sim"),
+        new(RuleOperator.IsFalse, "Não"),
+        new(RuleOperator.GreaterThan, "Maior que"),
+        new(RuleOperator.LessThan, "Menor que"),
+    ];
+
+    /// <summary>Ações disponíveis nas regras.</summary>
+    /// <remarks>
+    /// Copiar e encaminhar ficam de fora até serem suportadas: oferecer uma ação que a
+    /// auditoria registraria como ignorada seria vender o que não existe.
+    /// </remarks>
+    public static IReadOnlyList<RuleActionOption> RuleActions { get; } =
+    [
+        new(RuleActionType.MoveToFolder, "Mover para a pasta"),
+        new(RuleActionType.ApplyCategory, "Aplicar a categoria"),
+        new(RuleActionType.MarkAsRead, "Marcar como lida"),
+        new(RuleActionType.MarkAsImportant, "Marcar como importante"),
+        new(RuleActionType.Flag, "Aplicar sinalizador"),
+        new(RuleActionType.MoveToPending, "Mover para pendências"),
+        new(RuleActionType.Delete, "Mover para a lixeira"),
+        new(RuleActionType.StopProcessing, "Interromper as regras seguintes"),
+    ];
+
+    /// <summary>Modos de combinação das condições.</summary>
+    public static IReadOnlyList<RuleMatchTypeOption> RuleMatchTypes { get; } =
+    [
+        new(RuleMatchType.All, "Todas as condições (E)"),
+        new(RuleMatchType.Any, "Qualquer condição (OU)"),
     ];
 
     /// <summary>Filtro de status de sincronização da pesquisa avançada.</summary>

@@ -30,6 +30,8 @@ public static class DependencyInjection
         services.AddTransient<ComposerViewModel>();
         services.AddTransient<FolderActionsViewModel>();
         services.AddTransient<SearchViewModel>();
+        services.AddTransient<RulesViewModel>();
+        services.AddTransient<OrganizationViewModel>();
 
         return services;
     }

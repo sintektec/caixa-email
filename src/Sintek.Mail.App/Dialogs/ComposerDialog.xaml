@@ -110,6 +110,17 @@
 
                 <CheckBox Content="Confirmação de leitura"
                           IsChecked="{x:Bind ViewModel.RequestReadReceipt, Mode=TwoWay}" />
+
+                <ComboBox x:Name="TemplatePicker"
+                          PlaceholderText="Modelo de mensagem"
+                          MinWidth="180"
+                          ItemsSource="{x:Bind ViewModel.TemplateOptions, Mode=OneWay}"
+                          DisplayMemberPath="Label"
+                          AutomationProperties.Name="Modelo de mensagem" />
+
+                <Button Content="Aplicar modelo"
+                        Click="OnApplyTemplateClick"
+                        AutomationProperties.Name="Aplicar o modelo escolhido" />
             </StackPanel>
 
             <ItemsControl ItemsSource="{x:Bind ViewModel.Attachments, Mode=OneWay}">

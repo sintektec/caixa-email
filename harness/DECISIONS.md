@@ -310,3 +310,31 @@ na migração da fase 1); FTS5 sem external content com `delete-all` + reinserç
 **Armadilha registrada no caminho:** parâmetro `Guid` em SQL manual precisa ir como `Guid`,
 nunca como `ToString()` — o provider grava TEXT maiúsculo e a comparação com minúsculo
 falha em silêncio. Documentada em `CLAUDE.md`.
+
+---
+
+## D-016 — Filtragem local na chegada: bloqueio antes das regras, domínio acima de tudo (2026-08-05)
+
+**Status:** aceita
+
+**Decisão:** `ApplyArrivalRulesHandler` roda depois da classificação de chegada, apenas na
+Caixa de Entrada, nesta ordem: (1) lista de remetentes bloqueados — que desvia pelo mesmo
+caminho de "Marcar como spam" (mover **e** `$Junk`) e encerra o processamento; (2) regras
+ativas em ordem de prioridade, com `StopProcessing` como corte. A avaliação das condições
+(`RuleEvaluator`) é pura e vive no Domain. Toda movimentação decidida por regra passa pelo
+`MoveMessageHandler`; quando a pasta de destino é restrita e a mensagem não pertence,
+a ação é registrada em auditoria como ignorada — a regra de domínio prevalece sobre a
+regra do usuário, e não há usuário para confirmar durante a sincronização.
+
+**Motivo:** O bloqueio antes das regras evita trabalho sobre mensagem que o usuário pediu
+para não ver — e mover só localmente deixaria o filtro do servidor classificando errado
+para sempre, daí reutilizar o caminho do spam. Regras só na Caixa de Entrada: aplicá-las
+em Enviados ou Arquivados refaria decisões sobre mensagens que o usuário já organizou.
+
+**Consequências:** condições de corpo avaliam sobre a prévia na chegada (o corpo ainda não
+foi baixado); ações de copiar e encaminhar ainda não são executadas e entram na auditoria
+como ignoradas, com o motivo — nunca silenciosamente perdidas.
+
+**Alternativas rejeitadas:** reavaliar regras no download do corpo (a mensagem já teria
+sido triada; reclassificar depois moveria mensagens que o usuário já viu); classificador
+local de spam (decisão da fase 7 no roadmap — o veredito é do servidor).

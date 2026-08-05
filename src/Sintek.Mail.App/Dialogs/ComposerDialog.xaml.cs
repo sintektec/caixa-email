@@ -238,6 +238,23 @@ public sealed partial class ComposerDialog : ContentDialog
         }
     }
 
+    /// <summary>Aplica o modelo escolhido e recarrega o editor com o novo corpo.</summary>
+    private async void OnApplyTemplateClick(object sender, RoutedEventArgs e)
+    {
+        if (TemplatePicker.SelectedItem is not ScopeFilterOption { Value: { } templateId })
+        {
+            return;
+        }
+
+        // O que já foi digitado precisa entrar antes do modelo ser aplicado sobre ele.
+        await SyncEditorToViewModelAsync().ConfigureAwait(true);
+
+        if (await ViewModel.ApplyTemplateAsync(templateId).ConfigureAwait(true) && _editorReady)
+        {
+            EditorView.CoreWebView2.NavigateToString(BuildEditorDocument());
+        }
+    }
+
     /// <summary>Cria o compositor com as dependências do contêiner.</summary>
     public static ComposerDialog Create(XamlRoot xamlRoot)
         => new(App.Services.GetRequiredService<ComposerViewModel>())
