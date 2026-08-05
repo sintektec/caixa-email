@@ -77,6 +77,15 @@
   <ItemGroup>
     <Content Include="Assets\**" CopyToOutputDirectory="PreserveNewest" />
     <None Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
+
+    <!--
+      Sobreposição local, ignorada pelo git (.gitignore), onde vai o Client secret da Google.
+      Sem esta linha o arquivo fica na pasta do projeto e nunca chega ao lado do executável —
+      o `AddJsonFile` é `optional: true` e não reclama, então o sintoma seria a conta Google
+      continuar aparecendo como "não configurada" sem nenhuma mensagem de erro.
+      `Update` sobre arquivo inexistente é inofensivo: quem não tem o arquivo não vê diferença.
+    -->
+    <None Update="appsettings.Local.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
