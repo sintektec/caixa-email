@@ -68,6 +68,18 @@ public interface IImapClient : IAsyncDisposable
     Task<IReadOnlyList<FetchedMessage>> FetchHeadersAsync(
         string remotePath, long sinceUid, int limit, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Busca apenas os marcadores que mudaram desde um <c>MODSEQ</c> (CONDSTORE, RFC 7162).
+    /// </summary>
+    /// <remarks>
+    /// É o caminho barato para descobrir o que outra sessão alterou em mensagens antigas:
+    /// sem CONDSTORE seria preciso reler os marcadores da pasta inteira a cada ciclo, o
+    /// que em uma caixa com dezenas de milhares de mensagens custa mais que todo o resto
+    /// da sincronização somado.
+    /// </remarks>
+    Task<IReadOnlyList<FetchedFlags>> FetchFlagChangesAsync(
+        string remotePath, long sinceModSeq, CancellationToken cancellationToken = default);
+
     /// <summary>Baixa o corpo e os metadados de anexo de uma mensagem.</summary>
     Task<FetchedBody?> FetchBodyAsync(
         string remotePath, long uid, CancellationToken cancellationToken = default);
@@ -249,6 +261,19 @@ public readonly record struct FetchedAddress(
     Domain.Enums.AddressKind Kind,
     string Address,
     string? DisplayName);
+
+/// <summary>Marcadores de uma mensagem, sem o resto do cabeçalho.</summary>
+/// <param name="Uid">UID da mensagem na pasta.</param>
+/// <param name="IsRead">Marcador \Seen.</param>
+/// <param name="IsFlagged">Marcador \Flagged.</param>
+/// <param name="IsAnswered">Marcador \Answered.</param>
+/// <param name="ModSeq">MODSEQ da alteração.</param>
+public readonly record struct FetchedFlags(
+    long Uid,
+    bool IsRead,
+    bool IsFlagged,
+    bool IsAnswered,
+    long? ModSeq);
 
 /// <summary>Corpo e metadados de anexo trazidos do servidor.</summary>
 public sealed record FetchedBody

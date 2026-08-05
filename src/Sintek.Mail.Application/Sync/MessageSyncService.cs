@@ -96,6 +96,10 @@ public sealed class MessageSyncService
         var now = _timeProvider.GetUtcNow();
         var state = await _imapClient.OpenFolderAsync(folder.RemotePath, cancellationToken).ConfigureAwait(false);
 
+        // Guardado antes da atualização: é o ponto de partida do CHANGEDSINCE, e
+        // UpdateSyncState o sobrescreve com o valor novo logo abaixo.
+        var previousModSeq = folder.HighestModSeq;
+
         var invalidated = folder.UpdateSyncState(state.UidValidity, state.HighestModSeq, null, now);
 
         if (invalidated)
@@ -157,12 +161,100 @@ public sealed class MessageSyncService
             }
         }
 
+        // Marcadores alterados por outra sessão em mensagens antigas. Sem CONDSTORE isto
+        // exigiria reler a pasta inteira a cada ciclo; com ele, o servidor devolve só o
+        // que mudou.
+        if (!invalidated && previousModSeq is { } sinceModSeq && sinceModSeq > 0)
+        {
+            updated += await ApplyFlagChangesAsync(folder, sinceModSeq, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         var removed = await ReconcileDeletionsAsync(folder, state, cancellationToken).ConfigureAwait(false);
 
         await UpdateCountsAsync(folder, cancellationToken).ConfigureAwait(false);
         await _unitOfWork.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
         return new FolderSyncResult(added, updated, removed, redirected, invalidated);
+    }
+
+    /// <summary>
+    /// Aplica os marcadores que mudaram no servidor desde o último MODSEQ conhecido.
+    /// </summary>
+    /// <remarks>
+    /// Alteração local ainda não sincronizada continua tendo precedência, pelo mesmo
+    /// motivo de <see cref="ApplyRemoteFlags"/>: deixar o servidor vencer desfaria diante
+    /// dos olhos do usuário o que ele acabou de fazer offline.
+    /// </remarks>
+    private async Task<int> ApplyFlagChangesAsync(
+        Folder folder, long sinceModSeq, CancellationToken cancellationToken)
+    {
+        var changes = await _imapClient
+            .FetchFlagChangesAsync(folder.RemotePath, sinceModSeq, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (changes.Count == 0)
+        {
+            return 0;
+        }
+
+        var now = _timeProvider.GetUtcNow();
+        var updated = 0;
+
+        foreach (var change in changes)
+        {
+            var message = await _messages
+                .GetByUidAsync(folder.Id, change.Uid, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (message is null || message.SyncState != MessageSyncState.Synced)
+            {
+                continue;
+            }
+
+            var changed = false;
+
+            if (message.IsRead != change.IsRead)
+            {
+                message.SetRead(change.IsRead, now);
+                changed = true;
+            }
+
+            if (message.IsFlagged != change.IsFlagged)
+            {
+                message.SetFlagged(change.IsFlagged, now);
+                changed = true;
+            }
+
+            if (change.IsAnswered && !message.IsAnswered)
+            {
+                message.MarkAnswered(now);
+                changed = true;
+            }
+
+            if (!changed)
+            {
+                continue;
+            }
+
+            message.SetRemoteIdentity(change.Uid, change.ModSeq, now);
+
+            // Veio do servidor: já está sincronizado por definição, e marcar como pendente
+            // faria a fila devolver ao servidor o que ele mesmo mandou.
+            message.MarkSynced(now);
+            updated++;
+        }
+
+        if (updated > 0)
+        {
+            await _unitOfWork.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+            _logger.LogDebug(
+                "CONDSTORE trouxe {Count} alteração(ões) de marcador na pasta '{RemotePath}'.",
+                updated, folder.RemotePath);
+        }
+
+        return updated;
     }
 
     private enum UpsertOutcome

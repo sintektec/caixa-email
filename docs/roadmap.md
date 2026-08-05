@@ -43,9 +43,11 @@ Três decisões governam o ciclo e estão em `DECISIONS.md`: a fila drena antes 
 (D-011), pasta ausente na listagem não é apagada (D-012) e a classificação na chegada tem
 tabela de decisão própria (D-013).
 
-Pendente para a fase 4: `CONDSTORE`/`QRESYNC` são detectados mas ainda não usados para
-sincronizar marcadores por `MODSEQ` — hoje a reconciliação é por UID, correta e mais cara em
-caixas grandes.
+`CONDSTORE` (RFC 7162) entrou depois: quando a pasta já tem um `MODSEQ` conhecido, o
+servidor devolve apenas os marcadores alterados desde então, em vez de a pasta inteira ser
+relida a cada ciclo. Alteração local pendente continua tendo precedência — deixar o
+servidor vencer desfaria diante dos olhos do usuário o que ele fez offline. Servidor sem
+CONDSTORE cai na reconciliação por UID, correta e mais cara.
 
 ## Fase 4 — Leitura e composição ✅
 

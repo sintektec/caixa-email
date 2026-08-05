@@ -40,6 +40,8 @@ public class MessageSyncServiceTests
             .Returns(Array.Empty<long>());
         _messages.GetParticipantsAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
             .Returns(Array.Empty<MessageParticipant>());
+        _imap.FetchFlagChangesAsync(Arg.Any<string>(), Arg.Any<long>(), Arg.Any<CancellationToken>())
+            .Returns(Array.Empty<FetchedFlags>());
     }
 
     private MessageSyncService CreateService()
@@ -309,5 +311,74 @@ public class MessageSyncServiceTests
 
         inbox.TotalCount.Should().Be(12);
         inbox.UnreadCount.Should().Be(3);
+    }
+
+    // ----- CONDSTORE: marcadores alterados por outra sessão ----------------------------
+
+    [Fact]
+    public async Task Sincronizar_ComModSeqConhecido_AplicaMarcadoresAlteradosNoServidor()
+    {
+        var inbox = Inbox();
+        // Um ciclo anterior já registrou o MODSEQ; é dele que parte o CHANGEDSINCE.
+        inbox.UpdateSyncState(uidValidity: 1, highestModSeq: 100, lastSeenUid: 10, Now);
+
+        ArrangeServer(new FolderSyncState(1, 250, 11, 1, 0));
+
+        var message = Message.Create(AccountId, inbox.Id, "<antiga@ext>", Now, Now, Now);
+        message.SetRemoteIdentity(5, 100, Now);
+        message.MarkSynced(Now);
+
+        _messages.GetByUidAsync(inbox.Id, 5, Arg.Any<CancellationToken>()).Returns(message);
+        _imap.FetchFlagChangesAsync("INBOX", 100, Arg.Any<CancellationToken>())
+            .Returns(new[] { new FetchedFlags(5, IsRead: true, IsFlagged: true, IsAnswered: false, ModSeq: 250) });
+
+        var result = await CreateService().SyncFolderAsync(inbox);
+
+        // Sem CONDSTORE seria preciso reler a pasta inteira para descobrir isto.
+        message.IsRead.Should().BeTrue();
+        message.IsFlagged.Should().BeTrue();
+        message.SyncState.Should().Be(MessageSyncState.Synced, "veio do servidor, não vai de volta pela fila");
+        result.Updated.Should().BeGreaterThan(0);
+    }
+
+    [Fact]
+    public async Task Sincronizar_ModSeqComAlteracaoLocalPendente_NaoDesfazOQueOUsuarioFez()
+    {
+        var inbox = Inbox();
+        inbox.UpdateSyncState(uidValidity: 1, highestModSeq: 100, lastSeenUid: 10, Now);
+
+        ArrangeServer(new FolderSyncState(1, 250, 11, 1, 0));
+
+        var message = Message.Create(AccountId, inbox.Id, "<pendente@ext>", Now, Now, Now);
+        message.SetRemoteIdentity(5, 100, Now);
+        message.MarkSynced(Now);
+
+        // O usuário marcou como lida offline; a fila ainda não empurrou.
+        message.SetRead(true, Now);
+
+        _messages.GetByUidAsync(inbox.Id, 5, Arg.Any<CancellationToken>()).Returns(message);
+        _imap.FetchFlagChangesAsync("INBOX", 100, Arg.Any<CancellationToken>())
+            .Returns(new[] { new FetchedFlags(5, IsRead: false, IsFlagged: false, IsAnswered: false, ModSeq: 250) });
+
+        await CreateService().SyncFolderAsync(inbox);
+
+        // Deixar o servidor vencer desfaria diante dos olhos do usuário o que ele fez, e a
+        // fila refaria em seguida — o pisca-pisca que parece defeito e é.
+        message.IsRead.Should().BeTrue();
+        message.SyncState.Should().Be(MessageSyncState.PendingUpdate);
+    }
+
+    [Fact]
+    public async Task Sincronizar_SemModSeqAnterior_NaoPedeAlteracoes()
+    {
+        var inbox = Inbox();
+        ArrangeServer(new FolderSyncState(1, 250, 1, 0, 0));
+
+        await CreateService().SyncFolderAsync(inbox);
+
+        // Primeira sincronização da pasta: não há ponto de partida, e pedir tudo desde
+        // zero traria a pasta inteira — exatamente o custo que o CONDSTORE evita.
+        await _imap.DidNotReceive().FetchFlagChangesAsync(
+            Arg.Any<string>(), Arg.Any<long>(), Arg.Any<CancellationToken>());
     }
 }

@@ -303,6 +303,41 @@ public sealed class MailKitImapClient : Application.Abstractions.Mail.IImapClien
     }
 
     /// <inheritdoc />
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<FetchedFlags>> FetchFlagChangesAsync(
+        string remotePath, long sinceModSeq, CancellationToken cancellationToken = default)
+    {
+        var folder = await OpenAsync(remotePath, cancellationToken).ConfigureAwait(false);
+
+        // Servidor sem CONDSTORE não tem o que responder aqui. Devolver vazio deixa o
+        // chamador seguir com a reconciliação por UID, que é correta e mais cara.
+        if (!folder.Supports(FolderFeature.ModSequences))
+        {
+            return [];
+        }
+
+        const MessageSummaryItems items =
+            MessageSummaryItems.UniqueId
+            | MessageSummaryItems.Flags
+            | MessageSummaryItems.ModSeq;
+
+        // A sobrecarga com modseq é o CHANGEDSINCE da RFC 7162: o servidor devolve apenas
+        // o que mudou, e não a pasta inteira.
+        var summaries = await folder
+            .FetchAsync(0, -1, (ulong)Math.Max(sinceModSeq, 0), items, cancellationToken)
+            .ConfigureAwait(false);
+
+        return summaries
+            .Where(s => s.UniqueId.Id > 0)
+            .Select(s => new FetchedFlags(
+                s.UniqueId.Id,
+                s.Flags?.HasFlag(MessageFlags.Seen) ?? false,
+                s.Flags?.HasFlag(MessageFlags.Flagged) ?? false,
+                s.Flags?.HasFlag(MessageFlags.Answered) ?? false,
+                s.ModSeq.HasValue ? (long)s.ModSeq.Value : null))
+            .ToList();
+    }
+
     public async Task<FetchedBody?> FetchBodyAsync(
         string remotePath, long uid, CancellationToken cancellationToken = default)
     {
