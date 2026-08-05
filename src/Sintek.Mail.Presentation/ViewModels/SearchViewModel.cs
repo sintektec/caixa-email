@@ -254,6 +254,30 @@ public sealed partial class SearchViewModel : ObservableObject
         await RefreshSavedSearchesAsync(cancellationToken).ConfigureAwait(true);
     }
 
+    /// <summary>
+    /// Executa uma pesquisa salva pelo identificador — o caminho da barra lateral.
+    /// </summary>
+    /// <remarks>
+    /// Aplica os critérios aos filtros antes de executar, para que abrir o flyout em
+    /// seguida mostre exatamente o que está sendo pesquisado.
+    /// </remarks>
+    public async Task<IReadOnlyList<Guid>?> ExecuteSavedSearchAsync(
+        Guid savedSearchId, CancellationToken cancellationToken = default)
+    {
+        await InitializeAsync(cancellationToken).ConfigureAwait(true);
+
+        var item = SavedSearches.FirstOrDefault(s => s.Id == savedSearchId);
+
+        if (item is null)
+        {
+            StatusMessage = "A pesquisa salva não foi encontrada.";
+            return null;
+        }
+
+        ApplySavedSearch(item);
+        return await ExecuteAsync(cancellationToken).ConfigureAwait(true);
+    }
+
     /// <summary>Preenche os filtros com os critérios de uma pesquisa salva.</summary>
     public void ApplySavedSearch(SavedSearchItemViewModel item)
     {

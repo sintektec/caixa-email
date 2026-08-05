@@ -70,8 +70,10 @@ Distribuição: Domain 144, Application 165, Infrastructure 85, Presentation 61,
 2. **Fase 7 — Automação e filtragem local:** editor e motor de regras, categorias com
    gestão na interface (o filtro de pesquisa por categoria já existe no serviço, à espera
    do seletor), modelos de mensagem, listas de remetentes bloqueados/confiáveis.
-3. Pendências pontuais: editor rico no compositor e rascunho automático (fase 4); pesquisas
-   salvas fixadas na barra lateral (fase 6 — hoje vivem no flyout de filtros).
+
+As pendências pontuais das fases 4 e 6 foram fechadas: editor rico (WebView2
+contenteditable), rascunho automático por período de silêncio e pesquisas salvas na barra
+lateral.
 
 Vale notar: o MSIX compila mas **ainda não foi executado**. Nenhuma sessão automatizada
 consegue fazer isso — exige uma máquina Windows 11 real. A validação funcional da interface

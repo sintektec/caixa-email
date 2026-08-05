@@ -33,18 +33,35 @@ public sealed record ComposerAttachmentItem(
 /// </remarks>
 public sealed partial class ComposerViewModel : ObservableObject
 {
+    /// <summary>
+    /// Quanto tempo de digitação parada dispara a gravação automática do rascunho.
+    /// </summary>
+    /// <remarks>
+    /// A janela chama <see cref="AutoSaveTickAsync"/> em intervalos curtos; é este período
+    /// de silêncio que decide gravar. Gravar a cada tecla transformaria a fila de
+    /// rascunhos em ruído; esperar demais é perder texto na queda de energia.
+    /// </remarks>
+    public static readonly TimeSpan AutoSaveQuietPeriod = TimeSpan.FromSeconds(5);
+
     private readonly IMessageRepository _messages;
     private readonly IAccountRepository _accounts;
     private readonly ComposeMessageHandler _compose;
+    private readonly TimeProvider _timeProvider;
+
+    private DateTimeOffset? _lastEditAt;
+    private bool _hasUnsavedChanges;
+    private bool _isInitializing;
 
     public ComposerViewModel(
         IMessageRepository messages,
         IAccountRepository accounts,
-        ComposeMessageHandler compose)
+        ComposeMessageHandler compose,
+        TimeProvider timeProvider)
     {
         _messages = messages;
         _accounts = accounts;
         _compose = compose;
+        _timeProvider = timeProvider;
     }
 
     /// <summary>Conta que escreve.</summary>
@@ -149,17 +166,77 @@ public sealed partial class ComposerViewModel : ObservableObject
 
         var draft = DraftComposer.Compose(kind, source, source?.Body, account.EmailAddress, account.Signature);
 
-        Subject = draft.Subject;
-        BodyText = draft.TextBody ?? string.Empty;
-        BodyHtml = draft.HtmlBody ?? string.Empty;
-        To = JoinAddresses(draft.Recipients, AddressKind.To);
-        Cc = JoinAddresses(draft.Recipients, AddressKind.Cc);
-        ShowCcBcc = Cc.Length > 0;
+        // O preenchimento inicial não é digitação: sem esta guarda, abrir uma resposta e
+        // fechá-la sem tocar em nada deixaria um rascunho para trás.
+        _isInitializing = true;
+
+        try
+        {
+            Subject = draft.Subject;
+            BodyText = draft.TextBody ?? string.Empty;
+            BodyHtml = draft.HtmlBody ?? string.Empty;
+            To = JoinAddresses(draft.Recipients, AddressKind.To);
+            Cc = JoinAddresses(draft.Recipients, AddressKind.Cc);
+            ShowCcBcc = Cc.Length > 0;
+        }
+        finally
+        {
+            _isInitializing = false;
+        }
 
         _inReplyTo = draft.InReplyTo;
         _references = draft.References;
         _threadId = draft.ThreadId;
     }
+
+    /// <summary>
+    /// Verificação periódica do rascunho automático — a janela a chama em intervalos
+    /// curtos, e a gravação só acontece quando a digitação parou.
+    /// </summary>
+    public async Task AutoSaveTickAsync(CancellationToken cancellationToken = default)
+    {
+        if (!_hasUnsavedChanges || IsBusy || IsCompleted || AccountId is null)
+        {
+            return;
+        }
+
+        if (_lastEditAt is not { } lastEdit
+            || _timeProvider.GetUtcNow() - lastEdit < AutoSaveQuietPeriod)
+        {
+            return;
+        }
+
+        // Compositor esvaziado sem rascunho anterior: não há o que preservar, e gravar
+        // criaria um rascunho em branco.
+        if (DraftId is null && !HasAnyContent())
+        {
+            return;
+        }
+
+        await SaveDraftAsync(cancellationToken).ConfigureAwait(true);
+    }
+
+    private bool HasAnyContent()
+        => Subject.Length > 0 || BodyText.Length > 0 || BodyHtml.Length > 0
+            || To.Length > 0 || Cc.Length > 0 || Bcc.Length > 0 || Attachments.Count > 0;
+
+    private void RegisterEdit()
+    {
+        if (_isInitializing)
+        {
+            return;
+        }
+
+        _hasUnsavedChanges = true;
+        _lastEditAt = _timeProvider.GetUtcNow();
+    }
+
+    partial void OnSubjectChanged(string value) => RegisterEdit();
+    partial void OnBodyTextChanged(string value) => RegisterEdit();
+    partial void OnBodyHtmlChanged(string value) => RegisterEdit();
+    partial void OnToChanged(string value) => RegisterEdit();
+    partial void OnCcChanged(string value) => RegisterEdit();
+    partial void OnBccChanged(string value) => RegisterEdit();
 
     /// <summary>Acrescenta um anexo escolhido pelo usuário.</summary>
     public void AddAttachment(string fileName, string filePath, string contentType, long size)
@@ -197,6 +274,7 @@ public sealed partial class ComposerViewModel : ObservableObject
 
             DraftId = result.MessageId;
             StatusMessage = string.Empty;
+            _hasUnsavedChanges = false;
         }
         finally
         {

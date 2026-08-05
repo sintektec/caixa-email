@@ -60,9 +60,11 @@ disfarçado — nome exibido igual ao de um contato conhecido, domínio diferent
 vetor de phishing que mais funciona na prática.
 
 Enviar significa entregar à fila: a mensagem vai para a Caixa de Saída local e o SMTP
-acontece quando a fila drenar (D-014). O botão funciona num avião. Ainda pendente desta
-fase: editor de texto rico no compositor (hoje o corpo é texto puro) e o rascunho automático
-por intervalo de digitação — o rascunho manual existe.
+acontece quando a fila drenar (D-014). O botão funciona num avião. As duas pendências da
+fase foram fechadas depois: o compositor ganhou editor rico (WebView2 com `contenteditable`
+e barra de formatação; o HTML volta ao ViewModel antes de qualquer gravação) e o rascunho
+automático grava quando a digitação para pelo período de silêncio
+(`ComposerViewModel.AutoSaveQuietPeriod`), sem deixar rascunho em branco para trás.
 
 ## Fase 5 — Pastas e regras de domínio na interface ✅
 
@@ -98,9 +100,10 @@ lida, sinalizador, anexos, importância e status de sincronização), pesquisas 
 atualização por nome (`SavedSearchesHandler`), flyout de pesquisa avançada na barra
 superior e modo de resultados no painel central.
 
-Pendência da fase: as pesquisas salvas ainda não aparecem fixadas na barra lateral — hoje
-vivem no flyout de filtros. O filtro por categoria já funciona no serviço, mas só ganhará
-seletor na interface quando a fase 7 criar a gestão de categorias.
+As pesquisas salvas aparecem na barra lateral (seção "Pesquisas salvas", fixadas
+primeiro); selecionar uma aplica os critérios aos filtros e executa no painel central. O
+filtro por categoria já funciona no serviço, mas só ganhará seletor na interface quando a
+fase 7 criar a gestão de categorias.
 
 ## Fase 7 — Automação e filtragem local
 

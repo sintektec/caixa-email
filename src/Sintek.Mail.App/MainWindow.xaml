@@ -60,7 +60,8 @@
                     <Button.Flyout>
                         <Flyout x:Name="FiltersFlyout"
                                 Placement="BottomEdgeAlignedRight"
-                                Opening="OnFiltersFlyoutOpening">
+                                Opening="OnFiltersFlyoutOpening"
+                                Closed="OnFiltersFlyoutClosed">
                             <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="560">
                                 <StackPanel Spacing="8" Width="360">
 

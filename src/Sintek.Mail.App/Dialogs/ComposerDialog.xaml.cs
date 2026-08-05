@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -7,15 +8,18 @@ using Windows.Storage.Pickers;
 
 namespace Sintek.Mail.App.Dialogs;
 
-/// <summary>Compositor de mensagens.</summary>
+/// <summary>Compositor de mensagens, com editor rico e rascunho automático.</summary>
 /// <remarks>
 /// O code-behind traduz cliques em chamadas ao ViewModel e cuida do que só o WinUI faz —
-/// seletor de arquivos e o ciclo do diálogo. Regras de envio, validação de endereço e o
-/// aviso de anexo esquecido vivem em <see cref="ComposerViewModel"/>, coberto por testes no
-/// job Linux.
+/// seletor de arquivos, o ciclo do diálogo e o WebView2 do editor. Regras de envio,
+/// validação de endereço, o aviso de anexo esquecido e a política do rascunho automático
+/// vivem em <see cref="ComposerViewModel"/>, coberto por testes no job Linux.
 /// </remarks>
 public sealed partial class ComposerDialog : ContentDialog
 {
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _autoSaveTimer;
+    private bool _editorReady;
+
     public ComposerDialog(ComposerViewModel viewModel)
     {
         ViewModel = viewModel;
@@ -30,6 +34,137 @@ public sealed partial class ComposerDialog : ContentDialog
     public Task InitializeAsync(Guid accountId, DraftKind kind = DraftKind.New, Guid? sourceMessageId = null)
         => ViewModel.InitializeAsync(accountId, kind, sourceMessageId);
 
+    /// <summary>
+    /// Monta o editor e liga o rascunho automático quando o diálogo abre.
+    /// </summary>
+    /// <remarks>
+    /// O WebView2 só pode ser inicializado com o diálogo na árvore visual; fazê-lo em
+    /// <see cref="InitializeAsync"/> falharia em silêncio.
+    /// </remarks>
+    private async void OnDialogOpened(ContentDialog sender, ContentDialogOpenedEventArgs args)
+    {
+        await InitializeEditorAsync().ConfigureAwait(true);
+
+        // O temporizador só dispara a verificação; quem decide gravar — e quando — é o
+        // ViewModel, a partir do período de silêncio da digitação.
+        _autoSaveTimer = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread().CreateTimer();
+        _autoSaveTimer.Interval = TimeSpan.FromSeconds(2);
+        _autoSaveTimer.Tick += async (_, _) =>
+        {
+            await SyncEditorToViewModelAsync().ConfigureAwait(true);
+            await ViewModel.AutoSaveTickAsync().ConfigureAwait(true);
+        };
+        _autoSaveTimer.Start();
+    }
+
+    private void OnDialogClosed(ContentDialog sender, ContentDialogClosedEventArgs args)
+    {
+        _autoSaveTimer?.Stop();
+        _autoSaveTimer = null;
+    }
+
+    /// <summary>
+    /// Prepara o WebView2 como editor: documento local editável, navegação bloqueada.
+    /// </summary>
+    /// <remarks>
+    /// O conteúdo inicial é nosso — texto do próprio usuário ou citação que já passou pelo
+    /// sanitizador no <c>DraftComposer</c>. A CSP barra qualquer recurso externo; scripts
+    /// de página não existem no documento, e os comandos de formatação entram por
+    /// <c>ExecuteScriptAsync</c>, que não depende deles.
+    /// </remarks>
+    private async Task InitializeEditorAsync()
+    {
+        await EditorView.EnsureCoreWebView2Async();
+
+        var core = EditorView.CoreWebView2;
+        core.Settings.AreDefaultScriptDialogsEnabled = false;
+        core.Settings.IsWebMessageEnabled = false;
+        core.Settings.AreDevToolsEnabled = false;
+        core.Settings.IsStatusBarEnabled = false;
+        core.Settings.AreHostObjectsAllowed = false;
+
+        core.NavigationStarting += (_, navArgs) =>
+        {
+            // NavigateToString usa about:blank; qualquer outra navegação veio de conteúdo
+            // colado no editor e é bloqueada, como no painel de leitura.
+            if (!navArgs.Uri.StartsWith("about:", StringComparison.OrdinalIgnoreCase))
+            {
+                navArgs.Cancel = true;
+            }
+        };
+
+        core.NavigateToString(BuildEditorDocument());
+        _editorReady = true;
+    }
+
+    /// <summary>Documento editável com o corpo inicial do rascunho.</summary>
+    private string BuildEditorDocument()
+    {
+        // Resposta e encaminhamento chegam com HTML citado; mensagem nova, só com o texto
+        // da assinatura. O texto vira HTML escapado — nunca interpretado.
+        var initial = ViewModel.BodyHtml.Length > 0
+            ? ViewModel.BodyHtml
+            : System.Net.WebUtility.HtmlEncode(ViewModel.BodyText).Replace("\n", "<br>", StringComparison.Ordinal);
+
+        return $$"""
+            <!DOCTYPE html>
+            <html lang="pt-BR">
+            <head>
+            <meta charset="utf-8">
+            <meta http-equiv="Content-Security-Policy"
+                  content="default-src 'none'; img-src cid: data:; style-src 'unsafe-inline'">
+            <style>
+              body { font-family: 'Segoe UI Variable', 'Segoe UI', sans-serif; font-size: 14px; margin: 12px; }
+              blockquote { border-left: 3px solid #c8c8c8; margin-left: 0; padding-left: 12px; }
+            </style>
+            </head>
+            <body contenteditable="true">{{initial}}</body>
+            </html>
+            """;
+    }
+
+    /// <summary>
+    /// Copia o conteúdo do editor para o ViewModel — chamado antes de qualquer gravação.
+    /// </summary>
+    private async Task SyncEditorToViewModelAsync()
+    {
+        if (!_editorReady)
+        {
+            return;
+        }
+
+        var html = await EditorView.CoreWebView2.ExecuteScriptAsync("document.body.innerHTML");
+        var text = await EditorView.CoreWebView2.ExecuteScriptAsync("document.body.innerText");
+
+        // ExecuteScriptAsync devolve o resultado como JSON; o valor real vem de dentro.
+        ViewModel.BodyHtml = JsonSerializer.Deserialize<string>(html) ?? string.Empty;
+        ViewModel.BodyText = JsonSerializer.Deserialize<string>(text) ?? string.Empty;
+    }
+
+    private async Task ExecuteFormatCommandAsync(string command)
+    {
+        if (_editorReady)
+        {
+            await EditorView.CoreWebView2
+                .ExecuteScriptAsync($"document.execCommand('{command}'); document.body.focus();");
+        }
+    }
+
+    private async void OnFormatBoldClick(object sender, RoutedEventArgs e)
+        => await ExecuteFormatCommandAsync("bold").ConfigureAwait(true);
+
+    private async void OnFormatItalicClick(object sender, RoutedEventArgs e)
+        => await ExecuteFormatCommandAsync("italic").ConfigureAwait(true);
+
+    private async void OnFormatUnderlineClick(object sender, RoutedEventArgs e)
+        => await ExecuteFormatCommandAsync("underline").ConfigureAwait(true);
+
+    private async void OnFormatListClick(object sender, RoutedEventArgs e)
+        => await ExecuteFormatCommandAsync("insertUnorderedList").ConfigureAwait(true);
+
+    private async void OnFormatClearClick(object sender, RoutedEventArgs e)
+        => await ExecuteFormatCommandAsync("removeFormat").ConfigureAwait(true);
+
     private async void OnSendClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
     {
         args.Cancel = true;
@@ -37,6 +172,7 @@ public sealed partial class ComposerDialog : ContentDialog
 
         try
         {
+            await SyncEditorToViewModelAsync().ConfigureAwait(true);
             await ViewModel.SendAsync().ConfigureAwait(true);
 
             if (ViewModel.IsCompleted)
@@ -58,6 +194,7 @@ public sealed partial class ComposerDialog : ContentDialog
 
         try
         {
+            await SyncEditorToViewModelAsync().ConfigureAwait(true);
             await ViewModel.SaveDraftAsync().ConfigureAwait(true);
         }
         finally

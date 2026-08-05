@@ -36,6 +36,7 @@ public sealed partial class ShellViewModel : ObservableObject
     private readonly IAccountRepository _accounts;
     private readonly IFolderRepository _folders;
     private readonly IOutboxRepository _outbox;
+    private readonly ISavedSearchRepository _savedSearches;
     private readonly MoveMessageHandler _moveMessage;
     private readonly MarkAsSpamHandler _markAsSpam;
     private readonly SyncAccountHandler _syncAccount;
@@ -46,6 +47,7 @@ public sealed partial class ShellViewModel : ObservableObject
         IAccountRepository accounts,
         IFolderRepository folders,
         IOutboxRepository outbox,
+        ISavedSearchRepository savedSearches,
         MoveMessageHandler moveMessage,
         MarkAsSpamHandler markAsSpam,
         SyncAccountHandler syncAccount,
@@ -55,6 +57,7 @@ public sealed partial class ShellViewModel : ObservableObject
         _accounts = accounts;
         _folders = folders;
         _outbox = outbox;
+        _savedSearches = savedSearches;
         _moveMessage = moveMessage;
         _markAsSpam = markAsSpam;
         _syncAccount = syncAccount;
@@ -129,6 +132,27 @@ public sealed partial class ShellViewModel : ObservableObject
             }
 
             NavigationRoots.Add(accountsRoot);
+
+            // Pesquisas salvas na barra lateral, fixadas primeiro — selecionar uma executa
+            // a pesquisa no painel central.
+            var savedSearches = await _savedSearches.ListAsync(cancellationToken).ConfigureAwait(true);
+
+            if (savedSearches.Count > 0)
+            {
+                var searchesRoot = new NavigationNode(
+                    NavigationNodeKind.Section, "Pesquisas salvas", NavigationNode.SavedSearchIcon);
+
+                foreach (var saved in savedSearches)
+                {
+                    searchesRoot.Children.Add(new NavigationNode(
+                        NavigationNodeKind.SavedSearch, saved.Name, NavigationNode.SavedSearchIcon)
+                    {
+                        EntityId = saved.Id,
+                    });
+                }
+
+                NavigationRoots.Add(searchesRoot);
+            }
 
             await RefreshPendingCountAsync(cancellationToken).ConfigureAwait(true);
         }

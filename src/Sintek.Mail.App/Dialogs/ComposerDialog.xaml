@@ -3,6 +3,7 @@
     x:Class="Sintek.Mail.App.Dialogs.ComposerDialog"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Microsoft.UI.Xaml.Controls"
     xmlns:vm="using:Sintek.Mail.Presentation.ViewModels"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -13,7 +14,9 @@
     CloseButtonText="Descartar"
     DefaultButton="Primary"
     PrimaryButtonClick="OnSendClick"
-    SecondaryButtonClick="OnSaveDraftClick">
+    SecondaryButtonClick="OnSaveDraftClick"
+    Opened="OnDialogOpened"
+    Closed="OnDialogClosed">
 
     <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="560">
         <StackPanel Spacing="12" Width="560">
@@ -60,14 +63,45 @@
                      Text="{x:Bind ViewModel.Subject, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                      AutomationProperties.Name="Assunto" />
 
-            <TextBox Header="Mensagem"
-                     Text="{x:Bind ViewModel.BodyText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                     AcceptsReturn="True"
-                     TextWrapping="Wrap"
-                     MinHeight="220"
-                     MaxHeight="320"
-                     ScrollViewer.VerticalScrollBarVisibility="Auto"
-                     AutomationProperties.Name="Corpo da mensagem" />
+            <!--
+                Editor rico: WebView2 com contenteditable. A barra chama execCommand via
+                ExecuteScriptAsync; o HTML resultante volta ao ViewModel antes de enviar,
+                salvar ou gravar o rascunho automático.
+            -->
+            <StackPanel Spacing="4">
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                    <Button Click="OnFormatBoldClick"
+                            AutomationProperties.Name="Negrito"
+                            ToolTipService.ToolTip="Negrito (Ctrl+B)">
+                        <FontIcon Glyph="&#xE8DD;" FontSize="14" />
+                    </Button>
+                    <Button Click="OnFormatItalicClick"
+                            AutomationProperties.Name="Itálico"
+                            ToolTipService.ToolTip="Itálico (Ctrl+I)">
+                        <FontIcon Glyph="&#xE8DB;" FontSize="14" />
+                    </Button>
+                    <Button Click="OnFormatUnderlineClick"
+                            AutomationProperties.Name="Sublinhado"
+                            ToolTipService.ToolTip="Sublinhado (Ctrl+U)">
+                        <FontIcon Glyph="&#xE8DC;" FontSize="14" />
+                    </Button>
+                    <Button Click="OnFormatListClick"
+                            AutomationProperties.Name="Lista com marcadores"
+                            ToolTipService.ToolTip="Lista com marcadores">
+                        <FontIcon Glyph="&#xE8FD;" FontSize="14" />
+                    </Button>
+                    <Button Click="OnFormatClearClick"
+                            AutomationProperties.Name="Limpar formatação"
+                            ToolTipService.ToolTip="Limpar formatação">
+                        <FontIcon Glyph="&#xE894;" FontSize="14" />
+                    </Button>
+                </StackPanel>
+
+                <controls:WebView2 x:Name="EditorView"
+                                   MinHeight="220"
+                                   MaxHeight="320"
+                                   AutomationProperties.Name="Corpo da mensagem" />
+            </StackPanel>
 
             <StackPanel Orientation="Horizontal" Spacing="8">
                 <Button Content="Anexar arquivo"

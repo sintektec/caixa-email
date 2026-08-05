@@ -110,6 +110,18 @@ public sealed partial class MainWindow : Window
         {
             await MessageList.LoadFolderAsync(node.EntityId).ConfigureAwait(true);
         }
+        else if (node.Kind == NavigationNodeKind.SavedSearch)
+        {
+            var ids = await Search.ExecuteSavedSearchAsync(node.EntityId).ConfigureAwait(true);
+
+            if (ids is null)
+            {
+                Shell.StatusMessage = Search.StatusMessage;
+                return;
+            }
+
+            await MessageList.ShowSearchResultsAsync(Search.ResultsDescription, ids).ConfigureAwait(true);
+        }
     }
 
     private async void OnMessageSelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -487,6 +499,11 @@ public sealed partial class MainWindow : Window
 
     private void OnFiltersFlyoutOpening(object sender, object e)
         => _ = Search.InitializeAsync();
+
+    // A barra lateral espelha as pesquisas salvas; salvar ou excluir uma no flyout precisa
+    // se refletir lá assim que ele fechar.
+    private void OnFiltersFlyoutClosed(object sender, object e)
+        => _ = Shell.LoadNavigationAsync();
 
     private async void OnApplySavedSearchClick(object sender, RoutedEventArgs e)
     {

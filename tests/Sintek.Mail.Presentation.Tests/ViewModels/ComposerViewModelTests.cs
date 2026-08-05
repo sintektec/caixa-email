@@ -42,13 +42,115 @@ public class ComposerViewModelTests
             .Returns(Folder.Create(_account.Id, "Caixa de Saída", FolderType.Outbox, Now, isLocalOnly: true));
     }
 
-    private ComposerViewModel CreateViewModel() => new(
+    private ComposerViewModel CreateViewModel(TimeProvider? clock = null) => new(
         _messages,
         _accounts,
         new ComposeMessageHandler(
             _messages, _folders, _accounts, _unitOfWork,
             new OutboxEnqueuer(_outbox, _clock), _clock,
-            NullLogger<ComposeMessageHandler>.Instance));
+            NullLogger<ComposeMessageHandler>.Instance),
+        clock ?? _clock);
+
+    /// <summary>Relógio ajustável, para simular a passagem do tempo entre digitações.</summary>
+    private sealed class MovingClock(DateTimeOffset start) : TimeProvider
+    {
+        public DateTimeOffset Current { get; set; } = start;
+
+        public override DateTimeOffset GetUtcNow() => Current;
+    }
+
+    // ----- Rascunho automático ---------------------------------------------------------
+
+    [Fact]
+    public async Task RascunhoAutomatico_DigitacaoParada_GravaSozinho()
+    {
+        var clock = new MovingClock(Now);
+        var viewModel = CreateViewModel(clock);
+        await viewModel.InitializeAsync(_account.Id);
+
+        viewModel.Subject = "Proposta em andamento";
+
+        clock.Current = Now + ComposerViewModel.AutoSaveQuietPeriod;
+        await viewModel.AutoSaveTickAsync();
+
+        viewModel.DraftId.Should().NotBeNull("a digitação parou pelo período de silêncio");
+    }
+
+    [Fact]
+    public async Task RascunhoAutomatico_AindaDigitando_NaoGrava()
+    {
+        var clock = new MovingClock(Now);
+        var viewModel = CreateViewModel(clock);
+        await viewModel.InitializeAsync(_account.Id);
+
+        viewModel.Subject = "Proposta";
+
+        // O tique chega antes do período de silêncio: gravar aqui seria gravar a cada
+        // tecla, com um rascunho novo na fila a cada instante.
+        clock.Current = Now + ComposerViewModel.AutoSaveQuietPeriod - TimeSpan.FromSeconds(1);
+        await viewModel.AutoSaveTickAsync();
+
+        viewModel.DraftId.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task RascunhoAutomatico_AberturaSemDigitacao_NaoDeixaRascunhoParaTras()
+    {
+        var clock = new MovingClock(Now);
+        var viewModel = CreateViewModel(clock);
+
+        // Abrir uma resposta preenche assunto e corpo — mas preencher não é digitar.
+        var source = Message.Create(_account.Id, Guid.CreateVersion7(), "<orig@ext>", Now, Now, Now);
+        source.SetHeaders("Proposta", EmailAddress.Parse("cliente@externo.com"), "Cliente", null, null, Now);
+        _messages.GetWithParticipantsAsync(source.Id, Arg.Any<CancellationToken>()).Returns(source);
+
+        await viewModel.InitializeAsync(_account.Id, DraftKind.Reply, source.Id);
+
+        clock.Current = Now + TimeSpan.FromMinutes(10);
+        await viewModel.AutoSaveTickAsync();
+
+        viewModel.DraftId.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task RascunhoAutomatico_CompositorEsvaziado_NaoCriaRascunhoEmBranco()
+    {
+        var clock = new MovingClock(Now);
+        var viewModel = CreateViewModel(clock);
+        await viewModel.InitializeAsync(_account.Id);
+
+        viewModel.Subject = "a";
+        viewModel.Subject = string.Empty;
+
+        clock.Current = Now + TimeSpan.FromMinutes(1);
+        await viewModel.AutoSaveTickAsync();
+
+        viewModel.DraftId.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task RascunhoAutomatico_SemNovaDigitacao_NaoRegravaOMesmoRascunho()
+    {
+        var clock = new MovingClock(Now);
+        var viewModel = CreateViewModel(clock);
+        await viewModel.InitializeAsync(_account.Id);
+
+        viewModel.Subject = "Proposta";
+        clock.Current = Now + TimeSpan.FromMinutes(1);
+        await viewModel.AutoSaveTickAsync();
+
+        var firstDraftId = viewModel.DraftId;
+        firstDraftId.Should().NotBeNull();
+
+        clock.Current = Now + TimeSpan.FromMinutes(2);
+        await viewModel.AutoSaveTickAsync();
+
+        // Sem alteração nova, o segundo tique não grava de novo: uma gravação por pausa,
+        // não uma por tique.
+        await _unitOfWork.Received(1)
+            .ExecuteInTransactionAsync(Arg.Any<Func<CancellationToken, Task>>(), Arg.Any<CancellationToken>());
+        viewModel.DraftId.Should().Be(firstDraftId);
+    }
 
     [Fact]
     public async Task Preparar_Resposta_PreencheDestinatarioEAssunto()

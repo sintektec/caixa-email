@@ -206,6 +206,51 @@ public class SearchViewModelTests
     }
 
     [Fact]
+    public async Task ExecutarPesquisaSalva_PeloIdentificador_AplicaOsFiltrosEExecuta()
+    {
+        var saved = SavedSearch.Create(
+            "Não lidas", SavedSearchesHandler.Serialize(new MessageSearchQuery
+            {
+                Text = "diretoria",
+                IsRead = false,
+            }), Now);
+
+        _savedSearches.ListAsync(Arg.Any<CancellationToken>()).Returns(new[] { saved });
+
+        var ids = new List<Guid> { Guid.CreateVersion7() };
+        _searchService.SearchAsync(Arg.Any<MessageSearchQuery>(), Arg.Any<CancellationToken>())
+            .Returns(ids);
+
+        var viewModel = CreateViewModel();
+
+        var result = await viewModel.ExecuteSavedSearchAsync(saved.Id);
+
+        result.Should().BeEquivalentTo(ids);
+
+        // Os filtros da tela refletem o que foi executado: abrir o flyout em seguida
+        // mostra exatamente a pesquisa em curso.
+        viewModel.SearchText.Should().Be("diretoria");
+        viewModel.SelectedReadState.Value.Should().BeFalse();
+
+        await _searchService.Received(1).SearchAsync(
+            Arg.Is<MessageSearchQuery>(q => q.Text == "diretoria" && q.IsRead == false),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ExecutarPesquisaSalva_Inexistente_AvisaSemExecutar()
+    {
+        var viewModel = CreateViewModel();
+
+        var result = await viewModel.ExecuteSavedSearchAsync(Guid.CreateVersion7());
+
+        result.Should().BeNull();
+        viewModel.StatusMessage.Should().NotBeNullOrWhiteSpace();
+        await _searchService.DidNotReceive()
+            .SearchAsync(Arg.Any<MessageSearchQuery>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public void LimparFiltros_DepoisDePreencher_VoltaAoEstadoInicial()
     {
         var viewModel = CreateViewModel();
