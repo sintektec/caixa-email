@@ -138,6 +138,31 @@ de Credenciais é o **token de atualização**, esse sim equivalente à senha de
 > e depois os de agenda. Recusar o segundo não invalida o primeiro — a conta é cadastrada e a
 > agenda fica sem espelho remoto até o usuário consentir.
 
+#### O "Assistente de integração" vai continuar apontando ação necessária
+
+E está certo assim. Ele mede o registro contra o roteiro de um aplicativo publicado para
+terceiros, que não é o nosso caso enquanto o uso for interno. Só um dos itens diz respeito
+à autenticação:
+
+| Item | Importa? |
+|---|---|
+| Configure as permissões da API | **Sim.** É o único que precisa estar concluído para autenticar. |
+| Atribua proprietários | Higiene administrativa. Sem um segundo proprietário, o registro fica preso à conta que o criou — vale resolver, mas não afeta o login. |
+| Termos de serviço e política de privacidade | Só aparecem na tela de consentimento e só são exigidos para a verificação de editor. |
+| Tornar-se editor verificado | Remove o aviso de "aplicativo não verificado" no consentimento. Exige conta no Partner Center. |
+
+O bloco **"Configurações não recomendadas"** é que merece atenção — e ali *tudo concluído* é
+a leitura correta, não a errada. "Não configure uma credencial (certificado/segredo)"
+concluído é a confirmação de que o registro é mesmo **cliente público**; se algum dia
+aparecer ação necessária nesse item, alguém adicionou um client secret ao registro, e é sinal
+de que o fluxo foi confundido com o de daemon.
+
+> **A verificação de editor deixa de ser cosmética se o aplicativo for para outras
+> organizações.** Com `TenantId = "common"` o registro é multilocatário: um locatário que
+> bloqueie por política o consentimento a aplicativos não verificados recusará a entrada dos
+> próprios usuários, e o sintoma chega como falha de consentimento sem explicação do lado de
+> quem tenta entrar. Para uso no domínio próprio, o aviso de não verificado é só um aviso.
+
 ### Google Cloud
 
 1. Console do Google Cloud → **APIs e serviços** → **Biblioteca**. Ative **as duas**:

@@ -186,6 +186,23 @@ OAuth (Entra ID e Google Cloud) e o certificado de assinatura do MSIX. Sem os Cl
 provedores ficam implementados e desativados, e o assistente os apresenta com a explicação
 de que falta configurar — não com erro de autenticação.
 
+**Os Client IDs deixaram de ser bloqueio.** Ambos os aplicativos foram registrados:
+
+- **Entra ID** — registro `SINTEK-Mail`, cliente público, `TenantId = common`. As cinco
+  permissões delegadas estão concedidas **no Microsoft Graph**: `IMAP.AccessAsUser.All`,
+  `SMTP.Send`, `Calendars.ReadWrite`, `offline_access`, `User.Read`. Anotado porque custou
+  uma volta: a API *Office 365 Exchange Online* oferece IMAP e SMTP só sob permissões de
+  **aplicativo** (`IMAP.AccessAsApp`, `SMTP.SendAsApp`), que servem ao fluxo de daemon e não
+  ao nosso — a lista delegada dela não traz nenhuma das duas.
+- **Google Cloud** — Client ID no `appsettings.json`; o Client secret fica no
+  `appsettings.Local.json`, fora do controle de versão.
+
+Continua pendente, e agora é o único item externo além do certificado: **a verificação de
+editor no Entra ID**. Cosmética para uso no domínio próprio — só um aviso de "aplicativo não
+verificado" no consentimento. Passa a ser bloqueio real se o MSIX for distribuído a outras
+organizações, porque locatário que bloqueia aplicativo não verificado por política recusa a
+entrada dos próprios usuários.
+
 ## Notas
 
 - O núcleo é desenvolvido e testado em Linux de propósito: é o que verifica mecanicamente
