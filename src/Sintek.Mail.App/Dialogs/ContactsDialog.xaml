@@ -11,21 +11,26 @@
     CloseButtonText="Fechar"
     DefaultButton="Close">
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="620">
-        <StackPanel Spacing="12" Width="720">
+    <StackPanel Spacing="12" Width="720">
 
-            <ProgressBar IsIndeterminate="True"
-                         Visibility="{x:Bind ViewModel.IsBusy, Mode=OneWay}"
-                         AutomationProperties.Name="Operação em andamento" />
+        <ProgressBar IsIndeterminate="True"
+                     Visibility="{x:Bind ViewModel.IsBusy, Mode=OneWay}"
+                     AutomationProperties.Name="Operação em andamento" />
 
-            <InfoBar IsOpen="{x:Bind ViewModel.HasStatusMessage, Mode=OneWay}"
-                     Severity="Informational"
-                     Message="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
-                     IsClosable="False" />
+        <InfoBar IsOpen="{x:Bind ViewModel.HasStatusMessage, Mode=OneWay}"
+                 Severity="Informational"
+                 Message="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
+                 IsClosable="False" />
 
-            <Pivot>
+        <!--
+            O Pivot precisa de altura explícita: dentro de um container que se
+            autodimensiona ele colapsa para zero, e as abas somem sem erro nenhum. Cada aba
+            rola por dentro, para o formulário não ser cortado.
+        -->
+        <Pivot Height="520">
 
-                <PivotItem Header="Catálogo">
+            <PivotItem Header="Catálogo">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <Grid ColumnSpacing="16" RowSpacing="8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="280" />
@@ -37,7 +42,7 @@
                         </Grid.RowDefinitions>
 
                         <ListView Grid.Row="0" Grid.Column="0"
-                                  Height="320"
+                                  Height="380"
                                   SelectionMode="Single"
                                   ItemsSource="{x:Bind ViewModel.Contacts, Mode=OneWay}"
                                   SelectedItem="{x:Bind ViewModel.SelectedContact, Mode=TwoWay}"
@@ -123,7 +128,7 @@
                                     AutomationProperties.Name="Novo contato" />
 
                             <Button Content="Gravar"
-                                    Style="{StaticResource AccentButtonStyle}"
+                                    Style="{ThemeResource AccentButtonStyle}"
                                     Command="{x:Bind ViewModel.SaveCommand}"
                                     AutomationProperties.Name="Gravar contato" />
 
@@ -140,51 +145,51 @@
                                     AutomationProperties.Name="Exportar os contatos para um arquivo vCard" />
                         </StackPanel>
                     </Grid>
-                </PivotItem>
+                </ScrollViewer>
+            </PivotItem>
 
-                <PivotItem Header="Histórico de destinatários">
-                    <StackPanel Spacing="8">
-                        <TextBlock TextWrapping="Wrap"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                   Text="Endereços para quem esta conta já escreveu. Aparecem ao digitar em Para, CC e CCO. Remover uma entrada faz o endereço deixar de ser sugerido." />
+            <PivotItem Header="Histórico de destinatários">
+                <StackPanel Spacing="8">
+                    <TextBlock TextWrapping="Wrap"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               Text="Endereços para quem esta conta já escreveu. Aparecem ao digitar em Para, CC e CCO. Remover uma entrada faz o endereço deixar de ser sugerido." />
 
-                        <ListView Height="360"
-                                  SelectionMode="None"
-                                  ItemsSource="{x:Bind ViewModel.History, Mode=OneWay}"
-                                  AutomationProperties.Name="Histórico de destinatários">
-                            <ListView.ItemTemplate>
-                                <DataTemplate x:DataType="vm:RecipientHistoryItem">
-                                    <Grid ColumnSpacing="8" Padding="0,4">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
+                    <ListView Height="360"
+                              SelectionMode="None"
+                              ItemsSource="{x:Bind ViewModel.History, Mode=OneWay}"
+                              AutomationProperties.Name="Histórico de destinatários">
+                        <ListView.ItemTemplate>
+                            <DataTemplate x:DataType="vm:RecipientHistoryItem">
+                                <Grid ColumnSpacing="8" Padding="0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
 
-                                        <StackPanel Grid.Column="0">
-                                            <TextBlock Text="{x:Bind DisplayText}"
-                                                       TextTrimming="CharacterEllipsis" />
-                                            <TextBlock Text="{x:Bind Summary}"
-                                                       FontSize="12"
-                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                        </StackPanel>
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Text="{x:Bind DisplayText}"
+                                                   TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{x:Bind Summary}"
+                                                   FontSize="12"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    </StackPanel>
 
-                                        <Button Grid.Column="1"
-                                                Content="Remover"
-                                                Click="OnRemoveHistoryClick"
-                                                Tag="{x:Bind}"
-                                                AutomationProperties.Name="Remover do histórico" />
-                                    </Grid>
-                                </DataTemplate>
-                            </ListView.ItemTemplate>
-                        </ListView>
+                                    <Button Grid.Column="1"
+                                            Content="Remover"
+                                            Click="OnRemoveHistoryClick"
+                                            Tag="{x:Bind}"
+                                            AutomationProperties.Name="Remover do histórico" />
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
 
-                        <Button Content="Limpar todo o histórico"
-                                Command="{x:Bind ViewModel.ClearHistoryCommand}"
-                                AutomationProperties.Name="Limpar todo o histórico de destinatários" />
-                    </StackPanel>
-                </PivotItem>
+                    <Button Content="Limpar todo o histórico"
+                            Command="{x:Bind ViewModel.ClearHistoryCommand}"
+                            AutomationProperties.Name="Limpar todo o histórico de destinatários" />
+                </StackPanel>
+            </PivotItem>
 
-            </Pivot>
-        </StackPanel>
-    </ScrollViewer>
+        </Pivot>
+    </StackPanel>
 </ContentDialog>
