@@ -34,6 +34,17 @@ Gerenciador de Credenciais do Windows e nunca no banco. HTML de mensagem passa p
 camadas de defesa antes de ser exibido, com imagens remotas bloqueadas por padrão porque
 carregá-las confirma ao remetente que a mensagem foi aberta.
 
+A assistência por IA usa **modelo local por padrão** — nada trafega. O provedor em nuvem é
+opcional, nasce desligado e depende de autorização explícita **por Diretório de Domínio**,
+que é a unidade de política do produto: a confidencialidade varia de cliente para cliente.
+Cada envio externo entra na auditoria antes de sair, com destino e tamanho, nunca com o
+conteúdo.
+
+O veredito de spam é o do **servidor**, lido dos cabeçalhos de autenticação (SPF, DKIM,
+DMARC) e classificação. Não há classificador local competindo com quem tem telemetria de
+milhões de caixas — o modo de perder essa disputa é esconder mensagem legítima numa pasta
+que o usuário não olha.
+
 ## Stack
 
 .NET 10 LTS · WinUI 3 / Windows App SDK 2.3 · MVVM · Clean Architecture ·
@@ -77,13 +88,27 @@ Os Client IDs de OAuth são configuração de implantação. Copie `appsettings.
 `appsettings.Local.json` (ignorado pelo Git) e informe os seus. Sem eles, a autenticação
 por senha continua funcionando e os provedores OAuth aparecem como não configurados.
 
+## Instalar
+
+Dois modos, documentados em [implantação](docs/implantacao.md):
+
+- **MSIX** com atualização automática por App Installer — o caminho normal
+- **Sem pacote**, instalando sob `%LOCALAPPDATA%` sem privilégio de administrador — para
+  ambientes em que a política bloqueia sideload
+
+O pipeline `release.yml` dispara por tag `v*.*.*` e produz os dois, mais o manifesto de
+atualização. A assinatura usa certificado vindo dos segredos do repositório; sem ele o
+pipeline gera o pacote sem assinar e avisa, em vez de falhar.
+
 ## Documentação
 
 - [Decisões arquiteturais](docs/decisoes-arquiteturais.md) — o porquê das escolhas não
   óbvias e o que quebra se forem revertidas
 - [Modelo de dados](docs/modelo-de-dados.md) — entidades, índices e o que nunca é
   persistido
-- [Roadmap](docs/roadmap.md) — fases de construção
+- [Implantação](docs/implantacao.md) — instalação, registro dos aplicativos OAuth e o que
+  fica na máquina do usuário
+- [Roadmap](docs/roadmap.md) — as dez fases de construção, todas concluídas
 
 ## Skills SINTEK
 
