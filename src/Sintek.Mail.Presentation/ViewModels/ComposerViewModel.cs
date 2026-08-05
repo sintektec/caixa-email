@@ -88,6 +88,18 @@ public sealed partial class ComposerViewModel : ObservableObject
     private bool _hasUnsavedChanges;
     private bool _isInitializing;
 
+    /// <summary>
+    /// Campo e texto do momento em que as sugestões foram calculadas.
+    /// </summary>
+    /// <remarks>
+    /// A troca é aplicada sobre este texto, e não sobre a propriedade atual, porque o
+    /// <c>AutoSuggestBox</c> do WinUI escreve o item escolhido na caixa <b>antes</b> de
+    /// avisar quem o escolheu. Ler a propriedade nessa hora devolveria o campo já
+    /// destruído, com os outros destinatários perdidos.
+    /// </remarks>
+    private RecipientField? _suggestionField;
+    private string _suggestionBaseText = string.Empty;
+
     public ComposerViewModel(
         IMessageRepository messages,
         IAccountRepository accounts,
@@ -383,6 +395,8 @@ public sealed partial class ComposerViewModel : ObservableObject
         RecipientSuggestions.Clear();
         OnPropertyChanged(nameof(HasRecipientSuggestions));
 
+        _suggestionField = null;
+
         if (AccountId is not { } accountId)
         {
             return;
@@ -420,6 +434,9 @@ public sealed partial class ComposerViewModel : ObservableObject
                 suggestion.Source == Domain.Services.RecipientSuggestionSource.Contact));
         }
 
+        _suggestionField = field;
+        _suggestionBaseText = raw;
+
         OnPropertyChanged(nameof(HasRecipientSuggestions));
     }
 
@@ -434,7 +451,10 @@ public sealed partial class ComposerViewModel : ObservableObject
     {
         ArgumentNullException.ThrowIfNull(suggestion);
 
-        var updated = ReplaceLastToken(ValueOf(field), suggestion.Address);
+        // O texto de base é o que existia quando a lista foi montada — ver
+        // _suggestionField.
+        var baseText = _suggestionField == field ? _suggestionBaseText : ValueOf(field);
+        var updated = ReplaceLastToken(baseText, suggestion.Address);
 
         switch (field)
         {
@@ -451,6 +471,7 @@ public sealed partial class ComposerViewModel : ObservableObject
                 throw new ArgumentOutOfRangeException(nameof(field));
         }
 
+        _suggestionField = null;
         RecipientSuggestions.Clear();
         OnPropertyChanged(nameof(HasRecipientSuggestions));
     }

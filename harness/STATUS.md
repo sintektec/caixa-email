@@ -6,16 +6,16 @@
 
 ## Fase atual
 
-**Fases 1 a 10 concluídas.** O roadmap da especificação está inteiro implementado.
+**Fases 1 a 11 concluídas.** O roadmap da especificação está inteiro implementado, e a
+primeira das duas fases acrescentadas a pedido do usuário também.
 
-Duas fases novas foram acrescentadas a pedido do usuário e ainda não começaram:
-**11 — Contatos e histórico de destinatários** e **12 — Agenda**. Ver `docs/roadmap.md`;
-o risco de fuso da fase 12 já foi medido e tem saída sem mexer no `InvariantGlobalization`.
+Falta **12 — Agenda**. Ver `docs/roadmap.md`; o risco de fuso já foi medido e tem saída sem
+mexer no `InvariantGlobalization`.
 
 ## Marco atual
 
-**587 testes verdes no núcleo multiplataforma** (169 → 272 → 336 → 426 → 441 → 478 → 485
-→ 530 → 535 → 569 → 584 → 587 ao longo das dez fases).
+**685 testes verdes no núcleo multiplataforma** (169 → 272 → 336 → 426 → 441 → 478 → 485
+→ 530 → 535 → 569 → 584 → 587 → 685 ao longo das onze fases).
 
 A fase 7 entregou a filtragem local inteira: `RuleEvaluator` puro no Domain (campos,
 operadores e combinação E/OU da seção 6.5), `ApplyArrivalRulesHandler` aplicando bloqueio
@@ -41,7 +41,18 @@ atalhos do Outlook, limpeza de cache em duas etapas, pipeline de release com ass
 por segredo, `.appinstaller` para atualização automática, instalador sem pacote e
 `docs/implantacao.md`. O CONDSTORE, pendente desde a fase 3, também entrou.
 
-Distribuição: Domain 161, Application 222, Infrastructure 94, Presentation 87, Persistence 23.
+A fase 11 trouxe o autocompletar de destinatários, que o produto não tinha e o Outlook tem:
+`RecipientHistory` alimentado no envio, `Contact`/`ContactEmail` como catálogo curado,
+`RecipientSuggestionRanker` combinando os dois com decaimento por recência, importação e
+exportação em vCard 3.0/4.0 escritas à mão, `AutoSuggestBox` em Para/CC/CCO e o diálogo de
+contatos com remoção individual do histórico. Sugestão fora do domínio da conta aparece
+marcada, nunca escondida (D-021).
+
+Ela também corrigiu um defeito herdado das fases anteriores: o provedor do SQLite recusa
+`ORDER BY` sobre `DateTimeOffset`, e a listagem de mensagens da pasta — a tela principal — e
+o registro de auditoria quebravam na primeira abertura. Ver D-022.
+
+Distribuição: Domain 185, Application 259, Infrastructure 94, Presentation 114, Persistence 33.
 
 > **Atenção:** houve troca de implementação em 04/08/2026 (ver `DECISIONS.md`, D-007). O que
 > este arquivo descrevia antes daquela data pertencia à versão anterior, que foi substituída.
@@ -90,7 +101,7 @@ Distribuição: Domain 161, Application 222, Infrastructure 94, Presentation 87,
 2. **Validação manual em Windows 11** — o único item que resta, e que nenhuma sessão
    automatizada faz. Ver "Bloqueios".
 
-Não há pendência de código em nenhuma das dez fases. O que resta é **pendência humana**, registrada em "Bloqueios": validação manual em Windows 11 e teste
+Não há pendência de código em nenhuma das onze fases. O que resta é **pendência humana**, registrada em "Bloqueios": validação manual em Windows 11 e teste
 contra servidores IMAP/SMTP reais com Client IDs de OAuth.
 
 Vale notar: o MSIX compila mas **ainda não foi executado**. Nenhuma sessão automatizada

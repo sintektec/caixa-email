@@ -251,9 +251,14 @@ onde os Client IDs entram (arquivo ou variável de ambiente, para frota grande),
 configuração do assistente de IA e o que fica na máquina do usuário — incluindo o aviso de
 que perder o perfil do Windows significa perder a chave do banco, e que isso é deliberado.
 
-## Fase 11 — Contatos e histórico de destinatários
+## Fase 11 — Contatos e histórico de destinatários ✅
 
-**Estado hoje: não existe.** O que se parece com isso é `KnownCorrespondent`, e ele não
+**Entregue.** `RecipientHistory`, `Contact`/`ContactEmail`, `RecipientSuggestionRanker`,
+`RecipientHistoryHandler`, `ManageContactsHandler`, `VCardSerializer`, `ContactsViewModel`,
+o `AutoSuggestBox` de Para/CC/CCO e o diálogo de contatos. O texto abaixo descreve o
+desenho como ele foi implementado.
+
+**Estado antes desta fase: não existia.** O que se parece com isso é `KnownCorrespondent`, e ele não
 serve: carrega apenas nome exibido e domínio — não o endereço —, e é alimentado somente por
 mensagens **lidas e não marcadas como spam**, porque existe para detectar remetente
 disfarçado. Usá-lo para autocompletar sugeriria endereços incompletos e deixaria de fora
@@ -266,7 +271,7 @@ primeira:
    frequência e recência, sugeridos ao digitar e removíveis um a um.
 2. **Contatos** — o catálogo de endereços propriamente dito, com nome, empresa, telefone.
 
-### 11.1 Cache de autocompletar
+### 11.1 Cache de autocompletar ✅
 
 Entidade `RecipientHistory` (endereço, nome exibido, conta, contador de uso, último uso),
 alimentada **no envio** — é a intenção do usuário que conta, não a entrega. Sugestão no
@@ -280,7 +285,7 @@ pelo Diretório de Domínio da conta aparece **marcada**, não escondida. Escond
 e-mail externo legítimo; não marcar deixaria enviar para um domínio sósia sem perceber — o
 mesmo vetor que o `SenderTrustEvaluator` já cobre na leitura.
 
-### 11.2 Catálogo de contatos
+### 11.2 Catálogo de contatos ✅
 
 Entidade `Contact` com os campos que o Outlook expõe, importação e exportação em **vCard
 (RFC 6350)** — que é o formato que Outlook e Google leem e escrevem, e portanto o que torna
@@ -288,6 +293,27 @@ a migração possível nos dois sentidos.
 
 Contato pertence a uma conta e, por consequência, a um Diretório de Domínio: a lista fica
 naturalmente segmentada por cliente, que é o que o produto inteiro faz.
+
+### O que a implementação acrescentou ao plano
+
+**O leitor de vCard nunca lança por conteúdo malformado.** Arquivo exportado de outro
+cliente traz propriedades desconhecidas, versões antigas e endereços inválidos; abortar a
+importação inteira por causa de um cartão ruim faria perder os outros duzentos. O que não dá
+para entender é ignorado e contado. Pelo mesmo motivo o leitor aceita as duas sintaxes de
+preferencial — `TYPE=PREF` do 3.0 e `PREF=1` do 4.0 —, e desdobra linha continuada antes de
+interpretar, sem o que um endereço longo chegaria partido ao meio.
+
+**A importação soma endereços; a edição substitui.** O arquivo é uma contribuição parcial e
+não pode apagar o que o usuário acrescentou à mão; a tela de edição mostra a lista completa,
+então o que sumiu de lá ele apagou de propósito.
+
+**Gravar o histórico nunca derruba o envio.** A falha é registrada e a mensagem segue: o
+autocompletar é conveniência, a mensagem é o trabalho.
+
+**Defeito corrigido de passagem, herdado das fases anteriores:** o provedor do SQLite recusa
+`ORDER BY` sobre `DateTimeOffset` e lança em tempo de execução, sem aviso na compilação. A
+listagem de mensagens da pasta — a tela principal — e o registro de auditoria caíam nisso.
+Ver `SqliteFunctions` e a armadilha registrada no `CLAUDE.md`.
 
 ---
 

@@ -345,3 +345,34 @@ não commitado.
 **Próxima sessão:**
 - Medir o risco de fuso horário da fase 12 antes de qualquer código; decidir a ordem com o
   usuário.
+
+---
+
+## 2026-08-05 — Sessão 9 (continuação): fase 11, contatos e histórico de destinatários
+
+**O que foi feito:**
+- Fase 11 inteira: `RecipientHistory`, `Contact`/`ContactEmail` e `RecipientSuggestionRanker`
+  no Domain; `RecipientHistoryHandler`, `ManageContactsHandler` e `VCardSerializer` na
+  Aplicação; configurações EF, repositórios e a migração `ContactsAndRecipientHistory`;
+  `ContactsViewModel` e o autocompletar no `ComposerViewModel`; `AutoSuggestBox` em
+  Para/CC/CCO e o `ContactsDialog` no WinUI, ligado por um botão na barra superior.
+- O histórico é alimentado **no envio** e nunca derruba um envio ao falhar (D-020). Sugestão
+  fora do domínio da conta aparece marcada, nunca escondida (D-021).
+- vCard 3.0 e 4.0 escritos à mão: desdobra linha continuada, aceita as duas sintaxes de
+  `PREF` e nunca lança por cartão malformado — o cartão ruim é contado e ignorado.
+- **Defeito real encontrado por um teste novo:** o provedor do SQLite recusa `ORDER BY` sobre
+  `DateTimeOffset`. A listagem de mensagens da pasta (a tela principal) e o registro de
+  auditoria quebravam na primeira abertura, desde a fase 1. Corrigido com
+  `SqliteFunctions.DateTimeText`, que traduz para o `datetime()` do SQLite (D-022).
+- Armadilha nova: `dotnet ef migrations add --no-build` lê o assembly de `Debug`. Compilar
+  só em `Release` fez a primeira tentativa gerar de novo o conteúdo da migração anterior.
+- Armadilha nova: o `AutoSuggestBox` escreve o item escolhido na caixa **antes** de avisar
+  quem o escolheu; com ligação de duas vias, a propriedade chega destruída em
+  `QuerySubmitted`. O ViewModel guarda o texto de base e aplica a troca sobre ele.
+- 685 testes (Domain 185, Application 259, Infrastructure 94, Presentation 114,
+  Persistence 33).
+
+**Próxima sessão:**
+- Fase 12 — Agenda. O risco de fuso já está medido: ler o `VTIMEZONE` embutido no `.ics` e
+  emitir o da `TimeZoneInfo.Local`, sem depender do mapeamento IANA que o
+  `InvariantGlobalization` remove.

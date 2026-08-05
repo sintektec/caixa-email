@@ -122,6 +122,25 @@ simplesmente não aparece. As telas de configuração se chamam fechando a atual
 a próxima (`SettingsFollowUp`, `RequestedDirectoryCreation`), e o encadeamento acontece em
 laço no `MainWindow`.
 
+**O `AutoSuggestBox` escreve o item escolhido na caixa antes de avisar quem o escolheu.** Com
+ligação de duas vias, a propriedade do ViewModel já chega destruída em `QuerySubmitted` — os
+outros destinatários do campo se perderam. Por isso o `ComposerViewModel` guarda o texto do
+momento em que montou a lista (`_suggestionBaseText`) e aplica a troca sobre ele, nunca sobre
+a propriedade atual.
+
+**O provedor do SQLite recusa `ORDER BY` sobre `DateTimeOffset`.** Ele lança
+`NotSupportedException` ao traduzir a consulta — em tempo de execução, sem nada na
+compilação. O motivo é legítimo: o EF grava o tipo como texto preservando o fuso original, e
+a ordem lexicográfica desse texto não é a cronológica quando duas linhas têm fusos
+diferentes. Consultas em LINQ ordenam por `SqliteFunctions.DateTimeText(...)`, que traduz
+para o `datetime()` do SQLite e normaliza em UTC dentro do banco; como `datetime()` trunca em
+segundos, vai junto um desempate estável por `Id`. Isso já custou a listagem de mensagens da
+pasta e o registro de auditoria, que quebravam na primeira abertura da tela.
+
+**`dotnet ef migrations add --no-build` usa o assembly de `Debug`.** Compilar só em `Release`
+antes de criar a migração faz o EF ler o modelo antigo e gerar a migração anterior de novo —
+o sintoma é uma migração nova com o conteúdo da última. Compilar em `Debug` antes resolve.
+
 ## Convenções
 
 Testes nomeados `Metodo_Cenario_ResultadoEsperado`, em português, refletindo o vocabulário

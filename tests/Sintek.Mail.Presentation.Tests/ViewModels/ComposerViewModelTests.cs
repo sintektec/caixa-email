@@ -444,4 +444,25 @@ public class ComposerViewModelTests
 
         viewModel.RecipientSuggestions.Should().BeEmpty();
     }
+
+    [Fact]
+    public async Task AplicarSugestao_CampoJaSobrescritoPeloControle_PreservaOsOutrosDestinatarios()
+    {
+        // O AutoSuggestBox do WinUI escreve o item escolhido na caixa ANTES de avisar quem
+        // o escolheu, e a ligação de duas vias empurra isso para a propriedade. Aplicar a
+        // troca sobre a propriedade nessa hora apagaria os destinatários anteriores.
+        ArrangeHistory(("bruno@cliente.com.br", "Bruno"));
+
+        var viewModel = CreateViewModel();
+        await viewModel.InitializeAsync(_account.Id);
+        viewModel.To = "ana@cliente.com.br; bru";
+
+        await viewModel.UpdateRecipientSuggestionsAsync(RecipientField.To);
+        var sugestao = viewModel.RecipientSuggestions[0];
+
+        viewModel.To = sugestao.Address;
+        viewModel.ApplyRecipientSuggestion(RecipientField.To, sugestao);
+
+        viewModel.To.Should().Be("ana@cliente.com.br; bruno@cliente.com.br; ");
+    }
 }

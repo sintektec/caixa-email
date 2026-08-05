@@ -253,6 +253,13 @@
                     <FontIcon Glyph="&#xE793;" FontSize="16" />
                 </ToggleButton>
 
+                <Button x:Name="ContactsButton"
+                        AutomationProperties.Name="Contatos e histórico de destinatários"
+                        ToolTipService.ToolTip="Contatos e histórico de destinatários"
+                        Click="OnContactsClick">
+                    <FontIcon Glyph="&#xE77B;" FontSize="16" />
+                </Button>
+
                 <Button x:Name="SettingsButton"
                         AutomationProperties.Name="Contas e Diretórios de Domínio"
                         ToolTipService.ToolTip="Contas e Diretórios de Domínio"

@@ -410,3 +410,77 @@ o "não" como um "ainda não".
 **Alternativas rejeitadas:** enviar sempre (entrega o sinal ao atacante); nunca enviar
 (quebra o fluxo legítimo de confirmação de recebimento em contrato e cobrança); preferência
 global ligada por padrão (a decisão varia por mensagem, não por instalação).
+
+---
+
+## D-020 — Histórico de destinatários é alimentado no envio, não na entrega (2026-08-05)
+
+**Status:** aceita
+
+**Decisão:** `RecipientHistory` ganha ou incrementa uma entrada quando o
+`ComposeMessageHandler` conclui um envio — isto é, quando a mensagem entra na fila —, não
+quando o SMTP confirma. Rascunho gravado não alimenta o histórico.
+
+**Motivo:** O que registra a intenção do usuário é ter escrito para aquele endereço. Se o
+SMTP falhar, ele vai tentar de novo, e é justamente aí que quer a sugestão disponível.
+Rascunho abandonado é o oposto: encheria o autocompletar de endereços que o usuário
+desistiu de usar.
+
+**Consequências:** um endereço digitado errado entra no histórico mesmo que a mensagem
+nunca chegue. É o motivo de a remoção individual ser requisito, e não refinamento.
+
+**Alternativas rejeitadas:** alimentar na confirmação do SMTP (perde o caso em que a
+sugestão mais importa); alimentar também no rascunho (polui com o que foi descartado);
+alimentar na leitura de mensagem recebida (é outra coisa — sugere quem escreve para você,
+não para quem você escreve).
+
+---
+
+## D-021 — Sugestão fora do domínio da conta é marcada, nunca escondida (2026-08-05)
+
+**Status:** aceita
+
+**Decisão:** O `RecipientSuggestionRanker` devolve todas as sugestões que casam com o
+termo, com `BelongsToAccountDomain` dizendo se o endereço é aceito pelo Diretório de
+Domínio da conta. A interface exibe as de fora com um aviso ao lado; nenhuma é omitida.
+
+**Motivo:** Esconder quebraria o e-mail externo legítimo, que é a maior parte do trabalho
+de quem atende clientes. Não marcar deixaria enviar para um domínio sósia sem perceber — o
+mesmo vetor que o `SenderTrustEvaluator` cobre na leitura, agora na escrita. Marcar informa
+sem atrapalhar.
+
+**Consequências:** a marcação depende do diretório da conta estar carregado; sem ele
+(`accountDirectory` nulo) nada é marcado, em vez de tudo ser marcado — falso alarme
+constante ensinaria a ignorar o aviso.
+
+**Alternativas rejeitadas:** filtrar as de fora do domínio (quebra o caso normal); pedir
+confirmação ao escolher (atrito em cada destinatário externo); bloquear o envio (é decisão
+do `MoveMessageHandler` para movimentação, não para escrita — a mensagem para fora é
+legítima por definição).
+
+---
+
+## D-022 — Consultas ordenam data pelo `datetime()` do SQLite (2026-08-05)
+
+**Status:** aceita
+
+**Decisão:** Toda consulta em LINQ que ordena por tempo passa por
+`SqliteFunctions.DateTimeText(...)`, mapeada para a função `datetime()` embutida do SQLite,
+com desempate por `Id`. Ordenar diretamente pela propriedade `DateTimeOffset` é proibido.
+
+**Motivo:** O provedor do SQLite recusa `ORDER BY` sobre `DateTimeOffset` e lança em tempo
+de execução. A recusa é legítima: o EF grava o tipo como texto preservando o fuso original,
+e a ordem lexicográfica desse texto não é a cronológica quando duas linhas têm fusos
+diferentes — o que acontece de verdade, porque o cabeçalho `Date` da RFC 5322 traz o
+deslocamento de quem enviou. `datetime()` normaliza em UTC dentro do banco, que é o que o
+`Fts5SearchService` já fazia no SQL manual.
+
+**Consequências:** `datetime()` trunca em segundos, daí o desempate por `Id` — que é GUID
+v7 e portanto ordenado no tempo. A alternativa de gravar as datas já normalizadas em UTC foi
+descartada por trocar o formato de todas as colunas de data por um ganho que esta solução já
+entrega.
+
+**Alternativas rejeitadas:** converter o armazenamento para UTC (migração de todas as
+colunas de data, e perde o deslocamento original que a D-001 escolheu preservar); ordenar em
+memória (a listagem de uma pasta não tem teto); ordenar por `Id` (é a ordem de criação
+local, não a de recebimento — mensagem antiga sincronizada depois apareceria no topo).

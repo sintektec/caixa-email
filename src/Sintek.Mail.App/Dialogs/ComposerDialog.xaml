@@ -18,6 +18,41 @@
     Opened="OnDialogOpened"
     Closed="OnDialogClosed">
 
+    <ContentDialog.Resources>
+        <!--
+            O aviso de domínio aparece ao lado da sugestão, e a sugestão continua na lista:
+            esconder o endereço externo quebraria o trabalho legítimo, e não marcá-lo
+            deixaria enviar para um domínio sósia sem perceber.
+        -->
+        <DataTemplate x:Key="RecipientSuggestionTemplate" x:DataType="vm:RecipientSuggestionItem">
+            <Grid ColumnSpacing="8" Padding="0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0"
+                           Text="{x:Bind DisplayText}"
+                           TextTrimming="CharacterEllipsis"
+                           VerticalAlignment="Center" />
+
+                <TextBlock Grid.Column="1"
+                           Text="{x:Bind DomainWarning}"
+                           Visibility="{x:Bind IsOutsideAccountDomain}"
+                           Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                           FontSize="12"
+                           VerticalAlignment="Center" />
+
+                <TextBlock Grid.Column="2"
+                           Text="{x:Bind SourceLabel}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           FontSize="12"
+                           VerticalAlignment="Center" />
+            </Grid>
+        </DataTemplate>
+    </ContentDialog.Resources>
+
     <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="560">
         <StackPanel Spacing="12" Width="560">
 
@@ -36,11 +71,22 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <TextBox Grid.Column="0"
-                         Header="Para"
-                         PlaceholderText="destinatario@dominio.com.br; outro@dominio.com.br"
-                         Text="{x:Bind ViewModel.To, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                         AutomationProperties.Name="Destinatários" />
+                <!--
+                    AutoSuggestBox, não TextBox: as sugestões vêm do catálogo de contatos e
+                    do histórico de quem já recebeu mensagem. A lista é montada pelo
+                    ViewModel, que também decide o que é sugerido e em que ordem.
+                -->
+                <AutoSuggestBox Grid.Column="0"
+                                x:Name="ToBox"
+                                Header="Para"
+                                PlaceholderText="destinatario@dominio.com.br; outro@dominio.com.br"
+                                Text="{x:Bind ViewModel.To, Mode=TwoWay}"
+                                ItemsSource="{x:Bind ViewModel.RecipientSuggestions, Mode=OneWay}"
+                            TextMemberPath="Address"
+                                ItemTemplate="{StaticResource RecipientSuggestionTemplate}"
+                                TextChanged="OnToTextChanged"
+                                QuerySubmitted="OnToQuerySubmitted"
+                                AutomationProperties.Name="Destinatários" />
 
                 <ToggleButton Grid.Column="1"
                               Content="CC/CCO"
@@ -49,15 +95,27 @@
                               AutomationProperties.Name="Exibir campos de cópia e cópia oculta" />
             </Grid>
 
-            <TextBox Header="CC"
-                     Text="{x:Bind ViewModel.Cc, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                     Visibility="{x:Bind ViewModel.ShowCcBcc, Mode=OneWay}"
-                     AutomationProperties.Name="Cópia" />
+            <AutoSuggestBox x:Name="CcBox"
+                            Header="CC"
+                            Text="{x:Bind ViewModel.Cc, Mode=TwoWay}"
+                            ItemsSource="{x:Bind ViewModel.RecipientSuggestions, Mode=OneWay}"
+                            TextMemberPath="Address"
+                            ItemTemplate="{StaticResource RecipientSuggestionTemplate}"
+                            TextChanged="OnCcTextChanged"
+                            QuerySubmitted="OnCcQuerySubmitted"
+                            Visibility="{x:Bind ViewModel.ShowCcBcc, Mode=OneWay}"
+                            AutomationProperties.Name="Cópia" />
 
-            <TextBox Header="CCO"
-                     Text="{x:Bind ViewModel.Bcc, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                     Visibility="{x:Bind ViewModel.ShowCcBcc, Mode=OneWay}"
-                     AutomationProperties.Name="Cópia oculta" />
+            <AutoSuggestBox x:Name="BccBox"
+                            Header="CCO"
+                            Text="{x:Bind ViewModel.Bcc, Mode=TwoWay}"
+                            ItemsSource="{x:Bind ViewModel.RecipientSuggestions, Mode=OneWay}"
+                            TextMemberPath="Address"
+                            ItemTemplate="{StaticResource RecipientSuggestionTemplate}"
+                            TextChanged="OnBccTextChanged"
+                            QuerySubmitted="OnBccQuerySubmitted"
+                            Visibility="{x:Bind ViewModel.ShowCcBcc, Mode=OneWay}"
+                            AutomationProperties.Name="Cópia oculta" />
 
             <TextBox Header="Assunto"
                      Text="{x:Bind ViewModel.Subject, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"

@@ -94,6 +94,70 @@ public sealed partial class ComposerDialog : ContentDialog
         _autoSaveTimer = null;
     }
 
+    private void OnToTextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
+        => _ = UpdateSuggestionsAsync(RecipientField.To, args);
+
+    private void OnCcTextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
+        => _ = UpdateSuggestionsAsync(RecipientField.Cc, args);
+
+    private void OnBccTextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
+        => _ = UpdateSuggestionsAsync(RecipientField.Bcc, args);
+
+    private void OnToQuerySubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
+        => ApplySuggestion(sender, RecipientField.To, args);
+
+    private void OnCcQuerySubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
+        => ApplySuggestion(sender, RecipientField.Cc, args);
+
+    private void OnBccQuerySubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
+        => ApplySuggestion(sender, RecipientField.Bcc, args);
+
+    /// <summary>
+    /// Atualiza as sugestões enquanto o usuário digita.
+    /// </summary>
+    /// <remarks>
+    /// Só reage a digitação de verdade: o evento também dispara quando o próprio código
+    /// atribui o texto — ao escolher uma sugestão, por exemplo —, e sem esta guarda a
+    /// lista reabriria logo depois de ser fechada.
+    /// </remarks>
+    private async Task UpdateSuggestionsAsync(
+        RecipientField field, AutoSuggestBoxTextChangedEventArgs args)
+    {
+        if (args.Reason != AutoSuggestionBoxTextChangeReason.UserInput)
+        {
+            return;
+        }
+
+        await ViewModel.UpdateRecipientSuggestionsAsync(field).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// Insere a sugestão escolhida no campo.
+    /// </summary>
+    /// <remarks>
+    /// A troca é feita pelo ViewModel, que substitui só o trecho em digitação e preserva os
+    /// endereços já presentes. O texto da caixa é reatribuído depois porque o
+    /// <c>AutoSuggestBox</c> escreve o item escolhido por conta própria antes deste evento,
+    /// apagando os demais destinatários.
+    /// </remarks>
+    private void ApplySuggestion(
+        AutoSuggestBox sender, RecipientField field, AutoSuggestBoxQuerySubmittedEventArgs args)
+    {
+        if (args.ChosenSuggestion is not RecipientSuggestionItem suggestion)
+        {
+            return;
+        }
+
+        ViewModel.ApplyRecipientSuggestion(field, suggestion);
+
+        sender.Text = field switch
+        {
+            RecipientField.To => ViewModel.To,
+            RecipientField.Cc => ViewModel.Cc,
+            _ => ViewModel.Bcc,
+        };
+    }
+
     /// <summary>
     /// Prepara o WebView2 como editor: documento local editável, navegação bloqueada.
     /// </summary>

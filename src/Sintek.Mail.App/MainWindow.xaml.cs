@@ -470,6 +470,28 @@ public sealed partial class MainWindow : Window
     private async void OnNewMessageClick(object sender, RoutedEventArgs e)
         => await OpenComposerAsync(DraftKind.New, null).ConfigureAwait(true);
 
+    /// <summary>
+    /// Abre o catálogo de contatos da conta selecionada.
+    /// </summary>
+    /// <remarks>
+    /// Exige uma conta escolhida porque o catálogo e o histórico pertencem à conta: sem
+    /// ela, não há qual lista abrir.
+    /// </remarks>
+    private async void OnContactsClick(object sender, RoutedEventArgs e)
+    {
+        var accountId = Shell.SelectedNode?.AccountId;
+
+        if (accountId is null)
+        {
+            Shell.StatusMessage = "Selecione uma conta ou pasta para abrir os contatos.";
+            return;
+        }
+
+        var contacts = ContactsDialog.Create(RootGrid.XamlRoot);
+        await contacts.InitializeAsync(accountId.Value).ConfigureAwait(true);
+        await contacts.ShowAsync();
+    }
+
     private async void OnReplyClick(object sender, RoutedEventArgs e)
         => await OpenComposerAsync(DraftKind.Reply, Reading.MessageId).ConfigureAwait(true);
 

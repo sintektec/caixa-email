@@ -112,16 +112,44 @@ anunciar um anexo chamado `..\..\Startup\x.exe`.
 Índice único `(AccountId, Sequence)` e índice de consulta
 `(AccountId, Status, NextAttemptAt)`.
 
+### RecipientHistory
+`AccountId`, `Address`, `DisplayName?`, `UseCount`, `LastUsedAt`.
+
+Índice único `(AccountId, Address)`: o endereço acumula usos em vez de se repetir, e o
+índice é a rede que segura uma corrida entre dois envios simultâneos. Índice de consulta
+`(AccountId, LastUsedAt DESC)`.
+
+A entrada nasce no **envio**, não na entrega — ver D-020.
+
+### Contacts e ContactEmails
+`Contacts`: `AccountId`, `DisplayName`, `GivenName?`, `FamilyName?`, `Organization?`,
+`JobTitle?`, `PhoneNumber?`, `Notes?`, `ExternalId?`.
+
+`ContactEmails`: `ContactId`, `Address`, `Label?`, `IsPrimary`.
+
+`ExternalId` guarda o `UID` do vCard; o índice único `(AccountId, ExternalId)` é o que
+permite reimportar a exportação do Outlook sem duplicar o catálogo. Único por conta, e não
+global, porque o mesmo contato pode legitimamente existir em duas contas.
+
 ### Demais
 `MessageThreads`, `Categories` + `MessageCategories`, `Rules` + `RuleConditions` +
 `RuleActions`, `SavedSearches`, `Signatures`, `MessageTemplates`, `AppSettings`,
 `AuditLog`.
 
+## Ordenação por data
+
+Nenhuma consulta em LINQ ordena diretamente por uma coluna `DateTimeOffset`: o provedor do
+SQLite recusa e lança em tempo de execução. A ordenação passa por
+`SqliteFunctions.DateTimeText(...)`, traduzida para o `datetime()` do SQLite, com desempate
+por `Id`. Ver D-022.
+
 ## Busca offline
 
-Tabela virtual `MessagesFts` (FTS5, modo contentless) mais a tabela de mapeamento
-`MessagesFtsMap`, que liga o `rowid` inteiro exigido pelo FTS5 ao `Guid` da mensagem.
-Gatilhos mantêm o índice em dia.
+Tabela espelho `MessagesSearch` — que liga o `rowid` inteiro exigido pelo FTS5 ao `Guid` da
+mensagem e guarda o texto indexado — mais a tabela virtual `MessagesFts` em modo
+**external content** (`content='MessagesSearch'`, `content_rowid='Rowid'`), com
+`tokenize='unicode61 remove_diacritics 2'`. Gatilhos sobre o espelho e sobre as tabelas de
+origem mantêm o índice em dia. Ver D-015.
 
 ## O que nunca entra no banco
 
