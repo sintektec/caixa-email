@@ -12,8 +12,8 @@ servidor e os provedores em nuvem — também.
 
 ## Marco atual
 
-**919 testes verdes no núcleo multiplataforma** (169 → 272 → 336 → 426 → 441 → 478 → 485
-→ 530 → 535 → 569 → 584 → 587 → 692 → 790 → 865 → 919 ao longo das catorze fases).
+**928 testes verdes no núcleo multiplataforma** (169 → 272 → 336 → 426 → 441 → 478 → 485
+→ 530 → 535 → 569 → 584 → 587 → 692 → 790 → 865 → 928 ao longo das catorze fases).
 
 A fase 7 entregou a filtragem local inteira: `RuleEvaluator` puro no Domain (campos,
 operadores e combinação E/OU da seção 6.5), `ApplyArrivalRulesHandler` aplicando bloqueio
@@ -102,7 +102,14 @@ A precedência sem `SEQUENCE` — a decisão que D-026 deixara em aberto — fic
 e `AllowsVersion`: só se compara o que existir dos dois lados, `SEQUENCE` com `SEQUENCE` e
 instante com instante. Comparar os dois entre si produziria recusa arbitrária (D-029).
 
-Distribuição: Domain 231, Application 304, Infrastructure 180, Presentation 149, Persistence 55.
+Distribuição: Domain 231, Application 304, Infrastructure 189, Presentation 149, Persistence 55.
+
+**Um defeito de fase anterior veio à tona ao documentar o registro OAuth** (D-032): o
+`GoogleOAuthProvider` montava `ClientSecrets` sem `ClientSecret`. Cliente "Desktop app" da
+Google recebe os dois valores e exige o segredo na troca do código e na renovação; a
+`Google.Apis.Auth` omite o campo nulo sem lançar nada, então o defeito era invisível até a
+implantação — o navegador abria, o usuário consentia, e a falha aparecia só na resposta do
+servidor de token. Corrigido, com teste que trava a regra.
 
 > **Atenção:** houve troca de implementação em 04/08/2026 (ver `DECISIONS.md`, D-007). O que
 > este arquivo descrevia antes daquela data pertencia à versão anterior, que foi substituída.

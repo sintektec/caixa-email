@@ -245,6 +245,16 @@ fuso, injetam `SEQUENCE`, reescrevem `DTSTAMP`. Guardar um ETag adivinhado faz o
 seguinte falhar com 412 para sempre, ou pior: sobrescrever em silêncio o que o servidor
 gravou.
 
+**A Google exige `client_secret` e o Entra ID não tem um.** Cliente do tipo "Desktop app" da
+Google recebe Client ID **e** Client secret, e o segredo é obrigatório na troca do código e na
+renovação por `refresh_token` — só iOS e Android saem sem ele. A `Google.Apis.Auth` **omite o
+campo nulo do corpo sem lançar nada**: compila, abre o navegador, o usuário consente, e a falha
+só aparece na troca do código como `invalid_request: client_secret is missing`. Por isso
+`GoogleOAuthProvider.IsConfigured` usa `IsConfiguredWithSecret`, que exige os dois. No Entra ID
+é o oposto: cliente público não tem segredo, e o `PublicClientApplicationBuilder` sequer expõe
+`WithClientSecret` — exigir um lá deixaria a autenticação Microsoft permanentemente "não
+configurada".
+
 **No Entra ID o token é emitido por recurso, e no Google não.** Pedir
 `outlook.office.com/IMAP.AccessAsUser.All` e `graph.microsoft.com/Calendars.ReadWrite` na mesma
 chamada do MSAL é recusado — são públicos diferentes, e o token do IMAP não abre o Graph. Daí

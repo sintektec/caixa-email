@@ -53,8 +53,31 @@ public sealed class GoogleOAuthProvider : IOAuthProvider
     /// <inheritdoc />
     public OAuthProviderKind Provider => OAuthProviderKind.Google;
 
-    /// <inheritdoc />
-    public bool IsConfigured => _options.IsConfigured;
+    /// <summary>
+    /// Se há Client ID <b>e</b> Client secret.
+    /// </summary>
+    /// <remarks>
+    /// A Google exige os dois em cliente do tipo "Desktop app" — o <c>client_secret</c> é
+    /// parâmetro obrigatório na troca do código e na renovação por <c>refresh_token</c>.
+    /// Aceitar só o Client ID faria o assistente anunciar a conta Google como configurada, o
+    /// navegador abrir, o usuário consentir, e a falha aparecer só na troca do código, com
+    /// <c>invalid_request: client_secret is missing</c>. Falhar cedo e explicar é melhor.
+    /// </remarks>
+    public bool IsConfigured => _options.IsConfiguredWithSecret;
+
+    /// <summary>
+    /// As credenciais do aplicativo, como a biblioteca da Google as espera.
+    /// </summary>
+    /// <remarks>
+    /// O <c>ClientSecret</c> nulo não produz exceção: a <c>Google.Apis.Auth</c> simplesmente
+    /// omite o campo do corpo do pedido. O erro só aparece na resposta do servidor de token,
+    /// depois de o usuário já ter consentido — daí <see cref="EnsureConfigured"/> barrar antes.
+    /// </remarks>
+    private ClientSecrets Credentials => new()
+    {
+        ClientId = _options.ClientId,
+        ClientSecret = _options.ClientSecret,
+    };
 
     /// <inheritdoc />
     public async Task<OAuthAccessToken> AuthenticateInteractivelyAsync(
@@ -63,7 +86,7 @@ public sealed class GoogleOAuthProvider : IOAuthProvider
         EnsureConfigured();
 
         var credential = await GoogleWebAuthorizationBroker.AuthorizeAsync(
-            new ClientSecrets { ClientId = _options.ClientId },
+            Credentials,
             AllScopes,
             emailAddress,
             cancellationToken,
@@ -102,7 +125,7 @@ public sealed class GoogleOAuthProvider : IOAuthProvider
 
         var flow = new GoogleAuthorizationCodeFlow(new GoogleAuthorizationCodeFlow.Initializer
         {
-            ClientSecrets = new ClientSecrets { ClientId = _options.ClientId },
+            ClientSecrets = Credentials,
             Scopes = AllScopes,
             DataStore = new CredentialStoreDataStore(_credentials),
         });
@@ -145,8 +168,9 @@ public sealed class GoogleOAuthProvider : IOAuthProvider
         if (!IsConfigured)
         {
             throw new InvalidOperationException(
-                "A autenticação Google não está configurada: crie um projeto no Google Cloud Console e " +
-                "informe o Client ID em OAuth:Google:ClientId.");
+                "A autenticação Google não está configurada: crie um cliente OAuth do tipo " +
+                "\"Aplicativo para computador\" no Google Cloud Console e informe os dois valores que " +
+                "ele emite, em OAuth:Google:ClientId e OAuth:Google:ClientSecret.");
         }
     }
 

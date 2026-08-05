@@ -14,6 +14,31 @@ public sealed class OAuthClientOptions
     /// <summary>Client ID registrado no provedor.</summary>
     public string? ClientId { get; set; }
 
+    /// <summary>
+    /// Client secret, <b>obrigatório no Google e inexistente no Entra ID</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Os dois provedores discordam sobre isto, e a discordância não é de estilo. No Entra ID
+    /// um cliente público não tem segredo — o <c>PublicClientApplicationBuilder</c> sequer
+    /// expõe <c>WithClientSecret</c>, e o PKCE é o que protege o fluxo.
+    /// </para>
+    /// <para>
+    /// A Google emite <b>Client ID e Client secret</b> para o tipo "Desktop app", e exige o
+    /// <c>client_secret</c> tanto na troca do código quanto na renovação por
+    /// <c>refresh_token</c>. Só os tipos iOS e Android saem sem segredo. A própria Google
+    /// documenta que o valor é embutido no aplicativo e que um app instalado não guarda
+    /// segredo de verdade — ele identifica o aplicativo, não o autentica.
+    /// </para>
+    /// <para>
+    /// <b>Por isso ele fica em configuração e não no cofre:</b> é credencial de aplicativo,
+    /// não de usuário. O que vai para o <c>ICredentialStore</c> é o token de atualização, esse
+    /// sim equivalente à senha de quem entrou. A regra de "nenhum segredo no banco" continua
+    /// valendo por inteiro.
+    /// </para>
+    /// </remarks>
+    public string? ClientSecret { get; set; }
+
     /// <summary>Identificador do locatário (Entra ID). "common" atende contas de qualquer locatário.</summary>
     public string TenantId { get; set; } = "common";
 
@@ -22,6 +47,17 @@ public sealed class OAuthClientOptions
 
     /// <summary>Indica se há Client ID configurado.</summary>
     public bool IsConfigured => !string.IsNullOrWhiteSpace(ClientId);
+
+    /// <summary>
+    /// Indica se há Client ID <b>e</b> Client secret — o que o Google exige.
+    /// </summary>
+    /// <remarks>
+    /// Separado de <see cref="IsConfigured"/> de propósito: exigir segredo do Entra ID
+    /// deixaria a autenticação Microsoft permanentemente "não configurada", já que ela não
+    /// tem nem pode ter um.
+    /// </remarks>
+    public bool IsConfiguredWithSecret
+        => IsConfigured && !string.IsNullOrWhiteSpace(ClientSecret);
 }
 
 /// <summary>Configuração de todos os provedores OAuth.</summary>

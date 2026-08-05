@@ -726,3 +726,41 @@ continua opaco para o motor, que é o que a porta promete.
 localmente o que o `calendarView` devolve (seria reconstruir a `RRULE` a partir das ocorrências
 — adivinhação); assinar notificações de mudança do Graph (exige endpoint público para receber
 o webhook, que um cliente desktop não tem).
+
+---
+
+## D-032 — O `client_secret` da Google fica em configuração, não no cofre (2026-08-05)
+
+**Status:** aceita
+
+**Decisão:** `OAuthClientOptions` ganhou `ClientSecret`, lido em `OAuth:Google:ClientSecret`, e
+`GoogleOAuthProvider.IsConfigured` passou a exigir Client ID **e** Client secret. O valor vive
+em configuração — `appsettings.Local.json` ou variável de ambiente `SINTEK_MAIL_` —, e não no
+`ICredentialStore`.
+
+**Motivo:** o levantamento da fase 14 encontrou um defeito real: o provedor construía
+`new ClientSecrets { ClientId = ... }` com `ClientSecret` nulo. Cliente do tipo "Desktop app" da
+Google recebe os dois valores, e o `client_secret` é parâmetro obrigatório na troca do código e
+na renovação por `refresh_token` — só iOS e Android são emitidos sem segredo. A
+`Google.Apis.Auth` omite o campo nulo do corpo sem lançar exceção, então o defeito era invisível
+até a implantação: o navegador abria, o usuário consentia, e a falha aparecia só na resposta do
+servidor de token.
+
+Sobre **onde** guardá-lo: é credencial de aplicativo, não de usuário. A própria Google documenta
+que o valor fica embutido no aplicativo e que um app instalado não guarda segredo de verdade —
+ele identifica o aplicativo, não o autentica. Guardá-lo no Windows Credential Manager daria
+falsa sensação de proteção a um valor que qualquer usuário extrai do binário, e ainda criaria o
+problema de como colocá-lo lá antes do primeiro uso. O que continua no cofre é o **token de
+atualização**, esse sim equivalente à senha de quem entrou.
+
+**Consequências:** a regra "nenhum segredo entra no banco de dados" continua valendo por
+inteiro — ela é sobre credencial de usuário, e este valor não é uma. O `appsettings.Local.json`
+já está fora do controle de versão pelo mesmo motivo que os Client IDs estão.
+
+O defeito nunca foi pego por teste porque nenhum teste tinha Client ID real. Os testes novos
+verificam a **regra** — que sem segredo o provedor se declara não configurado, e que a mensagem
+cita as duas chaves —, que é o que dá para verificar sem falar com a Google.
+
+**Alternativas rejeitadas:** guardar no `ICredentialStore` (falsa proteção, e problema de
+inicialização); embutir no binário (impede cada organização de registrar o próprio aplicativo,
+que é o desenho desde a fase 1).

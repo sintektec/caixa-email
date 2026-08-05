@@ -71,44 +71,84 @@ requisito real é o MIME type: alguns servidores devolvem `.appinstaller` como
 
 ## 2. Registro dos aplicativos OAuth
 
-Sem os Client IDs, os provedores aparecem no assistente de conta como "não configurados".
-A aplicação continua funcionando com senha; só o login por conta Microsoft ou Google fica
-indisponível.
+Sem estas credenciais, os provedores aparecem no assistente de conta como "não
+configurados". A aplicação continua funcionando com senha em servidor próprio — IMAP, SMTP e
+agenda CalDAV. O que fica indisponível é conta Gmail, Outlook.com/Microsoft 365, e as agendas
+desses dois.
 
-Os Client IDs **não são segredo** — vão em arquivo de configuração. Este produto usa o
-fluxo *Authorization Code + PKCE* para cliente público, que existe justamente porque um
-aplicativo desktop não consegue guardar um *client secret*.
+**Os dois provedores discordam sobre client secret, e a diferença muda o que você coleta.**
+No Entra ID um cliente público **não tem** segredo: o fluxo é *Authorization Code + PKCE*, e
+o `PublicClientApplicationBuilder` do MSAL sequer expõe `WithClientSecret`. A Google emite
+**Client ID e Client secret** para o tipo *Aplicativo para computador*, e exige o segundo na
+troca do código e na renovação por *refresh token* — só os tipos iOS e Android saem sem
+segredo.
+
+O Client secret da Google é credencial de **aplicativo**, não de usuário: a própria Google
+documenta que ele fica embutido no app e que um aplicativo instalado não guarda segredo de
+verdade. Por isso ele vai em configuração, junto do Client ID. O que vai para o Gerenciador
+de Credenciais é o **token de atualização**, esse sim equivalente à senha de quem entrou.
 
 ### Microsoft (Entra ID)
 
 1. Portal do Azure → **Microsoft Entra ID** → **Registros de aplicativo** → **Novo
    registro**.
 2. Nome: `Sintek.Mail`. Tipos de conta: escolha conforme o público — "somente neste
-   diretório organizacional" para uso interno.
+   diretório organizacional" para uso interno. Essa escolha define o `TenantId`: use o ID do
+   diretório para registro de locatário único, ou `common` para aceitar qualquer locatário e
+   contas pessoais.
 3. **URI de redirecionamento**: plataforma **Cliente público / nativo**, valor
    `http://localhost`.
-4. Em **Autenticação**, confirme que *Allow public client flows* está **habilitado**.
-5. Em **Permissões de API** → **Microsoft Graph** → **Permissões delegadas**, adicione:
-   - `IMAP.AccessAsUser.All`
-   - `SMTP.Send`
-   - `offline_access`
-   - `User.Read`
+4. Em **Autenticação**, confirme que *Allow public client flows* está **habilitado**. Sem
+   isso o MSAL falha.
+5. Em **Permissões de API**, adicione as delegadas — **atenção, elas vivem em duas APIs
+   diferentes**:
+
+   | Permissão | Onde encontrá-la no portal |
+   |---|---|
+   | `IMAP.AccessAsUser.All` | *APIs que minha organização usa* → **Office 365 Exchange Online** |
+   | `SMTP.Send` | *APIs que minha organização usa* → **Office 365 Exchange Online** |
+   | `Calendars.ReadWrite` | **Microsoft Graph** |
+   | `offline_access` | **Microsoft Graph** |
+
+   Procurar as duas primeiras dentro do Microsoft Graph é o erro mais comum aqui — elas não
+   estão lá.
 6. Conceda consentimento do administrador se a organização exigir.
 7. Copie o **ID do aplicativo (cliente)** e o **ID do diretório (locatário)**.
 
+> **O consentimento vai pedir duas vezes, e isso não é defeito.** O Entra emite token *por
+> recurso*: um token de `outlook.office.com` não abre o `graph.microsoft.com`, e pedir os
+> dois na mesma chamada é recusado com `AADSTS28000`. O assistente pede os escopos de e-mail
+> e depois os de agenda. Recusar o segundo não invalida o primeiro — a conta é cadastrada e a
+> agenda fica sem espelho remoto até o usuário consentir.
+
 ### Google Cloud
 
-1. Console do Google Cloud → **APIs e serviços** → **Tela de permissão OAuth**.
-   Preencha e publique (em modo *Testing* só as contas listadas conseguem entrar).
-2. **Credenciais** → **Criar credenciais** → **ID do cliente OAuth** → tipo
+1. Console do Google Cloud → **APIs e serviços** → **Biblioteca**. Ative **as duas**:
+   - **Gmail API** (IMAP e SMTP)
+   - **Google Calendar API** (agenda)
+2. **Tela de permissão OAuth**: escolha o tipo de usuário — ver o quadro abaixo, porque essa
+   escolha é a mais cara de reverter. Declare os escopos:
+   - `https://mail.google.com/`
+   - `https://www.googleapis.com/auth/calendar`
+3. **Credenciais** → **Criar credenciais** → **ID do cliente OAuth** → tipo
    **Aplicativo para computador**.
-3. Ative a **Gmail API** em **APIs e serviços → Biblioteca**.
-4. Escopos necessários: `https://mail.google.com/`.
-5. Copie o **ID do cliente**.
+4. Copie **os dois valores**: o *ID do cliente* e a *Chave secreta do cliente*.
 
-> A verificação do app pelo Google é exigida quando ele sai do modo *Testing* e usa
-> escopos restritos — `https://mail.google.com/` é um deles. Para uso interno em Workspace,
-> publicar como **Interno** evita a verificação.
+> **Interno ou Externo — decida antes de registrar.**
+>
+> **Interno** (só disponível com Google Workspace, restringe aos usuários do próprio
+> domínio): não exige verificação, não exige avaliação de segurança, não tem limite de
+> usuários. É o caminho para uso corporativo em domínio próprio.
+>
+> **Externo em modo *Testing***: limitado a 100 contas de teste, e o *refresh token*
+> **vence em 7 dias**. Serve para experimentar, não para operar — a conta pára de sincronizar
+> toda semana.
+>
+> **Externo publicado**: exige verificação do aplicativo pelo Google, porque
+> `https://mail.google.com/` é um **escopo restrito**. Isso inclui a avaliação de segurança
+> **CASA**, feita por avaliador credenciado, com custo e **renovação anual**. Um aplicativo
+> que guarda os dados apenas na máquina do usuário — como este — tem processo mais leve, mas
+> não isento.
 
 ### Onde colocar
 
@@ -125,11 +165,15 @@ e sobrevive às atualizações do modo sem pacote:
     },
     "Google": {
       "ClientId": "000000000000-xxxxxxxxxxxxxxxx.apps.googleusercontent.com",
+      "ClientSecret": "GOCSPX-xxxxxxxxxxxxxxxxxxxxxxxx",
       "RedirectUri": "http://localhost"
     }
   }
 }
 ```
+
+O `ClientSecret` só existe no bloco Google. Preenchê-lo no bloco Microsoft não tem efeito —
+o Entra ID não emite um, e a aplicação nunca o lê.
 
 No modo MSIX o arquivo vai na pasta do pacote instalado, o que exige reimplantar para
 alterá-lo. Em frota grande, distribuir os Client IDs por política de grupo

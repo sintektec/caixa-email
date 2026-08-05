@@ -494,3 +494,32 @@ traduzir, pelo mesmo critério.
 - Tradução completa de `RRULE` para o objeto de recorrência do Graph, se houver interesse.
 - O que continua pendente é humano: validação manual em Windows 11 e teste contra servidores
   reais — IMAP/SMTP, CalDAV, Microsoft 365 e Google — com Client IDs de OAuth.
+
+---
+
+## 2026-08-05 — Sessão 9 (continuação): registro OAuth e um defeito que a documentação revelou
+
+**O que foi feito:**
+- Levantamento verificado dos dois portais (Entra ID e Google Cloud) antes de escrever o guia,
+  com refutação independente de cada afirmação de risco.
+- **Defeito real encontrado e corrigido** (D-032): `GoogleOAuthProvider` montava
+  `new ClientSecrets { ClientId = ... }` sem `ClientSecret`. A Google exige o segredo em
+  cliente "Desktop app", e a `Google.Apis.Auth` omite o campo nulo sem lançar — o erro só
+  apareceria na troca do código, depois do consentimento. `OAuthClientOptions` ganhou
+  `ClientSecret` e `IsConfiguredWithSecret`; `GoogleOAuthProvider.IsConfigured` passou a exigir
+  os dois.
+- `docs/implantacao.md` §2 reescrita: as permissões de IMAP/SMTP **não** estão no Microsoft
+  Graph (estão em Office 365 Exchange Online, e o guia mandava procurar no lugar errado),
+  faltavam as de agenda, faltava avisar que o consentimento da Microsoft pede duas vezes, e a
+  nota sobre verificação do Google não dizia que em modo *Testing* o refresh token vence em
+  7 dias.
+- 928 testes (Infrastructure 180 → 189).
+
+**O que isto ensinou:** documentar um caminho que nunca foi executado é uma forma barata de
+encontrar defeito nele. O guia de OAuth estava errado em dois pontos e o código em um, e nada
+disso apareceria antes de alguém tentar implantar.
+
+**Próxima sessão:**
+- Continua valendo: tradução de `RRULE` para o objeto de recorrência do Graph.
+- O usuário informou que criou o cliente OAuth no Google Cloud. Falta ele coletar **também o
+  Client secret** — o guia agora explica onde.
