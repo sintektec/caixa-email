@@ -286,6 +286,16 @@ public sealed record FetchedBody
 
     /// <summary>Anexos descritos pelo BODYSTRUCTURE.</summary>
     public IReadOnlyList<FetchedAttachment> Attachments { get; init; } = [];
+
+    /// <summary>
+    /// Documento iCalendar trazido junto, quando a mensagem carrega uma parte
+    /// <c>text/calendar</c>.
+    /// </summary>
+    /// <remarks>
+    /// Vem no corpo, e não como anexo a baixar depois: um convite é pequeno, e o usuário
+    /// espera vê-lo na agenda ao abrir a mensagem — não depois de clicar em um arquivo.
+    /// </remarks>
+    public string? CalendarPayload { get; init; }
 }
 
 /// <summary>Metadados de um anexo, sem o conteúdo.</summary>

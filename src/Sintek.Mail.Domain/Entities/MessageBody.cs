@@ -50,6 +50,28 @@ public sealed class MessageBody : Entity
     /// <summary>Instante em que o corpo foi baixado.</summary>
     public DateTimeOffset? DownloadedAt { get; private set; }
 
+    /// <summary>
+    /// Documento iCalendar que acompanha a mensagem, quando houver.
+    /// </summary>
+    /// <remarks>
+    /// Guardado na mensagem, e não em arquivo, porque é ela que a fila de saída carrega ao
+    /// montar o MIME. Uma resposta a convite precisa sair como parte
+    /// <c>text/calendar; method=REPLY</c>, e não como anexo: é o que faz o cliente do
+    /// organizador processá-la sozinho, em vez de mostrar um arquivo para ele abrir.
+    /// </remarks>
+    public string? CalendarPayload { get; private set; }
+
+    /// <summary>Valor do parâmetro <c>method</c> da parte iCalendar.</summary>
+    public string? CalendarMethod { get; private set; }
+
+    /// <summary>Grava o documento iCalendar que a mensagem carrega.</summary>
+    public void SetCalendar(string? payload, string? method, DateTimeOffset now)
+    {
+        CalendarPayload = string.IsNullOrWhiteSpace(payload) ? null : payload;
+        CalendarMethod = string.IsNullOrWhiteSpace(method) ? null : method.Trim().ToUpperInvariant();
+        Touch(now);
+    }
+
     /// <summary>Cria um corpo vazio, ainda não baixado.</summary>
     public static MessageBody Create(Guid messageId, DateTimeOffset createdAt, Guid? id = null)
         => new(id ?? Guid.CreateVersion7(), messageId, createdAt);

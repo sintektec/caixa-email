@@ -380,7 +380,36 @@ public sealed class MailKitImapClient : Application.Abstractions.Mail.IImapClien
             HtmlBody = message.HtmlBody,
             TextBody = message.TextBody,
             Attachments = attachments,
+            CalendarPayload = ExtractCalendarPayload(message),
         };
+    }
+
+    /// <summary>
+    /// Devolve o documento iCalendar da mensagem, se houver.
+    /// </summary>
+    /// <remarks>
+    /// Teams, Outlook e Meet mandam o convite como parte <c>text/calendar</c> dentro de um
+    /// <c>multipart/alternative</c>; alguns repetem o mesmo documento como anexo
+    /// <c>.ics</c>. A primeira parte encontrada basta — são o mesmo conteúdo.
+    /// </remarks>
+    private static string? ExtractCalendarPayload(MimeMessage message)
+    {
+        foreach (var part in message.BodyParts.OfType<TextPart>())
+        {
+            if (!part.ContentType.IsMimeType("text", "calendar"))
+            {
+                continue;
+            }
+
+            var text = part.Text;
+
+            if (!string.IsNullOrWhiteSpace(text))
+            {
+                return text;
+            }
+        }
+
+        return null;
     }
 
     /// <inheritdoc />

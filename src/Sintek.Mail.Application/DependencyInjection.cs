@@ -58,6 +58,11 @@ public static class DependencyInjection
         services.AddScoped<UseCases.Contacts.RecipientHistoryHandler>();
         services.AddScoped<UseCases.Contacts.ManageContactsHandler>();
 
+        services.AddScoped<UseCases.Calendar.ImportInvitationHandler>();
+        services.AddScoped<UseCases.Calendar.RespondToInvitationHandler>();
+        services.AddScoped<UseCases.Calendar.MoveEventHandler>();
+        services.AddScoped<UseCases.Calendar.ManageEventsHandler>();
+
         services.AddScoped<UseCases.Maintenance.CacheMaintenanceHandler>();
 
         services.AddScoped<AssistantGateway>();

@@ -680,3 +680,54 @@ public sealed class ContactRepository : IContactRepository
     /// <inheritdoc />
     public void Remove(Contact contact) => _context.Contacts.Remove(contact);
 }
+
+/// <inheritdoc cref="ICalendarRepository" />
+public sealed class CalendarRepository : ICalendarRepository
+{
+    private readonly MailDbContext _context;
+
+    public CalendarRepository(MailDbContext context) => _context = context;
+
+    /// <inheritdoc />
+    public Task<CalendarEvent?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+        => _context.CalendarEvents
+            .Include(e => e.Attendees)
+            .FirstOrDefaultAsync(e => e.Id == id, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<CalendarEvent?> GetByUidAsync(
+        Guid accountId, string uid, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(uid);
+
+        return _context.CalendarEvents
+            .Include(e => e.Attendees)
+            .FirstOrDefaultAsync(e => e.AccountId == accountId && e.Uid == uid, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<CalendarEvent>> ListInRangeAsync(
+        Guid? accountId, DateTimeOffset from, DateTimeOffset until,
+        CancellationToken cancellationToken = default)
+        => await _context.CalendarEvents
+            .Include(e => e.Attendees)
+            .Where(e => (accountId == null || e.AccountId == accountId)
+                // Comparação de data pelo julianday(): ver SqliteFunctions. Evento
+                // recorrente entra sempre que começou antes do fim da janela, porque suas
+                // ocorrências podem cair dentro dela com o primeiro encontro muito no
+                // passado; quem expande a recorrência é o ICalendarSerializer.
+                && SqliteFunctions.JulianDay(e.StartsAt) < SqliteFunctions.JulianDay(until)
+                && (e.RecurrenceRule != null
+                    || SqliteFunctions.JulianDay(e.EndsAt) > SqliteFunctions.JulianDay(from)))
+            .OrderBy(e => SqliteFunctions.JulianDay(e.StartsAt))
+            .ThenBy(e => e.Id)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+    /// <inheritdoc />
+    public async Task AddAsync(CalendarEvent calendarEvent, CancellationToken cancellationToken = default)
+        => await _context.CalendarEvents.AddAsync(calendarEvent, cancellationToken).ConfigureAwait(false);
+
+    /// <inheritdoc />
+    public void Remove(CalendarEvent calendarEvent) => _context.CalendarEvents.Remove(calendarEvent);
+}

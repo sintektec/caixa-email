@@ -81,6 +81,18 @@ public enum AuditEventType
     /// nuvem.
     /// </summary>
     AssistantBlockedByConsent = 19,
+
+    /// <summary>
+    /// Convite recusado pela regra do Diretório de Domínio da conta, ou aceito com
+    /// ressalva quando o modo configurado apenas avisa.
+    /// </summary>
+    InvitationBlockedByDomainRule = 20,
+
+    /// <summary>
+    /// Convite mais antigo que a versão já conhecida foi descartado — o
+    /// <c>SEQUENCE</c> recuou.
+    /// </summary>
+    InvitationOutOfOrderDiscarded = 21,
 }
 
 /// <summary>Gravidade de um evento de auditoria.</summary>

@@ -32,6 +32,41 @@ internal static class TestFactories
             clock,
             NullLogger<Sintek.Mail.Application.UseCases.Contacts.RecipientHistoryHandler>.Instance);
 
+    /// <summary>
+    /// Importador de convites inerte, para os testes que não o verificam.
+    /// </summary>
+    /// <remarks>
+    /// O download de corpo entrega à agenda o que vier em <c>text/calendar</c>. Com o
+    /// serializador substituído nada é lido, e o encadeamento real continua de pé — que é
+    /// o que quebraria se ele fosse opcional.
+    /// </remarks>
+    public static Sintek.Mail.Application.UseCases.Calendar.ImportInvitationHandler InertInvitations(
+        IUnitOfWork unitOfWork, TimeProvider clock)
+        => new(
+            Substitute.For<ICalendarRepository>(),
+            Substitute.For<IAccountRepository>(),
+            Substitute.For<IDomainDirectoryRepository>(),
+            Substitute.For<Abstractions.Calendar.ICalendarSerializer>(),
+            Substitute.For<IAuditLogRepository>(),
+            unitOfWork,
+            clock,
+            NullLogger<Sintek.Mail.Application.UseCases.Calendar.ImportInvitationHandler>.Instance);
+
+    /// <summary>Download de conteúdo com o importador de convites inerte.</summary>
+    public static DownloadMessageContentHandler Download(
+        IMessageRepository messages,
+        IFolderRepository folders,
+        IUnitOfWork unitOfWork,
+        Abstractions.Mail.IImapClient imapClient,
+        IHtmlSanitizer sanitizer,
+        IAttachmentStore attachmentStore,
+        TimeProvider clock)
+        => new(
+            messages, folders, unitOfWork, imapClient, sanitizer, attachmentStore,
+            InertInvitations(unitOfWork, clock),
+            clock,
+            NullLogger<DownloadMessageContentHandler>.Instance);
+
     /// <summary>Compositor com o histórico de destinatários inerte.</summary>
     public static ComposeMessageHandler Compose(
         IMessageRepository messages,
@@ -82,13 +117,12 @@ internal static class TestFactories
             new MarkAsSpamHandler(
                 messages, folders, moveMessage, outbox, unitOfWork,
                 NullLogger<MarkAsSpamHandler>.Instance),
-            new DownloadMessageContentHandler(
+            Download(
                 messages, folders, unitOfWork,
                 Substitute.For<Abstractions.Mail.IImapClient>(),
                 Substitute.For<IHtmlSanitizer>(),
                 Substitute.For<IAttachmentStore>(),
-                clock,
-                NullLogger<DownloadMessageContentHandler>.Instance),
+                clock),
             Compose(messages, folders, accounts, unitOfWork, outbox, clock),
             outbox,
             clock,

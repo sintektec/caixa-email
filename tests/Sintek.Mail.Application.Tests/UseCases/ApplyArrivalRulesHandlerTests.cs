@@ -86,9 +86,8 @@ public class ApplyArrivalRulesHandlerTests
             new MarkAsSpamHandler(
                 _messages, _folders, moveMessage, enqueuer, _unitOfWork,
                 NullLogger<MarkAsSpamHandler>.Instance),
-            new DownloadMessageContentHandler(
-                _messages, _folders, _unitOfWork, _imap, _sanitizer, _attachments, _clock,
-                NullLogger<DownloadMessageContentHandler>.Instance),
+            TestFactories.Download(
+                _messages, _folders, _unitOfWork, _imap, _sanitizer, _attachments, _clock),
             TestFactories.Compose(_messages, _folders, _accounts, _unitOfWork, enqueuer, _clock),
             enqueuer,
             _clock,

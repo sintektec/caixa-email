@@ -31,6 +31,19 @@
     <PackageVersion Include="DnsClient" Version="1.8.0" />
   </ItemGroup>
 
+  <ItemGroup Label="Agenda">
+    <!--
+      Analisador de iCalendar (RFC 5545). Escrever um à mão é a armadilha clássica deste
+      recurso: o formato tem dobra de linha, escapes, fusos embutidos e recorrência com
+      exceções.
+
+      Traz o NodaTime junto, e isso resolve de graça o risco de fuso que a fase temia: o
+      NodaTime carrega a própria base IANA, então converter "America/Sao_Paulo" em instante
+      funciona mesmo com InvariantGlobalization ligado, que remove a tabela do ICU.
+    -->
+    <PackageVersion Include="Ical.Net" Version="5.2.3" />
+  </ItemGroup>
+
   <ItemGroup Label="Segurança">
     <!-- Id do pacote é HtmlSanitizer; o namespace, desde a v8, é Ganss.Xss. -->
     <PackageVersion Include="HtmlSanitizer" Version="9.1.974" />

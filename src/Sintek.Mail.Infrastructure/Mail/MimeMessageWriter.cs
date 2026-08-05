@@ -85,7 +85,7 @@ public sealed class MimeMessageWriter : IMimeMessageWriter
             }
         }
 
-        mime.Body = builder.ToMessageBody();
+        mime.Body = CalendarPartBuilder.Build(builder, message.Calendar);
 
         ApplyImportance(mime, message.Importance);
 

@@ -24,6 +24,7 @@
     <PackageReference Include="Microsoft.Identity.Client" />
     <PackageReference Include="Google.Apis.Auth" />
     <PackageReference Include="DnsClient" />
+    <PackageReference Include="Ical.Net" />
     <PackageReference Include="Polly" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Http" />

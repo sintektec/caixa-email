@@ -153,7 +153,7 @@ public sealed class MailKitSmtpSender : ISmtpSender
             }
         }
 
-        mime.Body = builder.ToMessageBody();
+        mime.Body = CalendarPartBuilder.Build(builder, message.Calendar);
         return mime;
     }
 

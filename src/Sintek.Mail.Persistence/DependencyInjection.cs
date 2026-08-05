@@ -51,6 +51,7 @@ public static class DependencyInjection
         services.AddScoped<ISenderReputationRepository, SenderReputationRepository>();
         services.AddScoped<IRecipientHistoryRepository, RecipientHistoryRepository>();
         services.AddScoped<IContactRepository, ContactRepository>();
+        services.AddScoped<ICalendarRepository, CalendarRepository>();
 
         return services;
     }

@@ -63,9 +63,8 @@ public class DownloadAndComposeHandlersTests
                 call.Arg<string?>() ?? string.Empty, HasRemoteContent: false, RemovedRemoteReferences: 0));
     }
 
-    private DownloadMessageContentHandler DownloadHandler() => new(
-        _messages, _folders, _unitOfWork, _imap, _sanitizer, _store, _clock,
-        NullLogger<DownloadMessageContentHandler>.Instance);
+    private DownloadMessageContentHandler DownloadHandler() => TestFactories.Download(
+        _messages, _folders, _unitOfWork, _imap, _sanitizer, _store, _clock);
 
     private ComposeMessageHandler ComposeHandler() => TestFactories.Compose(
         _messages, _folders, _accounts, _unitOfWork,

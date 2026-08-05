@@ -351,6 +351,41 @@ public interface IContactRepository
     void Remove(Contact contact);
 }
 
+/// <summary>Acesso à agenda.</summary>
+public interface ICalendarRepository
+{
+    /// <summary>Carrega um evento com seus participantes.</summary>
+    Task<CalendarEvent?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Busca um evento da conta pelo <c>UID</c> do iCalendar.
+    /// </summary>
+    /// <remarks>
+    /// É o caminho pelo qual uma atualização enviada pelo organizador encontra o evento que
+    /// já está aqui. A chave local não serve: quem envia o convite não a conhece.
+    /// </remarks>
+    Task<CalendarEvent?> GetByUidAsync(
+        Guid accountId, string uid, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lista os eventos de uma conta que tocam a janela informada.
+    /// </summary>
+    /// <remarks>
+    /// Eventos recorrentes entram sempre que começaram antes do fim da janela, porque suas
+    /// ocorrências podem cair dentro dela mesmo com o primeiro encontro muito no passado.
+    /// A expansão fica com o <c>ICalendarSerializer</c>.
+    /// </remarks>
+    Task<IReadOnlyList<CalendarEvent>> ListInRangeAsync(
+        Guid? accountId, DateTimeOffset from, DateTimeOffset until,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Registra um evento.</summary>
+    Task AddAsync(CalendarEvent calendarEvent, CancellationToken cancellationToken = default);
+
+    /// <summary>Remove um evento.</summary>
+    void Remove(CalendarEvent calendarEvent);
+}
+
 /// <summary>Registro de auditoria.</summary>
 /// <remarks>
 /// As implementações nunca podem gravar conteúdo de mensagem: apenas identificadores,

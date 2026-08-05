@@ -60,6 +60,7 @@ public sealed class DownloadMessageContentHandler
     private readonly IImapClient _imapClient;
     private readonly IHtmlSanitizer _sanitizer;
     private readonly IAttachmentStore _attachmentStore;
+    private readonly Calendar.ImportInvitationHandler _invitations;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<DownloadMessageContentHandler> _logger;
 
@@ -70,6 +71,7 @@ public sealed class DownloadMessageContentHandler
         IImapClient imapClient,
         IHtmlSanitizer sanitizer,
         IAttachmentStore attachmentStore,
+        Calendar.ImportInvitationHandler invitations,
         TimeProvider timeProvider,
         ILogger<DownloadMessageContentHandler> logger)
     {
@@ -79,6 +81,7 @@ public sealed class DownloadMessageContentHandler
         _imapClient = imapClient;
         _sanitizer = sanitizer;
         _attachmentStore = attachmentStore;
+        _invitations = invitations;
         _timeProvider = timeProvider;
         _logger = logger;
     }
@@ -160,6 +163,25 @@ public sealed class DownloadMessageContentHandler
         }
 
         await _unitOfWork.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+        // O convite entra na agenda ao abrir a mensagem — é quando o corpo desce, e é o
+        // momento em que o usuário espera vê-lo lá. Falha na importação não derruba o
+        // download: o corpo já está gravado, e perder a mensagem por causa de um .ics
+        // malformado seria trocar um problema pequeno por um grande.
+        if (!string.IsNullOrWhiteSpace(fetched.CalendarPayload))
+        {
+            try
+            {
+                await _invitations
+                    .ImportAsync(message.AccountId, fetched.CalendarPayload, message.Id, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogWarning(
+                    ex, "Convite da mensagem {MessageId} não pôde ser importado.", message.Id);
+            }
+        }
 
         return new DownloadBodyResult(true, null);
     }

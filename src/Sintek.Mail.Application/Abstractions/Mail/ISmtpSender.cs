@@ -45,6 +45,16 @@ public sealed record OutgoingMessage
     /// <summary>Prioridade declarada.</summary>
     public MessageImportance Importance { get; init; } = MessageImportance.Normal;
 
+    /// <summary>
+    /// Documento iCalendar a enviar como parte <c>text/calendar</c>, quando houver.
+    /// </summary>
+    /// <remarks>
+    /// Parte, e não anexo: é o que faz o cliente do destinatário processar a resposta
+    /// sozinho — atualizar o <c>PARTSTAT</c> na agenda dele — em vez de mostrar um arquivo
+    /// para ele abrir à mão.
+    /// </remarks>
+    public OutgoingCalendarPart? Calendar { get; init; }
+
     /// <summary>Se deve pedir confirmação de leitura.</summary>
     public bool RequestReadReceipt { get; init; }
 }
@@ -97,3 +107,8 @@ public interface IMimeMessageWriter
     /// <summary>Escreve a mensagem em um fluxo posicionado no início.</summary>
     Task<Stream> WriteAsync(OutgoingMessage message, CancellationToken cancellationToken = default);
 }
+
+/// <summary>Parte iCalendar de uma mensagem de saída.</summary>
+/// <param name="Method">Valor do parâmetro <c>method</c> — <c>REQUEST</c>, <c>REPLY</c>…</param>
+/// <param name="Content">Documento iCalendar completo.</param>
+public readonly record struct OutgoingCalendarPart(string Method, string Content);

@@ -54,15 +54,14 @@ public class ReadingPaneContactsTests
         return new ReadingPaneViewModel(
             _messages,
             _sanitizer,
-            new DownloadMessageContentHandler(
+            ComposeFactory.Download(
                 _messages,
                 folders,
                 _unitOfWork,
                 Substitute.For<Sintek.Mail.Application.Abstractions.Mail.IImapClient>(),
                 _sanitizer,
                 Substitute.For<IAttachmentStore>(),
-                _clock,
-                NullLogger<DownloadMessageContentHandler>.Instance),
+                _clock),
             new Sintek.Mail.Application.UseCases.Organization.ManageSenderReputationHandler(
                 Substitute.For<ISenderReputationRepository>(), _unitOfWork, _clock),
             new ReadReceiptHandler(

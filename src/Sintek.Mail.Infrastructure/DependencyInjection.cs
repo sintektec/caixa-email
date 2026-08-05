@@ -34,6 +34,12 @@ public static class DependencyInjection
 
         services.AddSingleton<IHtmlSanitizer, MessageHtmlSanitizer>();
 
+        // Leitura e escrita de iCalendar. Singleton porque não guarda estado: cada chamada
+        // trabalha só sobre o documento recebido.
+        services.AddSingleton<
+            Application.Abstractions.Calendar.ICalendarSerializer,
+            Calendar.IcalNetCalendarSerializer>();
+
         // A descoberta automática fala com hosts escolhidos pelo domínio que o usuário
         // digitou. O HttpClient dela é próprio e restrito: sem redirecionamento automático
         // — que poderia levar de um endereço HTTPS conferido para outro qualquer — e com

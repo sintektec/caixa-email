@@ -74,6 +74,12 @@ public sealed class MailDbContext : DbContext
     /// <summary>Modelos de mensagem.</summary>
     public DbSet<MessageTemplate> MessageTemplates => Set<MessageTemplate>();
 
+    /// <summary>Compromissos da agenda.</summary>
+    public DbSet<CalendarEvent> CalendarEvents => Set<CalendarEvent>();
+
+    /// <summary>Participantes dos compromissos.</summary>
+    public DbSet<EventAttendee> EventAttendees => Set<EventAttendee>();
+
     /// <summary>Histórico de destinatários, que alimenta o autocompletar.</summary>
     public DbSet<RecipientHistory> RecipientHistory => Set<RecipientHistory>();
 

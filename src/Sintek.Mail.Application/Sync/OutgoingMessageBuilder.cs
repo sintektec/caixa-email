@@ -73,6 +73,9 @@ public static class OutgoingMessageBuilder
             References = SplitReferences(message.ReferencesRaw),
             Importance = message.Importance,
             RequestReadReceipt = message.ReadReceiptRequested,
+            Calendar = body?.CalendarPayload is { } payload
+                ? new OutgoingCalendarPart(body.CalendarMethod ?? "REQUEST", payload)
+                : null,
         };
     }
 
