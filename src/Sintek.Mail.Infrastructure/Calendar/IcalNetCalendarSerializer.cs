@@ -189,8 +189,11 @@ public sealed partial class IcalNetCalendarSerializer : ICalendarSerializer
     {
         if (string.IsNullOrWhiteSpace(source.Uid))
         {
-            // Sem UID não há como casar com o que já está na agenda; um evento assim só
-            // criaria duplicata a cada sincronização.
+            // Sem UID não há identidade nenhuma. Na prática o Ical.Net inventa um quando o
+            // documento não traz — e por ser inventado a cada leitura, ele não serve para
+            // casar com o que já está na agenda; quem cobre esse caso é a segunda via de
+            // identidade do ImportInvitationHandler. Esta guarda existe para o dia em que a
+            // biblioteca deixar de inventar.
             return null;
         }
 

@@ -368,6 +368,18 @@ public interface ICalendarRepository
         Guid accountId, string uid, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Busca o evento importado de uma mensagem específica.
+    /// </summary>
+    /// <remarks>
+    /// Segunda via de identidade, para quando o <c>UID</c> não serve: a biblioteca de
+    /// iCalendar <b>gera um UID aleatório</b> quando o documento não traz um, e sem esta
+    /// busca o mesmo convite viraria compromisso novo a cada vez que o corpo da mensagem
+    /// fosse baixado de novo.
+    /// </remarks>
+    Task<CalendarEvent?> GetBySourceMessageAsync(
+        Guid messageId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Lista os eventos de uma conta que tocam a janela informada.
     /// </summary>
     /// <remarks>

@@ -706,6 +706,13 @@ public sealed class CalendarRepository : ICalendarRepository
     }
 
     /// <inheritdoc />
+    public Task<CalendarEvent?> GetBySourceMessageAsync(
+        Guid messageId, CancellationToken cancellationToken = default)
+        => _context.CalendarEvents
+            .Include(e => e.Attendees)
+            .FirstOrDefaultAsync(e => e.SourceMessageId == messageId, cancellationToken);
+
+    /// <inheritdoc />
     public async Task<IReadOnlyList<CalendarEvent>> ListInRangeAsync(
         Guid? accountId, DateTimeOffset from, DateTimeOffset until,
         CancellationToken cancellationToken = default)

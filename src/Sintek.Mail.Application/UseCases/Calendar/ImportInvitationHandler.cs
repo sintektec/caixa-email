@@ -150,6 +150,16 @@ public sealed class ImportInvitationHandler
             .GetByUidAsync(account.Id, data.Uid, cancellationToken)
             .ConfigureAwait(false);
 
+        // Segunda via de identidade: a biblioteca gera um UID aleatório quando o documento
+        // não traz um, e sem isto rebaixar o corpo da mensagem criaria um compromisso novo
+        // a cada vez.
+        if (existing is null && sourceMessageId is { } messageId)
+        {
+            existing = await _calendar
+                .GetBySourceMessageAsync(messageId, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         switch (method)
         {
             case CalendarMethod.Cancel:
