@@ -360,10 +360,11 @@ não commitado.
   fora do domínio da conta aparece marcada, nunca escondida (D-021).
 - vCard 3.0 e 4.0 escritos à mão: desdobra linha continuada, aceita as duas sintaxes de
   `PREF` e nunca lança por cartão malformado — o cartão ruim é contado e ignorado.
-- **Defeito real encontrado por um teste novo:** o provedor do SQLite recusa `ORDER BY` sobre
-  `DateTimeOffset`. A listagem de mensagens da pasta (a tela principal) e o registro de
-  auditoria quebravam na primeira abertura, desde a fase 1. Corrigido com
-  `SqliteFunctions.DateTimeText`, que traduz para o `datetime()` do SQLite (D-022).
+- **Quatro defeitos reais encontrados por testes novos:** o provedor do SQLite não ordena nem
+  compara `DateTimeOffset`. Quebravam, desde a fase 1, a listagem de mensagens da pasta (a
+  tela principal), o registro de auditoria, a limpeza de cache e — a pior — a fila de saída,
+  que nunca drenaria. Nenhuma dessas consultas tinha teste contra o banco real. Corrigidas
+  com `SqliteFunctions.JulianDay`, que traduz para o `julianday()` do SQLite (D-022).
 - Armadilha nova: `dotnet ef migrations add --no-build` lê o assembly de `Debug`. Compilar
   só em `Release` fez a primeira tentativa gerar de novo o conteúdo da migração anterior.
 - Armadilha nova: o `AutoSuggestBox` escreve o item escolhido na caixa **antes** de avisar

@@ -310,10 +310,12 @@ então o que sumiu de lá ele apagou de propósito.
 **Gravar o histórico nunca derruba o envio.** A falha é registrada e a mensagem segue: o
 autocompletar é conveniência, a mensagem é o trabalho.
 
-**Defeito corrigido de passagem, herdado das fases anteriores:** o provedor do SQLite recusa
-`ORDER BY` sobre `DateTimeOffset` e lança em tempo de execução, sem aviso na compilação. A
-listagem de mensagens da pasta — a tela principal — e o registro de auditoria caíam nisso.
-Ver `SqliteFunctions` e a armadilha registrada no `CLAUDE.md`.
+**Defeito corrigido de passagem, herdado das fases anteriores:** o provedor do SQLite não
+ordena nem compara `DateTimeOffset`, e a quebra só aparece em tempo de execução. Quatro
+consultas caíam nisso desde a fase 1 — a listagem de mensagens da pasta (a tela principal),
+o registro de auditoria, a limpeza de cache e a fila de saída, que nunca drenaria. Nenhuma
+tinha teste contra o banco real; todas têm agora. Ver `SqliteFunctions`, D-022 e a armadilha
+registrada no `CLAUDE.md`.
 
 ---
 

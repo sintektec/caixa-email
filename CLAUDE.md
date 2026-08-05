@@ -128,14 +128,20 @@ outros destinatários do campo se perderam. Por isso o `ComposerViewModel` guard
 momento em que montou a lista (`_suggestionBaseText`) e aplica a troca sobre ele, nunca sobre
 a propriedade atual.
 
-**O provedor do SQLite recusa `ORDER BY` sobre `DateTimeOffset`.** Ele lança
-`NotSupportedException` ao traduzir a consulta — em tempo de execução, sem nada na
-compilação. O motivo é legítimo: o EF grava o tipo como texto preservando o fuso original, e
+**O provedor do SQLite não ordena nem compara `DateTimeOffset`.** `ORDER BY` lança
+`NotSupportedException`; `<=` e `<` simplesmente não traduzem e viram
+`InvalidOperationException`. Nada disso aparece na compilação — quebra na primeira execução
+da consulta. O motivo é legítimo: o EF grava o tipo como texto preservando o fuso original, e
 a ordem lexicográfica desse texto não é a cronológica quando duas linhas têm fusos
-diferentes. Consultas em LINQ ordenam por `SqliteFunctions.DateTimeText(...)`, que traduz
-para o `datetime()` do SQLite e normaliza em UTC dentro do banco; como `datetime()` trunca em
-segundos, vai junto um desempate estável por `Id`. Isso já custou a listagem de mensagens da
-pasta e o registro de auditoria, que quebravam na primeira abertura da tela.
+diferentes, o que acontece de verdade porque o cabeçalho `Date` da RFC 5322 traz o
+deslocamento de quem enviou.
+
+Toda consulta em LINQ que ordena ou compara data passa por `SqliteFunctions.JulianDay(...)`,
+mapeada para o `julianday()` embutido do SQLite: ele interpreta o texto com o fuso declarado
+e devolve um número, que o provedor aceita nos dois casos. Ordenação leva junto um desempate
+estável por `Id`. Isso já custou quatro consultas: a listagem de mensagens da pasta (a tela
+principal), o registro de auditoria, a limpeza de cache e — a pior — a fila de saída, que
+nunca drenaria.
 
 **`dotnet ef migrations add --no-build` usa o assembly de `Debug`.** Compilar só em `Release`
 antes de criar a migração faz o EF ler o modelo antigo e gerar a migração anterior de novo —

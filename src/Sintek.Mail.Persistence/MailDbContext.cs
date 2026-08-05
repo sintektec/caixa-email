@@ -95,11 +95,11 @@ public sealed class MailDbContext : DbContext
 
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(MailDbContext).Assembly);
 
-        // Ordenar por DateTimeOffset é recusado pelo provedor do SQLite; esta é a saída.
-        // Ver SqliteFunctions.
+        // Ordenar e comparar DateTimeOffset é recusado pelo provedor do SQLite; esta é a
+        // saída. Ver SqliteFunctions.
         modelBuilder
-            .HasDbFunction(typeof(SqliteFunctions).GetMethod(nameof(SqliteFunctions.DateTimeText))!)
-            .HasName("datetime")
+            .HasDbFunction(typeof(SqliteFunctions).GetMethod(nameof(SqliteFunctions.JulianDay))!)
+            .HasName("julianday")
             .IsBuiltIn();
 
         base.OnModelCreating(modelBuilder);

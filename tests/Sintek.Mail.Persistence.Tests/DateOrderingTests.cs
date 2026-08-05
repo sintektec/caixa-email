@@ -92,6 +92,59 @@ public sealed class DateOrderingTests : IAsyncLifetime
         eventos.Select(e => e.Id).Should().Equal(novo.Id, antigo.Id);
     }
 
+    [Fact]
+    public async Task ListReady_OperacaoAgendadaParaDepois_FicaForaDoLote()
+    {
+        // A comparação de DateTimeOffset em SQL cai na mesma restrição do provedor que a
+        // ordenação. É a consulta que a fila de saída faz a cada ciclo: se ela quebrar, o
+        // modo offline inteiro para.
+        await using var context = await CreateMigratedContextAsync();
+        var (accountId, _) = await SeedAsync(context);
+
+        var agora = OutboxOperation.Enqueue(
+            accountId, OutboxOperationType.MarkAsRead, Guid.CreateVersion7(), "{}", 1, Now);
+        var depois = OutboxOperation.Enqueue(
+            accountId, OutboxOperationType.MarkAsRead, Guid.CreateVersion7(), "{}", 2, Now,
+            notBefore: Now.AddHours(2));
+
+        context.OutboxOperations.AddRange(agora, depois);
+        await context.SaveChangesAsync();
+
+        var prontas = await new OutboxRepository(context).ListReadyAsync(accountId, Now, limit: 10);
+
+        prontas.Select(o => o.Id).Should().Equal(agora.Id);
+    }
+
+    [Fact]
+    public async Task ListCachedContent_CorpoBaixadoAntesDoCorte_EntraNaLimpeza()
+    {
+        await using var context = await CreateMigratedContextAsync();
+        var (accountId, folderId) = await SeedAsync(context);
+
+        // SetContent carimba DownloadedAt com o instante recebido: é ele que define a
+        // idade do cache.
+        var antiga = await AddMessageAsync(context, accountId, folderId, Now.AddDays(-60));
+        antiga.SetRemoteIdentity(10, null, Now);
+        antiga.MarkSynced(Now);
+        var corpoAntigo = MessageBody.Create(antiga.Id, Now);
+        corpoAntigo.SetContent("<p>antigo</p>", "antigo", "<p>antigo</p>", false, Now.AddDays(-60));
+        context.MessageBodies.Add(corpoAntigo);
+
+        var recente = await AddMessageAsync(context, accountId, folderId, Now);
+        recente.SetRemoteIdentity(11, null, Now);
+        recente.MarkSynced(Now);
+        var corpoRecente = MessageBody.Create(recente.Id, Now);
+        corpoRecente.SetContent("<p>recente</p>", "recente", "<p>recente</p>", false, Now);
+        context.MessageBodies.Add(corpoRecente);
+
+        await context.SaveChangesAsync();
+
+        var descartaveis = await new MessageRepository(context)
+            .ListCachedContentAsync(Now.AddDays(-30));
+
+        descartaveis.Select(m => m.Id).Should().Equal(antiga.Id);
+    }
+
     private MailDbContext CreateContext()
     {
         SqlCipherConnectionFactory.EnsureProviderInitialized();

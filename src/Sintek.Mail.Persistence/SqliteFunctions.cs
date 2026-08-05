@@ -5,36 +5,36 @@ namespace Sintek.Mail.Persistence;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Existem por causa de uma recusa explícita do provedor: <b>o SQLite não ordena por
+/// Existem por causa de uma recusa do provedor: <b>o SQLite não ordena nem compara
 /// <see cref="DateTimeOffset"/></b>. O EF Core grava o tipo como texto no formato
-/// <c>yyyy-MM-dd HH:mm:ss.fffffffzzz</c>, que preserva o fuso original — e por isso a
-/// ordem lexicográfica desse texto não é a ordem cronológica quando duas linhas têm fusos
-/// diferentes. Em vez de ordenar errado em silêncio, o provedor lança
-/// <see cref="NotSupportedException"/> ao traduzir o <c>ORDER BY</c>.
+/// <c>yyyy-MM-dd HH:mm:ss.fffffffzzz</c>, que preserva o fuso original — e por isso a ordem
+/// lexicográfica desse texto não é a ordem cronológica quando duas linhas têm fusos
+/// diferentes. Em vez de comparar errado em silêncio, o provedor recusa: <c>ORDER BY</c>
+/// lança <see cref="NotSupportedException"/> e <c>&lt;=</c> não traduz.
 /// </para>
 /// <para>
-/// A saída é normalizar dentro do banco, que é o que <see cref="DateTimeText"/> faz: a
-/// função <c>datetime()</c> do SQLite converte o texto para UTC, e a comparação passa a
-/// ser cronológica. É a mesma solução que o <c>Fts5SearchService</c> já usava no SQL
-/// manual; aqui ela fica disponível para as consultas em LINQ.
+/// A saída é normalizar dentro do banco. <see cref="JulianDay"/> mapeia para a função
+/// <c>julianday()</c> do SQLite, que interpreta o texto com o fuso declarado e devolve um
+/// número — comparável e ordenável, e portanto aceito pelo provedor nos dois casos. É o
+/// mesmo princípio que o <c>Fts5SearchService</c> já aplicava com <c>datetime()</c> no SQL
+/// manual.
 /// </para>
 /// <para>
-/// <c>datetime()</c> trunca em segundos, então quem ordena por tempo acrescenta um
-/// desempate estável — normalmente o identificador, que é GUID v7 e portanto ordenado no
-/// tempo.
+/// Quem ordena por tempo acrescenta um desempate estável — normalmente o identificador,
+/// que é GUID v7 e portanto ordenado no tempo.
 /// </para>
 /// </remarks>
 public static class SqliteFunctions
 {
     /// <summary>
-    /// A função <c>datetime()</c> do SQLite: devolve o instante normalizado em UTC como
-    /// texto ordenável.
+    /// A função <c>julianday()</c> do SQLite: devolve o instante como número de dias
+    /// julianos, já normalizado a partir do fuso declarado no texto.
     /// </summary>
     /// <remarks>
     /// Nunca é executada em memória — só existe para ser traduzida em SQL. Chamá-la fora
     /// de uma consulta é erro de programação, e a exceção o denuncia na hora.
     /// </remarks>
-    public static string DateTimeText(DateTimeOffset value)
+    public static double JulianDay(DateTimeOffset value)
         => throw new NotSupportedException(
-            "SqliteFunctions.DateTimeText só pode ser usada dentro de uma consulta LINQ.");
+            "SqliteFunctions.JulianDay só pode ser usada dentro de uma consulta LINQ.");
 }

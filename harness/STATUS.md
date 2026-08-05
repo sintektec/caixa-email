@@ -48,9 +48,11 @@ exportação em vCard 3.0/4.0 escritas à mão, `AutoSuggestBox` em Para/CC/CCO 
 contatos com remoção individual do histórico. Sugestão fora do domínio da conta aparece
 marcada, nunca escondida (D-021).
 
-Ela também corrigiu um defeito herdado das fases anteriores: o provedor do SQLite recusa
-`ORDER BY` sobre `DateTimeOffset`, e a listagem de mensagens da pasta — a tela principal — e
-o registro de auditoria quebravam na primeira abertura. Ver D-022.
+Ela também corrigiu quatro defeitos herdados das fases anteriores: o provedor do SQLite não
+ordena nem compara `DateTimeOffset`, e por isso a listagem de mensagens da pasta (a tela
+principal), o registro de auditoria, a limpeza de cache e a fila de saída quebravam na
+primeira execução. A fila de saída é a mais grave: o modo offline inteiro depende dela.
+Nenhuma tinha teste contra o banco real. Ver D-022.
 
 Distribuição: Domain 185, Application 259, Infrastructure 94, Presentation 114, Persistence 33.
 

@@ -136,12 +136,12 @@ global, porque o mesmo contato pode legitimamente existir em duas contas.
 `RuleActions`, `SavedSearches`, `Signatures`, `MessageTemplates`, `AppSettings`,
 `AuditLog`.
 
-## Ordenação por data
+## Ordenação e comparação por data
 
-Nenhuma consulta em LINQ ordena diretamente por uma coluna `DateTimeOffset`: o provedor do
-SQLite recusa e lança em tempo de execução. A ordenação passa por
-`SqliteFunctions.DateTimeText(...)`, traduzida para o `datetime()` do SQLite, com desempate
-por `Id`. Ver D-022.
+Nenhuma consulta em LINQ ordena nem compara diretamente uma coluna `DateTimeOffset`: o
+provedor do SQLite recusa as duas coisas, e a quebra só aparece em tempo de execução. Ambas
+passam por `SqliteFunctions.JulianDay(...)`, traduzida para o `julianday()` do SQLite, com
+desempate por `Id` na ordenação. Ver D-022.
 
 ## Busca offline
 

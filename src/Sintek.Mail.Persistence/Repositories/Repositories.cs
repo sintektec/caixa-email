@@ -201,8 +201,8 @@ public sealed class MessageRepository : IMessageRepository
         Guid folderId, CancellationToken cancellationToken = default)
         => await _context.Messages
             .Where(m => m.FolderId == folderId && !m.IsDeleted)
-            // datetime() e desempate por Id: ver SqliteFunctions.
-            .OrderByDescending(m => SqliteFunctions.DateTimeText(m.ReceivedAt))
+            // julianday() e desempate por Id: ver SqliteFunctions.
+            .OrderByDescending(m => SqliteFunctions.JulianDay(m.ReceivedAt))
             .ThenByDescending(m => m.Id)
             .Select(m => m.Id)
             .ToListAsync(cancellationToken)
@@ -279,7 +279,8 @@ public sealed class MessageRepository : IMessageRepository
                 && m.SyncState == MessageSyncState.Synced
                 && m.Body != null
                 && m.Body.DownloadedAt != null
-                && m.Body.DownloadedAt < downloadedBefore)
+                && SqliteFunctions.JulianDay(m.Body.DownloadedAt.Value)
+                    < SqliteFunctions.JulianDay(downloadedBefore))
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
@@ -318,7 +319,10 @@ public sealed class OutboxRepository : IOutboxRepository
         => await _context.OutboxOperations
             .Where(o => o.AccountId == accountId
                 && (o.Status == OutboxOperationStatus.Pending || o.Status == OutboxOperationStatus.Failed)
-                && (o.NextAttemptAt == null || o.NextAttemptAt <= now))
+                // A comparação passa pelo julianday() pelo mesmo motivo da ordenação:
+                // o provedor não traduz comparação de DateTimeOffset. Ver SqliteFunctions.
+                && (o.NextAttemptAt == null
+                    || SqliteFunctions.JulianDay(o.NextAttemptAt.Value) <= SqliteFunctions.JulianDay(now)))
             // A ordem de sequência é o que garante que "mover" seja aplicado antes de
             // "marcar como lida", e não o contrário.
             .OrderBy(o => o.Sequence)
@@ -564,7 +568,7 @@ public sealed class AuditLogRepository : IAuditLogRepository
     public async Task<IReadOnlyList<AuditLogEntry>> ListRecentAsync(
         int limit, CancellationToken cancellationToken = default)
         => await _context.AuditLog
-            .OrderByDescending(e => SqliteFunctions.DateTimeText(e.OccurredAt))
+            .OrderByDescending(e => SqliteFunctions.JulianDay(e.OccurredAt))
             .ThenByDescending(e => e.Id)
             .Take(limit)
             .ToListAsync(cancellationToken)
@@ -597,7 +601,7 @@ public sealed class RecipientHistoryRepository : IRecipientHistoryRepository
         Guid accountId, int limit, CancellationToken cancellationToken = default)
         => await _context.RecipientHistory
             .Where(h => h.AccountId == accountId)
-            .OrderByDescending(h => SqliteFunctions.DateTimeText(h.LastUsedAt))
+            .OrderByDescending(h => SqliteFunctions.JulianDay(h.LastUsedAt))
             .ThenByDescending(h => h.UseCount)
             .Take(Math.Max(limit, 1))
             .ToListAsync(cancellationToken)
@@ -608,7 +612,7 @@ public sealed class RecipientHistoryRepository : IRecipientHistoryRepository
         Guid accountId, CancellationToken cancellationToken = default)
         => await _context.RecipientHistory
             .Where(h => h.AccountId == accountId)
-            .OrderByDescending(h => SqliteFunctions.DateTimeText(h.LastUsedAt))
+            .OrderByDescending(h => SqliteFunctions.JulianDay(h.LastUsedAt))
             .ThenByDescending(h => h.UseCount)
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);

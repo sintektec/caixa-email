@@ -460,27 +460,33 @@ legítima por definição).
 
 ---
 
-## D-022 — Consultas ordenam data pelo `datetime()` do SQLite (2026-08-05)
+## D-022 — Consultas ordenam e comparam data pelo `julianday()` do SQLite (2026-08-05)
 
 **Status:** aceita
 
-**Decisão:** Toda consulta em LINQ que ordena por tempo passa por
-`SqliteFunctions.DateTimeText(...)`, mapeada para a função `datetime()` embutida do SQLite,
-com desempate por `Id`. Ordenar diretamente pela propriedade `DateTimeOffset` é proibido.
+**Decisão:** Toda consulta em LINQ que ordena ou compara tempo passa por
+`SqliteFunctions.JulianDay(...)`, mapeada para a função `julianday()` embutida do SQLite,
+com desempate por `Id` na ordenação. Ordenar ou comparar diretamente uma propriedade
+`DateTimeOffset` é proibido.
 
-**Motivo:** O provedor do SQLite recusa `ORDER BY` sobre `DateTimeOffset` e lança em tempo
-de execução. A recusa é legítima: o EF grava o tipo como texto preservando o fuso original,
-e a ordem lexicográfica desse texto não é a cronológica quando duas linhas têm fusos
-diferentes — o que acontece de verdade, porque o cabeçalho `Date` da RFC 5322 traz o
-deslocamento de quem enviou. `datetime()` normaliza em UTC dentro do banco, que é o que o
-`Fts5SearchService` já fazia no SQL manual.
+**Motivo:** O provedor do SQLite recusa as duas coisas — `ORDER BY` lança
+`NotSupportedException`, e `<=` nem chega a traduzir. A recusa é legítima: o EF grava o tipo
+como texto preservando o fuso original, e a ordem lexicográfica desse texto não é a
+cronológica quando duas linhas têm fusos diferentes — o que acontece de verdade, porque o
+cabeçalho `Date` da RFC 5322 traz o deslocamento de quem enviou. `julianday()` interpreta o
+texto com o fuso declarado e devolve um número, que serve para ordenar e para comparar; é o
+mesmo princípio que o `Fts5SearchService` já aplicava com `datetime()` no SQL manual.
 
-**Consequências:** `datetime()` trunca em segundos, daí o desempate por `Id` — que é GUID
-v7 e portanto ordenado no tempo. A alternativa de gravar as datas já normalizadas em UTC foi
+**Consequências:** quatro consultas estavam quebradas desde a fase 1 e ninguém percebeu,
+porque nenhuma tinha teste contra o banco real — a listagem de mensagens da pasta, o
+registro de auditoria, a limpeza de cache e a fila de saída, que nunca drenaria. Todas agora
+têm teste em `DateOrderingTests`. A alternativa de gravar as datas já normalizadas em UTC foi
 descartada por trocar o formato de todas as colunas de data por um ganho que esta solução já
 entrega.
 
 **Alternativas rejeitadas:** converter o armazenamento para UTC (migração de todas as
 colunas de data, e perde o deslocamento original que a D-001 escolheu preservar); ordenar em
 memória (a listagem de uma pasta não tem teto); ordenar por `Id` (é a ordem de criação
-local, não a de recebimento — mensagem antiga sincronizada depois apareceria no topo).
+local, não a de recebimento — mensagem antiga sincronizada depois apareceria no topo);
+`datetime()` em vez de `julianday()` (devolve texto, que resolve a ordenação e deixa a
+comparação de fora — e comparar texto dependeria de o provedor traduzir `string.Compare`).
