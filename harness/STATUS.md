@@ -10,8 +10,8 @@
 
 ## Marco atual
 
-**569 testes verdes no núcleo multiplataforma** (169 → 272 → 336 → 426 → 441 → 478 → 485
-→ 530 → 535 → 569 ao longo das fases).
+**587 testes verdes no núcleo multiplataforma** (169 → 272 → 336 → 426 → 441 → 478 → 485
+→ 530 → 535 → 569 → 584 → 587 ao longo das dez fases).
 
 A fase 7 entregou a filtragem local inteira: `RuleEvaluator` puro no Domain (campos,
 operadores e combinação E/OU da seção 6.5), `ApplyArrivalRulesHandler` aplicando bloqueio
@@ -31,7 +31,13 @@ auditoria antes de eles saírem, com provedor, tarefa e tamanho, nunca conteúdo
 provedores falam a API no formato OpenAI: local via runtime na máquina, nuvem com a chave
 vinda do cofre. Recursos: resumo, sugestão de resposta e reescrita no compositor.
 
-Distribuição: Domain 161, Application 207, Infrastructure 94, Presentation 84, Persistence 23.
+As fases 9 e 10 fecharam o roadmap: envio agendado sobre o `NextAttemptAt` que a fila já
+respeitava, confirmação de leitura com pergunta antes de enviar, agrupamento por conversa,
+atalhos do Outlook, limpeza de cache em duas etapas, pipeline de release com assinatura
+por segredo, `.appinstaller` para atualização automática, instalador sem pacote e
+`docs/implantacao.md`. O CONDSTORE, pendente desde a fase 3, também entrou.
+
+Distribuição: Domain 161, Application 222, Infrastructure 94, Presentation 87, Persistence 23.
 
 > **Atenção:** houve troca de implementação em 04/08/2026 (ver `DECISIONS.md`, D-007). O que
 > este arquivo descrevia antes daquela data pertencia à versão anterior, que foi substituída.

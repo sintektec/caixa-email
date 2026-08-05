@@ -372,3 +372,41 @@ que é a razão de ser do produto); consentimento por conta (o diretório já ag
 que compartilham política, e duplicar a decisão por conta convidaria à divergência);
 registrar o envio depois da chamada (perderia exatamente o caso que importa — a chamada
 que saiu e falhou no meio).
+
+---
+
+## D-018 — Envio agendado sobre a fila, não sobre um relógio novo (2026-08-05)
+
+**Status:** aceita
+
+**Decisão:** Agendar um envio é enfileirar a operação com `NextAttemptAt` na data
+escolhida. Não há temporizador, tabela de agendamentos nem serviço de despertar.
+
+**Motivo:** A fila já decide o que está elegível comparando `NextAttemptAt` com o relógio,
+e o laço de sincronização já a consulta periodicamente. Um segundo mecanismo de espera
+teria de ser mantido em sincronia com o primeiro — e a experiência com este tipo de
+duplicação é que as duas versões divergem na primeira mudança de comportamento.
+
+**Consequências:** a precisão do envio agendado é a do intervalo de sincronização, não a
+do segundo. Para "enviar amanhã às 8h" isso é indiferente; para "enviar em 30 segundos"
+seria ruim, mas esse caso não existe no produto.
+
+---
+
+## D-019 — Confirmação de leitura é sempre perguntada (2026-08-05)
+
+**Status:** aceita
+
+**Decisão:** Mensagem com `Disposition-Notification-To` faz aparecer uma faixa com
+"Enviar confirmação" e "Não enviar". Nenhuma confirmação sai sem o clique. A decisão —
+qualquer uma das duas — fica gravada em `Message.ReadReceiptHandled`.
+
+**Motivo:** O cabeçalho é um pedido, não uma ordem. Enviar automaticamente entregaria ao
+remetente a informação de que a mensagem foi aberta, que é exatamente o que um remetente
+hostil quer confirmar — endereço vivo, pessoa que abre o que recebe. Gravar a recusa
+importa pelo mesmo motivo que gravar o aceite: repetir a pergunta a cada abertura trataria
+o "não" como um "ainda não".
+
+**Alternativas rejeitadas:** enviar sempre (entrega o sinal ao atacante); nunca enviar
+(quebra o fluxo legítimo de confirmação de recebimento em contrato e cobrança); preferência
+global ligada por padrão (a decisão varia por mensagem, não por instalação).
