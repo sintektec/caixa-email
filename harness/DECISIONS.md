@@ -1058,3 +1058,60 @@ primeira execução.
 (`Agendar_CredencialRecusada_SaiDoCicloAteReautenticar`) e nenhum para a volta. Meia regra
 verificada passa por regra inteira — o nome do teste até citava a reautenticação que não
 acontecia.
+
+---
+
+## D-041 — Conflito de concorrência é traduzido na fronteira e tratado no clique
+
+**Data:** 2026-08-06
+**Contexto:** `DbUpdateConcurrencyException` sem tratamento derrubando a aplicação ao abrir
+uma mensagem.
+
+Não há token de concorrência em nenhuma entidade, então "esperava 1 linha, afetou 0" quer
+dizer **a linha não existe mais**. E a janela é larga: o painel de leitura carrega a mensagem,
+gasta segundos na rede conectando e baixando o corpo, e só então grava. Nesse intervalo o laço
+de sincronização — escopo próprio, outro contexto — escreve e remove nas mesmas linhas.
+
+**Decisão:** `UnitOfWork.SaveChangesAsync` traduz para `ConcurrentModificationException`, da
+camada de Aplicação, preservando a original como `InnerException`. O download de corpo a
+captura e devolve `DownloadBodyResult`.
+
+**Por que traduzir, e não capturar o tipo do EF:** a Aplicação não referencia o EF Core, e não
+deve. Capturar lá exigiria a referência; capturar só na App perderia o tratamento nos casos de
+uso.
+
+**Por que não repetir a gravação automaticamente:** a linha foi removida, não alterada. Repetir
+recriaria a mensagem que a sincronização acabou de apagar, ressuscitando no cliente o que já
+não existe no servidor. O usuário reabre; a lista já estará correta.
+
+---
+
+## D-042 — UID que o servidor desconhece se corrige, não se apaga
+
+**Data:** 2026-08-06
+
+Dois enganos vinham do mesmo lugar: tratar "este UID não está no servidor" como prova de que a
+mensagem sumiu.
+
+**O primeiro é perda de dados.** `ReconcileDeletionsAsync` apagava a linha. Mas as linhas
+corrompidas por D-037 — que receberam UID carimbado de outra pasta — são exatamente as que
+essa pergunta condena, e a mensagem delas está no servidor, inteira. A reconciliação já baixa
+todos os cabeçalhos: passou a perguntar também pelo `Message-ID` e, achando, **corrige o UID**.
+
+**O segundo é a cura que eu havia prometido e não existia.** Afirmei que os bancos corrompidos
+se curariam na sincronização seguinte. **Falso.** A leitura incremental parte de
+`Folder.LastSeenUid` e busca só o que está acima dele; linha antiga nunca é revisitada, e
+`UpsertAsync` — onde a correção por `Message-ID` mora — nunca roda para ela. O corpo falharia
+para sempre.
+
+**Decisão:** quando o servidor responde que não conhece o UID, `DownloadMessageContentHandler`
+chama `Folder.RequestFullReread` — zera o marcador incremental. A próxima passada lê a pasta
+inteira e `UpsertAsync` reconhece cada mensagem pelo `Message-ID` dentro da pasta, corrigindo
+o UID sem duplicar nada.
+
+**Por que ali:** é o único ponto do sistema com prova de que o marcador não corresponde ao
+servidor. Varrer tudo periodicamente custaria uma enumeração completa por pasta por ciclo,
+que é justamente o que a leitura incremental existe para evitar.
+
+**O texto ao usuário deixou de anunciar exclusão.** Dizer "foi apagada ou movida" quando o
+caso comum é UID errado é pior do que não explicar: a pessoa para de procurar.

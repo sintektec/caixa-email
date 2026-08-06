@@ -297,6 +297,29 @@ public sealed class Folder : Entity
         return invalidated;
     }
 
+    /// <summary>
+    /// Manda a próxima sincronização reler a pasta desde o começo.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A leitura incremental parte de <see cref="LastSeenUid"/> e busca só o que está acima
+    /// dele — é o que a torna barata, e é também o que a impede de consertar o que já está
+    /// gravado. Linha antiga com UID errado nunca é revisitada, então não se corrige sozinha:
+    /// o corpo dela falha para sempre, e a única pista é o servidor dizer que não conhece
+    /// aquele UID.
+    /// </para>
+    /// <para>
+    /// Zerar o marcador transforma a próxima passada em leitura completa. Ela não duplica
+    /// nada — <c>UpsertAsync</c> reconhece cada mensagem pelo <c>Message-ID</c> dentro da
+    /// pasta e corrige o UID em vez de inserir de novo (D-042).
+    /// </para>
+    /// </remarks>
+    public void RequestFullReread(DateTimeOffset now)
+    {
+        LastSeenUid = null;
+        Touch(now);
+    }
+
     /// <summary>Define a posição manual na árvore.</summary>
     public void SetSortOrder(int sortOrder, DateTimeOffset now)
     {

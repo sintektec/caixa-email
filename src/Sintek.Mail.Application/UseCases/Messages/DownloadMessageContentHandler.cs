@@ -145,14 +145,20 @@ public sealed class DownloadMessageContentHandler
         if (fetched is null)
         {
             // Nulo aqui quer dizer uma coisa só: o servidor respondeu e não achou o UID na
-            // pasta. Falha de rede vem como exceção, tratada acima. Dizer "verifique a
-            // conexão" neste caso manda o usuário procurar defeito onde não há — a conexão
-            // funcionou, e foi ela que trouxe a resposta negativa.
+            // pasta. Falha de rede vem como exceção, tratada acima.
+            //
+            // Isso é prova de que o marcador desta pasta não corresponde ao servidor, e a
+            // leitura incremental jamais descobriria sozinha: ela parte do último UID visto
+            // e nunca revisita linha antiga. Pedir releitura completa é o que dá à próxima
+            // sincronização a chance de corrigir — reconhecendo cada mensagem pelo
+            // Message-ID dentro da pasta, sem duplicar nada (D-042).
+            folder.RequestFullReread(_timeProvider.GetUtcNow());
+            await SaveQuietlyAsync(cancellationToken).ConfigureAwait(false);
+
             return new DownloadBodyResult(
                 false,
-                "Esta mensagem não está mais na pasta do servidor. "
-                    + "Ela pode ter sido apagada ou movida por outro programa. "
-                    + "Sincronize a conta para atualizar a lista.");
+                "O conteúdo desta mensagem não foi encontrado no servidor. "
+                    + "A pasta será relida na próxima sincronização; tente de novo em seguida.");
         }
 
         var now = _timeProvider.GetUtcNow();
@@ -195,7 +201,28 @@ public sealed class DownloadMessageContentHandler
                 meta.IsInline));
         }
 
-        await _unitOfWork.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await _unitOfWork.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (ConcurrentModificationException ex)
+        {
+            // Entre carregar a mensagem e chegar aqui houve uma ida à rede — conectar e
+            // baixar o corpo, segundos —, e nesse intervalo o laço de sincronização escreve
+            // nas mesmas linhas, em escopo próprio. Se ele removeu a mensagem, a gravação
+            // encontra zero linhas.
+            //
+            // Vira resultado exibível, nunca exceção: o caminho sai de um clique, e a
+            // exceção subia pelo manipulador `async void` da seleção e derrubava a
+            // aplicação (D-041).
+            _logger.LogWarning(
+                ex, "A mensagem {MessageId} mudou durante o download do corpo.", message.Id);
+
+            return new DownloadBodyResult(
+                false,
+                "Esta mensagem foi alterada pela sincronização enquanto era aberta. "
+                    + "Abra-a novamente.");
+        }
 
         // O convite entra na agenda ao abrir a mensagem — é quando o corpo desce, e é o
         // momento em que o usuário espera vê-lo lá. Falha na importação não derruba o
@@ -291,6 +318,27 @@ public sealed class DownloadMessageContentHandler
             "Anexo {AttachmentId} da mensagem {MessageId} baixado.", attachment.Id, message.Id);
 
         return new DownloadBodyResult(true, null);
+    }
+
+    /// <summary>
+    /// Grava sem deixar a falha da gravação virar a falha do usuário.
+    /// </summary>
+    /// <remarks>
+    /// Usado para efeitos secundários — pedir releitura de uma pasta, por exemplo. O que o
+    /// usuário pediu foi abrir a mensagem, e ele já vai receber a explicação do que houve;
+    /// deixar um conflito de concorrência nesta gravação sobrepor aquela explicação trocaria
+    /// uma resposta útil por outra sem relação com o que ele fez.
+    /// </remarks>
+    private async Task SaveQuietlyAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _unitOfWork.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (ConcurrentModificationException ex)
+        {
+            _logger.LogDebug(ex, "Efeito secundário não gravado por conflito de concorrência.");
+        }
     }
 
     /// <summary>

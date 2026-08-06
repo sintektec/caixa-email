@@ -139,12 +139,19 @@ public class DownloadAndComposeHandlersTests
     /// Servidor que responde "não achei" não é falha de conexão, e não pode dizer que é.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// A conexão funcionou — foi ela que trouxe a resposta negativa. Mandar "verifique a
-    /// conexão" faz o usuário procurar defeito onde não há, e esconde o que de fato
-    /// aconteceu: a mensagem saiu da pasta, apagada ou movida por outro programa.
+    /// conexão" faz o usuário procurar defeito onde não há.
+    /// </para>
+    /// <para>
+    /// O texto também não afirma que a mensagem foi apagada, que era a primeira suposição e
+    /// estava errada: o caso comum é o UID local não corresponder ao do servidor, e aí a
+    /// mensagem está lá, inteira. Anunciar exclusão que não houve é pior que não explicar —
+    /// o usuário para de procurar (D-042).
+    /// </para>
     /// </remarks>
     [Fact]
-    public async Task BaixarCorpo_ServidorNaoAchaOUid_ExplicaQueSaiuDaPasta()
+    public async Task BaixarCorpo_ServidorNaoAchaOUid_NaoCulpaAConexaoNemAnunciaExclusao()
     {
         var (message, _) = ArrangeSyncedMessage();
         _imap.IsConnected.Returns(true);
@@ -155,8 +162,9 @@ public class DownloadAndComposeHandlersTests
         var result = await DownloadHandler().DownloadBodyAsync(message.Id);
 
         result.Succeeded.Should().BeFalse();
-        result.ErrorMessage.Should().Contain("não está mais na pasta do servidor");
         result.ErrorMessage.Should().NotContain("Verifique a conexão");
+        result.ErrorMessage.Should().NotContain("apagada");
+        result.ErrorMessage.Should().Contain("relida");
     }
 
     /// <summary>
@@ -180,6 +188,60 @@ public class DownloadAndComposeHandlersTests
 
         result.Succeeded.Should().BeFalse();
         result.ErrorMessage.Should().Contain("Verifique a conexão");
+    }
+
+    /// <summary>
+    /// UID desconhecido pelo servidor manda a pasta ser relida por inteiro.
+    /// </summary>
+    /// <remarks>
+    /// A leitura incremental parte do último UID visto e nunca revisita linha antiga: uma
+    /// linha com UID errado não se corrige sozinha, e o corpo dela falha para sempre. A
+    /// resposta negativa do servidor é a única prova de que o marcador da pasta não
+    /// corresponde — e é aqui que ela chega (D-042).
+    /// </remarks>
+    [Fact]
+    public async Task BaixarCorpo_ServidorNaoAchaOUid_PedeReleituraCompletaDaPasta()
+    {
+        var (message, folder) = ArrangeSyncedMessage();
+        _imap.IsConnected.Returns(true);
+
+        folder.UpdateSyncState(1, null, lastSeenUid: 900, Now);
+        folder.LastSeenUid.Should().Be(900, "o arranjo precisa partir de uma leitura incremental");
+
+        _imap.FetchBodyAsync("INBOX", 42, Arg.Any<CancellationToken>())
+            .Returns((FetchedBody?)null);
+
+        await DownloadHandler().DownloadBodyAsync(message.Id);
+
+        folder.LastSeenUid.Should().BeNull("a próxima passada precisa reler a pasta desde o começo");
+    }
+
+    /// <summary>
+    /// Mensagem removida pela sincronização durante o download não derruba a aplicação.
+    /// </summary>
+    /// <remarks>
+    /// Entre carregar a mensagem e gravar o corpo há uma ida à rede de vários segundos, e
+    /// nesse intervalo o laço de sincronização escreve nas mesmas linhas, em escopo próprio.
+    /// O conflito subia pelo manipulador <c>async void</c> da seleção de mensagem e fechava o
+    /// programa — o usuário via a janela sumir ao clicar num e-mail (D-041).
+    /// </remarks>
+    [Fact]
+    public async Task BaixarCorpo_LinhaRemovidaDuranteAGravacao_DevolveMotivoSemLancar()
+    {
+        var (message, _) = ArrangeSyncedMessage();
+        _imap.IsConnected.Returns(true);
+
+        _imap.FetchBodyAsync("INBOX", 42, Arg.Any<CancellationToken>())
+            .Returns(new FetchedBody { HtmlBody = "<p>Olá</p>", TextBody = "Olá" });
+
+        _unitOfWork.SaveChangesAsync(Arg.Any<CancellationToken>())
+            .Returns<int>(_ => throw new ConcurrentModificationException(
+                "O registro foi alterado ou removido por outra operação enquanto esta era feita."));
+
+        var result = await DownloadHandler().DownloadBodyAsync(message.Id);
+
+        result.Succeeded.Should().BeFalse();
+        result.ErrorMessage.Should().Contain("sincronização");
     }
 
     /// <summary>

@@ -17,8 +17,32 @@ public sealed class UnitOfWork : IUnitOfWork
     public UnitOfWork(MailDbContext context) => _context = context;
 
     /// <inheritdoc />
-    public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
-        => _context.SaveChangesAsync(cancellationToken);
+    /// <remarks>
+    /// <para>
+    /// O conflito de concorrência é traduzido para <see cref="ConcurrentModificationException"/>
+    /// aqui, na fronteira. A camada de Aplicação precisa tratá-lo — o painel de leitura passa
+    /// segundos na rede entre carregar a mensagem e gravar o corpo, e o laço de sincronização
+    /// escreve nas mesmas linhas nesse intervalo — e ela não conhece o EF Core, nem deve.
+    /// </para>
+    /// <para>
+    /// A tradução preserva a exceção original como <c>InnerException</c>: o diagnóstico
+    /// completo continua disponível em log, e o que sobe é um tipo que a Aplicação sabe
+    /// nomear.
+    /// </para>
+    /// </remarks>
+    public async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await _context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            throw new ConcurrentModificationException(
+                "O registro foi alterado ou removido por outra operação enquanto esta era feita.",
+                ex);
+        }
+    }
 
     /// <inheritdoc />
     public async Task<TResult> ExecuteInTransactionAsync<TResult>(

@@ -251,6 +251,46 @@ public class MessageSyncServiceTests
         _messages.Received(1).Remove(removida);
     }
 
+    /// <summary>
+    /// UID local errado não autoriza exclusão: a mensagem está no servidor, com outro número.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A reconciliação perguntava só "este UID está no servidor?", e essa pergunta confunde
+    /// duas coisas muito diferentes: <b>a mensagem saiu</b> e <b>o nosso número está errado</b>.
+    /// O custo dos dois enganos não é simétrico — deixar uma linha velha incomoda, apagar
+    /// correspondência que existe é perda.
+    /// </para>
+    /// <para>
+    /// E era um risco concreto, não teórico: as linhas que receberam UID carimbado de outra
+    /// pasta (D-037) são exatamente as que a pergunta antiga condenaria. A segunda pergunta,
+    /// pelo <c>Message-ID</c>, corrige o UID em vez de apagar — e é o único caminho de cura
+    /// dessas linhas, porque a leitura incremental nunca as revisita (D-042).
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task Sincronizar_UidLocalErrado_CorrigeEmVezDeApagar()
+    {
+        var inbox = Inbox();
+
+        // A linha carrega o UID de outra pasta; a mensagem está na INBOX com o UID 7.
+        var comUidErrado = Message.Create(AccountId, inbox.Id, "<7@servidor>", Now, Now, Now);
+        comUidErrado.SetRemoteIdentity(4242, null, Now);
+        comUidErrado.MarkSynced(Now);
+
+        _messages.ListUidsByFolderAsync(inbox.Id, Arg.Any<CancellationToken>()).Returns(new long[] { 4242 });
+        _messages.GetByUidAsync(inbox.Id, 4242, Arg.Any<CancellationToken>()).Returns(comUidErrado);
+
+        // Uma local, zero no servidor com aquele UID — mas o Message-ID está lá, no UID 7.
+        ArrangeServer(new FolderSyncState(1, null, 8, 0, 0), Header(7));
+
+        var result = await CreateService().SyncFolderAsync(inbox);
+
+        _messages.DidNotReceive().Remove(Arg.Any<Message>());
+        result.RemovedRemotely.Should().Be(0);
+        comUidErrado.Uid.Should().Be(7, "o UID do servidor é o que vale");
+    }
+
     [Fact]
     public async Task Sincronizar_MensagemComAlteracaoPendente_NaoERemovidaPelaReconciliacao()
     {

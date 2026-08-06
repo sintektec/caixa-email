@@ -424,13 +424,21 @@ public sealed class MessageSyncService
             return 0;
         }
 
-        var remoteUids = (await _imapClient
-                .FetchHeadersAsync(folder.RemotePath, 0, int.MaxValue, cancellationToken).ConfigureAwait(false))
-            .Select(h => h.Uid)
-            .ToHashSet();
+        var remoteHeaders = await _imapClient
+            .FetchHeadersAsync(folder.RemotePath, 0, int.MaxValue, cancellationToken).ConfigureAwait(false);
+
+        var remoteUids = remoteHeaders.Select(h => h.Uid).ToHashSet();
+
+        // O Message-ID de cada cabeçalho, para a segunda pergunta. A primeira — "este UID
+        // está no servidor?" — não basta para autorizar exclusão: ela confunde "a mensagem
+        // saiu" com "o nosso UID está errado", e o custo dos dois enganos não é simétrico.
+        var remoteMessageIds = remoteHeaders
+            .GroupBy(h => h.MessageId, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.First().Uid, StringComparer.Ordinal);
 
         var now = _timeProvider.GetUtcNow();
         var removed = 0;
+        var repaired = 0;
 
         foreach (var uid in localUids.Where(uid => !remoteUids.Contains(uid)))
         {
@@ -441,8 +449,31 @@ public sealed class MessageSyncService
                 continue;
             }
 
+            // A mensagem continua no servidor, com outro UID: o que está errado é o nosso
+            // número, não a existência dela. Apagar aqui destruiria correspondência que
+            // existe — e foi o que quase aconteceu com as linhas cujo UID veio carimbado de
+            // outra pasta (D-037). Corrigir é o certo, e é também o único caminho de cura
+            // para esse defeito: a leitura incremental parte do último UID visto e nunca
+            // revisita as linhas antigas, então elas não se corrigiriam sozinhas (D-042).
+            if (remoteMessageIds.TryGetValue(message.MessageId, out var actualUid))
+            {
+                message.SetRemoteIdentity(actualUid, message.ModSeq, now);
+                message.MarkSynced(now);
+                repaired++;
+                continue;
+            }
+
             _messages.Remove(message);
             removed++;
+        }
+
+        if (repaired > 0)
+        {
+            _logger.LogInformation(
+                "{Repaired} mensagem(ns) da pasta '{RemotePath}' tiveram o UID corrigido.",
+                repaired, folder.RemotePath);
+
+            await _unitOfWork.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }
 
         if (removed > 0)
