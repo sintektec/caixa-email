@@ -198,6 +198,14 @@ de que falta configurar — não com erro de autenticação.
 - **Google Cloud** — Client ID no `appsettings.json`; o Client secret fica no
   `appsettings.Local.json`, fora do controle de versão.
 
+**O certificado de assinatura ganhou um segundo motivo.** Ele não serve mais só para
+distribuir o MSIX: o **Smart App Control** do Windows 11 recusa executar binário sem
+assinatura de CA reconhecida, e isso inclui todo build local. Na máquina de validação a
+interface compilou sem erro e não pôde ser executada — "Uma política de Controle de
+Aplicativo bloqueou este arquivo". A saída local é desligar o Smart App Control, que é
+irreversível sem reinstalar o Windows; certificado autoassinado não resolve, porque ele não
+honra raiz confiada localmente. Registrado no README.
+
 Continua pendente, e agora é o único item externo além do certificado: **a verificação de
 editor no Entra ID**. Cosmética para uso no domínio próprio — só um aviso de "aplicativo não
 verificado" no consentimento. Passa a ser bloqueio real se o MSIX for distribuído a outras

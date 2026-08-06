@@ -81,6 +81,24 @@ Windows App SDK trazem os alvos de MSBuild, e é por isso que o job do CI usa ap
 Confira o que já existe na máquina com `dotnet --info`. Se ele responder *"No .NET SDKs were
 found"*, nenhum SDK está instalado — o `dotnet` que existe é só o runtime, ou nem isso.
 
+> **O Smart App Control impede executar o que você acabou de compilar.** Ele vem ligado em
+> Windows 11 recém-instalado e recusa binário sem assinatura de CA reconhecida e sem
+> reputação na nuvem — que é a definição de todo build local. A mensagem é *"Uma política de
+> Controle de Aplicativo bloqueou este arquivo"*, e ela aparece **depois** de a compilação
+> concluir sem erro, o que faz parecer defeito do projeto.
+>
+> Para saber se é ele:
+>
+> ```powershell
+> Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\CI\Policy' -Name VerifiedAndReputablePolicyState
+> ```
+>
+> `1` é ligado e impondo. A única saída local é desligá-lo em *Windows Security → Controle de
+> aplicativos e navegador*, e **isso é irreversível** — só volta a ligar reinstalando o
+> Windows. Ele não aceita exclusão por arquivo nem por pasta, e **certificado autoassinado
+> não ajuda**: ele não honra raiz confiada localmente, só CA do Microsoft Trusted Root
+> Program. Quem prefere manter a proteção compila noutra máquina ou numa máquina virtual.
+
 O núcleo compila em qualquer sistema operacional; a interface exige Windows.
 
 ```bash
