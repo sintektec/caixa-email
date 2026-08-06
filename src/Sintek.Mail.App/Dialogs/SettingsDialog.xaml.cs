@@ -63,6 +63,9 @@ public sealed partial class SettingsDialog : ContentDialog
     private async void OnToggleAccountClick(object sender, RoutedEventArgs e)
         => await ViewModel.ToggleSelectedAccountAsync().ConfigureAwait(true);
 
+    private async void OnSaveSyncIntervalClick(object sender, RoutedEventArgs e)
+        => await ViewModel.SaveSyncIntervalAsync().ConfigureAwait(true);
+
     private async void OnPrepareRemovalClick(object sender, RoutedEventArgs e)
         => await ViewModel.PrepareRemovalAsync().ConfigureAwait(true);
 

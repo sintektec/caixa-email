@@ -103,6 +103,29 @@
 
         <!-- Remoção em duas etapas: o impacto é medido e exibido antes da confirmação -->
         <StackPanel Grid.Row="3" Spacing="8">
+            <!--
+                Intervalo por conta. O campo existe no banco desde a fase 1 e não tinha tela:
+                toda conta ficava presa ao padrão de cinco minutos. Fica junto da conta
+                selecionada, e não nas preferências gerais, porque é por conta que ele vale —
+                uma caixa corporativa movimentada e um endereço pessoal não pedem a mesma
+                frequência.
+            -->
+            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <NumberBox Header="Sincronizar a cada (minutos)"
+                           Minimum="1"
+                           Maximum="1440"
+                           SpinButtonPlacementMode="Compact"
+                           Width="220"
+                           Value="{x:Bind ViewModel.SelectedAccount.SyncIntervalValue, Mode=TwoWay}"
+                           IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}"
+                           AutomationProperties.Name="Intervalo de sincronização automática, em minutos" />
+
+                <Button Content="Salvar intervalo"
+                        Click="OnSaveSyncIntervalClick"
+                        VerticalAlignment="Bottom"
+                        IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}" />
+            </StackPanel>
+
             <StackPanel Orientation="Horizontal" Spacing="8">
                 <Button Content="Ativar ou desativar"
                         Click="OnToggleAccountClick"

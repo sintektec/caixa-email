@@ -105,6 +105,14 @@ public sealed partial class NavigationNode : ObservableObject
     [ObservableProperty]
     private string _syncError = string.Empty;
 
+    /// <summary>Instante da última sincronização bem-sucedida, nos nós de conta.</summary>
+    /// <remarks>
+    /// Já estava gravado em <c>Account.LastSyncAt</c> desde a fase 3 e nunca chegou à tela.
+    /// Sem ele, "conectado" não distingue conta sincronizada agora de conta parada desde
+    /// ontem — e é essa diferença que o usuário quer quando desconfia que algo não chega.
+    /// </remarks>
+    public DateTimeOffset? LastSyncAt { get; init; }
+
     /// <summary>Nós filhos.</summary>
     public ObservableCollection<NavigationNode> Children { get; } = [];
 

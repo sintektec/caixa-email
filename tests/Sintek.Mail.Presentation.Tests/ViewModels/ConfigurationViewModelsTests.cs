@@ -312,7 +312,77 @@ public class ConfigurationViewModelsTests
         item.StatusDescription.Should().Contain("reautenticar");
     }
 
-    private async Task<AccountsViewModel> ArrangeAccountsWithSelectionAsync()
+    // ----- Intervalo de sincronização por conta ---------------------------------------
+
+    /// <summary>
+    /// O intervalo gravado chega à tela.
+    /// </summary>
+    /// <remarks>
+    /// O campo existe no banco desde a fase 1 e nunca teve interface: toda conta ficava presa
+    /// ao padrão de cinco minutos, e a única forma de mudar era editar o banco à mão.
+    /// </remarks>
+    [Fact]
+    public async Task CarregarContas_TrazOIntervaloGravado()
+    {
+        var viewModel = await ArrangeAccountsWithSelectionAsync(syncIntervalMinutes: 20);
+
+        viewModel.Accounts[0].SyncIntervalMinutes.Should().Be(20);
+        viewModel.Accounts[0].SyncIntervalValue.Should().Be(20d);
+    }
+
+    /// <summary>
+    /// O valor vindo do <c>NumberBox</c> é limitado antes de virar minutos.
+    /// </summary>
+    /// <remarks>
+    /// Zero ou negativo faria <c>ConfigureSync</c> lançar, e intervalo muito curto rende
+    /// bloqueio temporário no provedor. O <c>NumberBox</c> também entrega <c>double</c>, e o
+    /// usuário pode digitar fração.
+    /// </remarks>
+    [Theory]
+    [InlineData(0d, AccountListItemViewModel.MinimumInterval)]
+    [InlineData(-5d, AccountListItemViewModel.MinimumInterval)]
+    [InlineData(7.6d, 8)]
+    [InlineData(99999d, AccountListItemViewModel.MaximumInterval)]
+    public void DefinirIntervalo_ValorForaDaFaixa_ELimitado(double digitado, int esperado)
+    {
+        var item = new AccountListItemViewModel
+        {
+            AccountId = Guid.CreateVersion7(),
+            EmailAddress = "contato@sintek.com.br",
+            DisplayName = "Contato",
+            DomainName = "sintek.com.br",
+            ImapHost = "imap.sintek.com.br",
+            SmtpHost = "smtp.sintek.com.br",
+            AuthenticationType = AuthenticationType.Password,
+        };
+
+        item.SyncIntervalValue = digitado;
+
+        item.SyncIntervalMinutes.Should().Be(esperado);
+    }
+
+    /// <summary>Salvar o intervalo persiste o valor escolhido.</summary>
+    [Fact]
+    public async Task SalvarIntervalo_ContaSelecionada_GravaOValor()
+    {
+        var viewModel = await ArrangeAccountsWithSelectionAsync();
+        viewModel.SelectedAccount!.SyncIntervalValue = 30d;
+
+        await viewModel.SaveSyncIntervalAsync();
+
+        viewModel.StatusMessage.Should().Contain("30");
+    }
+
+    /// <summary>
+    /// Ligar e desligar a conta não pode apagar o intervalo configurado.
+    /// </summary>
+    /// <remarks>
+    /// <c>UpdateAccountCommand</c> reescreve a conta inteira, e o que ele não traz vira o
+    /// padrão do registro — cinco minutos. Omitir o intervalo ali devolvia toda conta ao
+    /// padrão por ter sido desativada e reativada, apagando a configuração sem avisar (D-045).
+    /// </remarks>
+    [Fact]
+    public async Task AtivarOuDesativar_PreservaOIntervaloConfigurado()
     {
         var directory = DomainDirectory.Create(EmailDomain.Parse("sintek.com.br"), Now);
         var account = Account.Create(
@@ -321,6 +391,36 @@ public class ConfigurationViewModelsTests
         account.ConfigureServers(
             "imap.sintek.com.br", 993, SecureSocketMode.SslOnConnect,
             "smtp.sintek.com.br", 587, SecureSocketMode.StartTls, Now);
+
+        account.ConfigureSync(45, BodyDownloadPolicy.RecentOnly, Now);
+
+        _directories.ListAsync(Arg.Any<CancellationToken>()).Returns(new[] { directory });
+        _accounts.ListByDomainAsync(directory.Id, Arg.Any<CancellationToken>()).Returns(new[] { account });
+        _accounts.GetByIdAsync(account.Id, Arg.Any<CancellationToken>()).Returns(account);
+
+        var viewModel = AccountsList();
+        await viewModel.LoadAsync();
+        viewModel.SelectedAccount = viewModel.Accounts[0];
+
+        // Desativar dispensa o teste de conexão, então o caso de uso roda até o fim.
+        await viewModel.ToggleSelectedAccountAsync();
+
+        account.SyncIntervalMinutes.Should().Be(
+            45, "desativar uma conta não é motivo para esquecer o intervalo escolhido");
+    }
+
+    private async Task<AccountsViewModel> ArrangeAccountsWithSelectionAsync(
+        int syncIntervalMinutes = 5)
+    {
+        var directory = DomainDirectory.Create(EmailDomain.Parse("sintek.com.br"), Now);
+        var account = Account.Create(
+            directory.Id, EmailAddress.Parse("contato@sintek.com.br"), "Contato", Now);
+
+        account.ConfigureServers(
+            "imap.sintek.com.br", 993, SecureSocketMode.SslOnConnect,
+            "smtp.sintek.com.br", 587, SecureSocketMode.StartTls, Now);
+
+        account.ConfigureSync(syncIntervalMinutes, BodyDownloadPolicy.RecentOnly, Now);
 
         _directories.ListAsync(Arg.Any<CancellationToken>()).Returns(new[] { directory });
         _accounts.ListByDomainAsync(directory.Id, Arg.Any<CancellationToken>()).Returns(new[] { account });

@@ -1115,3 +1115,70 @@ que é justamente o que a leitura incremental existe para evitar.
 
 **O texto ao usuário deixou de anunciar exclusão.** Dizer "foi apagada ou movida" quando o
 caso comum é UID errado é pior do que não explicar: a pessoa para de procurar.
+
+---
+
+## D-043 — Recarga da árvore não recusa uma sincronização
+
+**Data:** 2026-08-06
+
+`SyncNowAsync` começava com `if (IsBusy) return;`, e `IsBusy` é o mesmo sinalizador que
+`LoadNavigationAsync` liga. Depois de D-038, o laço passou a mandar a árvore recarregar a cada
+volta — e essas recargas ficaram frequentes.
+
+Resultado: **clicar em sincronizar durante uma recarga não fazia nada e não avisava nada.** O
+pior desfecho possível para um botão: o usuário conclui, com razão, que o programa está
+quebrado.
+
+**Decisão:** guarda própria (`IsSyncing`), e o comando expõe `CanExecute`. Botão desabilitado
+comunica "já estou fazendo"; botão habilitado que ignora o clique comunica outra coisa.
+
+**Por que separar:** recarregar a árvore lê o banco; sincronizar conversa com o servidor. Uma
+não é motivo para recusar a outra, e tratá-las como a mesma "ocupação" foi o erro.
+
+---
+
+## D-044 — Estado da interface é copiado antes do `await`, não relido depois
+
+**Data:** 2026-08-06
+
+`OnMessageSelectionChanged` verificava `SelectedMessage` no início e lia
+`SelectedMessage.MessageId` **depois de dois `await`**. `ConfigureAwait(true)` devolve a
+continuação à thread da interface, mas não impede que a interface tenha andado enquanto se
+esperava — e o que anda ali é a própria seleção: basta a lista recarregar, e ela recarrega,
+porque o laço manda recarregar a cada volta desde D-038.
+
+O sintoma foi `NullReferenceException` em manipulador `async void`: **a aplicação fechava**,
+ao clicar numa mensagem enquanto a caixa sincronizava — que é o momento mais comum de se
+clicar numa mensagem.
+
+**Decisão:** copiar o identificador antes do primeiro `await` e usar a cópia até o fim.
+
+**Varredura feita:** os demais pontos que releem estado volátil após `await`
+(`MessageList.FolderId`, `Shell.SelectedNode`, `Reading.MessageId`) usam padrão seguro para
+nulo e no máximo leem valor velho. Só este tinha acesso direto depois de uma verificação
+envelhecida, e só ele derrubava.
+
+---
+
+## D-045 — Comando que reescreve a entidade inteira precisa trazer tudo
+
+**Data:** 2026-08-06
+
+`UpdateAccountCommand` tem valores padrão em todas as propriedades, e o caso de uso aplica o
+comando por completo. `ToggleSelectedAccountAsync` montava o comando com quatro campos, e o
+`SyncIntervalMinutes` ausente virava o padrão do registro — **cinco minutos**.
+
+Consequência: ativar e desativar uma conta apagava o intervalo configurado, em silêncio.
+Ninguém notaria: o valor não estava em tela nenhuma até esta rodada.
+
+**Decisão:** o comando de alternância passa o intervalo da conta. E o intervalo ganhou tela,
+por conta, na lista de contas das configurações — é por conta que ele vale, e uma caixa
+corporativa movimentada não pede a mesma frequência de um endereço pessoal.
+
+**O piso é um minuto e o teto um dia.** Zero faria `ConfigureSync` lançar; valores muito
+curtos rendem bloqueio temporário no provedor.
+
+**Lição mais geral:** comando com padrão em toda propriedade parece conveniente e transforma
+omissão em sobrescrita. Onde ele existir, quem monta precisa trazer o estado inteiro — ou o
+padrão vira a decisão.

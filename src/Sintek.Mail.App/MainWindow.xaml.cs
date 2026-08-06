@@ -262,20 +262,38 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// Carrega no painel de leitura a mensagem que <b>estava</b> selecionada ao entrar aqui.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// O identificador é copiado antes do primeiro <c>await</c>, e é essa cópia que vale até
+    /// o fim. Reler <c>SelectedMessage</c> depois de esperar é ler outra coisa:
+    /// <c>ConfigureAwait(true)</c> devolve a continuação à thread da interface, mas não impede
+    /// que a interface tenha andado enquanto se esperava — e o que anda aqui é a própria
+    /// seleção. Basta a lista ser recarregada, e ela é: o laço de sincronização manda
+    /// recarregar a cada volta desde D-038, o que esvazia a coleção e zera a seleção.
+    /// </para>
+    /// <para>
+    /// O sintoma era <c>NullReferenceException</c> em <c>SelectedMessage.MessageId</c>, em um
+    /// manipulador <c>async void</c> — ou seja, <b>a aplicação fechava</b>, e fechava por
+    /// clicar numa mensagem enquanto a caixa sincronizava, que é o momento mais comum de se
+    /// clicar numa mensagem (D-044).
+    /// </para>
+    /// </remarks>
     private async void OnMessageSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (MessageList.SelectedMessage is null)
+        if (MessageList.SelectedMessage?.MessageId is not { } messageId)
         {
             return;
         }
 
-        await Reading.LoadMessageAsync(MessageList.SelectedMessage.MessageId).ConfigureAwait(true);
+        await Reading.LoadMessageAsync(messageId).ConfigureAwait(true);
         await RenderBodyAsync().ConfigureAwait(true);
 
         if (Shell.SelectedNode?.AccountId is { } accountId)
         {
-            await Assistant.InitializeAsync(accountId, MessageList.SelectedMessage.MessageId)
-                .ConfigureAwait(true);
+            await Assistant.InitializeAsync(accountId, messageId).ConfigureAwait(true);
         }
     }
 

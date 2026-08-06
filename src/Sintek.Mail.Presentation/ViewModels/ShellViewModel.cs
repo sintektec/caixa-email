@@ -34,10 +34,18 @@ public enum ConnectivityState
 /// </summary>
 public sealed partial class ShellViewModel : ScopedViewModel
 {
-    public ShellViewModel(IServiceScopeFactory scopes)
+    /// <remarks>
+    /// O relógio é singleton e entra por construtor como os demais ViewModels o recebem.
+    /// Serve só para descrever há quanto tempo foi a última sincronização — cálculo de
+    /// apresentação, que precisa ser verificável sem esperar o tempo passar.
+    /// </remarks>
+    public ShellViewModel(IServiceScopeFactory scopes, TimeProvider timeProvider)
         : base(scopes)
     {
+        _timeProvider = timeProvider;
     }
+
+    private readonly TimeProvider _timeProvider;
 
     /// <summary>Raízes da árvore de navegação.</summary>
     public ObservableCollection<NavigationNode> NavigationRoots { get; } = [];
@@ -61,6 +69,27 @@ public sealed partial class ShellViewModel : ScopedViewModel
     /// <summary>Se há operação em andamento.</summary>
     [ObservableProperty]
     private bool _isBusy;
+
+    /// <summary>
+    /// Se uma sincronização manual está em curso.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Separado de <see cref="IsBusy"/> de propósito, e isso é a correção de um defeito. O
+    /// botão de sincronizar desistia quando <c>IsBusy</c> estivesse ligado — e
+    /// <c>LoadNavigationAsync</c> liga o mesmo sinalizador. Depois que o laço de sincronização
+    /// passou a mandar a árvore recarregar a cada volta (D-038), essas recargas ficaram
+    /// frequentes, e clicar em sincronizar durante uma delas **não fazia nada e não avisava
+    /// nada** — o pior desfecho possível para um botão (D-043).
+    /// </para>
+    /// <para>
+    /// Recarregar a árvore e sincronizar são operações diferentes, e uma não é motivo para
+    /// recusar a outra: a leitura do banco não impede a conversa com o servidor.
+    /// </para>
+    /// </remarks>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(SyncNowCommand))]
+    private bool _isSyncing;
 
     /// <summary>Monta a árvore a partir do banco local.</summary>
     /// <remarks>
@@ -190,11 +219,27 @@ public sealed partial class ShellViewModel : ScopedViewModel
             return;
         }
 
-        var problems = NavigationRoots
+        // Sincronização em curso tem a última palavra sobre o indicador. O laço manda a
+        // árvore recarregar a cada volta, e sem esta guarda a recarga anunciaria "em dia" no
+        // meio de uma sincronização que ainda está correndo.
+        if (IsSyncing)
+        {
+            return;
+        }
+
+        var accounts = NavigationRoots
             .SelectMany(root => root.Children)
             .SelectMany(directory => directory.Children)
-            .Where(node => node.HasSyncProblem)
+            .Where(node => node.Kind == NavigationNodeKind.Account)
             .ToList();
+
+        var problems = accounts.Where(node => node.HasSyncProblem).ToList();
+
+        // A mais recente entre as contas: é a que responde "isto está funcionando?". A mais
+        // antiga responderia por uma conta desativada e assustaria à toa.
+        LastSyncDescription = DescribeLastSync(
+            accounts.Select(a => a.LastSyncAt).Where(d => d.HasValue).Max(),
+            _timeProvider.GetUtcNow());
 
         if (problems.Count == 0)
         {
@@ -245,6 +290,7 @@ public sealed partial class ShellViewModel : ScopedViewModel
             // existia no log de depuração.
             SyncStatus = account.SyncStatus,
             SyncError = account.LastSyncError ?? string.Empty,
+            LastSyncAt = account.LastSyncAt,
         };
 
         var folders = await folderRepository
@@ -467,15 +513,18 @@ public sealed partial class ShellViewModel : ScopedViewModel
     /// servidor de uma delas fora do ar não pode deixar o usuário sem a correspondência das
     /// outras. O estado exibido é o pior encontrado — é o que ele precisa notar.
     /// </remarks>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanSyncNow))]
     public async Task SyncNowAsync(CancellationToken cancellationToken = default)
     {
-        if (IsBusy)
+        // Só a própria sincronização impede outra. Recarga da árvore não é motivo: ela lê o
+        // banco, e isso não atrapalha conversar com o servidor. Antes o botão desistia com
+        // qualquer IsBusy ligado, calado, e o usuário via o clique não fazer nada (D-043).
+        if (IsSyncing)
         {
             return;
         }
 
-        IsBusy = true;
+        IsSyncing = true;
         Connectivity = ConnectivityState.Syncing;
         StatusMessage = null;
 
@@ -550,9 +599,16 @@ public sealed partial class ShellViewModel : ScopedViewModel
         }
         finally
         {
-            IsBusy = false;
+            IsSyncing = false;
         }
     }
+
+    /// <summary>O botão fica desabilitado enquanto a sincronização corre, e não inerte.</summary>
+    /// <remarks>
+    /// A diferença importa: botão desabilitado comunica "já estou fazendo"; botão habilitado
+    /// que ignora o clique comunica "este programa está quebrado".
+    /// </remarks>
+    private bool CanSyncNow() => !IsSyncing;
 
     /// <summary>
     /// Marca ou desmarca uma mensagem como spam.
@@ -632,12 +688,83 @@ public sealed partial class ShellViewModel : ScopedViewModel
     public string ConnectivityDescription => Connectivity switch
     {
         ConnectivityState.Offline => "Sem conexão. As alterações serão sincronizadas quando a internet voltar.",
-        ConnectivityState.Online => "Conectado e sincronizado.",
+        ConnectivityState.Online => LastSyncDescription,
         ConnectivityState.Syncing => "Sincronizando mensagens.",
         ConnectivityState.Error => "Houve um erro na última sincronização.",
         _ => string.Empty,
     };
 
+    /// <summary>
+    /// Glifo do botão de sincronizar, conforme o estado.
+    /// </summary>
+    /// <remarks>
+    /// O ícone era fixo, e só a dica mudava — para saber o que estava acontecendo era preciso
+    /// parar o mouse em cima. Uma sincronização de dois segundos ninguém pegava, e conta com
+    /// erro parecia igual a conta em dia. Estado que só existe na dica é estado que ninguém lê.
+    /// </remarks>
+    public string ConnectivityIcon => Connectivity switch
+    {
+        // Sync, SyncFolder, Error e Cloud offline, nesta ordem. Escapes, e não o caractere
+        // literal: são da área de uso privado, e uma ferramenta que reescreva o arquivo os
+        // perde em silêncio.
+        ConnectivityState.Syncing => "\uE895",
+        ConnectivityState.Error => "\uE783",
+        ConnectivityState.Offline => "\uEB5E",
+        _ => "\uE895",
+    };
+
+    /// <summary>Quando foi a última sincronização bem-sucedida, em texto.</summary>
+    /// <remarks>
+    /// O instante já estava gravado em <c>Account.LastSyncAt</c> desde a fase 3 e nunca
+    /// chegou à tela. Sem ele, "conectado" não distingue uma conta sincronizada agora de uma
+    /// parada desde ontem — e é justamente essa diferença que o usuário quer saber quando
+    /// desconfia que algo não está chegando.
+    /// </remarks>
+    [ObservableProperty]
+    private string _lastSyncDescription = "Ainda não sincronizado nesta sessão.";
+
     partial void OnConnectivityChanged(ConnectivityState value)
+    {
+        OnPropertyChanged(nameof(ConnectivityDescription));
+        OnPropertyChanged(nameof(ConnectivityIcon));
+    }
+
+    partial void OnLastSyncDescriptionChanged(string value)
         => OnPropertyChanged(nameof(ConnectivityDescription));
+
+    /// <summary>
+    /// Converte o instante da última sincronização em algo que se lê de relance.
+    /// </summary>
+    /// <remarks>
+    /// Texto relativo, e não um carimbo: "há 3 minutos" responde a pergunta que a pessoa tem
+    /// ("isto está funcionando?"), enquanto "22:41" a obriga a olhar o relógio e subtrair. A
+    /// hora absoluta entra só quando a distância deixa de ser útil.
+    /// </remarks>
+    internal static string DescribeLastSync(DateTimeOffset? lastSyncAt, DateTimeOffset now)
+    {
+        if (lastSyncAt is not { } instant)
+        {
+            return "Nenhuma conta sincronizou ainda.";
+        }
+
+        var elapsed = now - instant;
+
+        // Relógio para trás — fuso, NTP, hibernação — não pode virar "há -4 minutos".
+        if (elapsed < TimeSpan.Zero || elapsed < TimeSpan.FromSeconds(90))
+        {
+            return "Sincronizado agora há pouco.";
+        }
+
+        if (elapsed < TimeSpan.FromHours(1))
+        {
+            return $"Sincronizado há {(int)elapsed.TotalMinutes} minuto(s).";
+        }
+
+        if (elapsed < TimeSpan.FromDays(1))
+        {
+            return $"Sincronizado há {(int)elapsed.TotalHours} hora(s).";
+        }
+
+        return "Sincronizado há mais de um dia. Verifique as contas.";
+    }
 }

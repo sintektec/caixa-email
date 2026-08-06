@@ -43,7 +43,8 @@ public class ShellSyncVisibilityTests
             .With(_folders)
             .With(_savedSearches)
             .With(_outbox)
-            .Build());
+            .Build(),
+        new FixedClock(Now));
 
     /// <summary>Deixa uma conta no diretório, com o estado de sincronização pedido.</summary>
     private Account ArrangeAccount(
@@ -168,4 +169,113 @@ public class ShellSyncVisibilityTests
 
         shell.StatusMessage.Should().Be("A mensagem não pertence ao domínio da pasta.");
     }
+    /// <summary>
+    /// Recarga da árvore não pode impedir o clique em sincronizar.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// O comando desistia com <c>IsBusy</c> ligado, e <c>LoadNavigationAsync</c> liga o mesmo
+    /// sinalizador. Depois que o laço passou a mandar a árvore recarregar a cada volta
+    /// (D-038), essas recargas ficaram frequentes — e clicar em sincronizar durante uma delas
+    /// não fazia nada e não avisava nada. O usuário concluía, com razão, que o botão estava
+    /// quebrado (D-043).
+    /// </para>
+    /// <para>
+    /// São operações diferentes: ler o banco não impede conversar com o servidor.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void SincronizarAgora_ComRecargaDaArvoreEmCurso_ContinuaHabilitado()
+    {
+        var shell = CreateShell();
+
+        shell.IsBusy = true;
+
+        shell.SyncNowCommand.CanExecute(null).Should().BeTrue(
+            "recarregar a árvore não é motivo para recusar sincronizar");
+    }
+
+    /// <summary>Sincronização em curso desabilita o botão, em vez de o deixar inerte.</summary>
+    /// <remarks>
+    /// Botão desabilitado comunica "já estou fazendo"; botão habilitado que ignora o clique
+    /// comunica "este programa está quebrado".
+    /// </remarks>
+    [Fact]
+    public void SincronizarAgora_JaSincronizando_DesabilitaOBotao()
+    {
+        var shell = CreateShell();
+
+        shell.IsSyncing = true;
+
+        shell.SyncNowCommand.CanExecute(null).Should().BeFalse();
+    }
+
+    // ----- Texto da última sincronização ----------------------------------------------
+
+    /// <summary>
+    /// O instante da última sincronização vira texto que se lê de relance.
+    /// </summary>
+    /// <remarks>
+    /// "há 3 minutos" responde a pergunta que a pessoa tem — "isto está funcionando?" —,
+    /// enquanto um carimbo de hora a obriga a olhar o relógio e subtrair.
+    /// </remarks>
+    [Theory]
+    [InlineData(0, "agora há pouco")]
+    [InlineData(10, "10 minuto")]
+    [InlineData(180, "3 hora")]
+    [InlineData(3000, "mais de um dia")]
+    public void DescreverUltimaSincronizacao_PorDistancia_EscolheAUnidadeUtil(
+        int minutosAtras, string esperado)
+    {
+        var texto = ShellViewModel.DescribeLastSync(Now.AddMinutes(-minutosAtras), Now);
+
+        texto.Should().Contain(esperado);
+    }
+
+    /// <summary>
+    /// Relógio para trás não vira "há -4 minutos".
+    /// </summary>
+    /// <remarks>
+    /// Fuso, NTP e hibernação movem o relógio do sistema para trás de verdade, e a subtração
+    /// fica negativa. É o mesmo cuidado que <c>SyncSchedule</c> já toma.
+    /// </remarks>
+    [Fact]
+    public void DescreverUltimaSincronizacao_RelogioParaTras_NaoProduzTempoNegativo()
+    {
+        var texto = ShellViewModel.DescribeLastSync(Now.AddMinutes(30), Now);
+
+        texto.Should().NotContain("-");
+        texto.Should().Contain("agora há pouco");
+    }
+
+    [Fact]
+    public void DescreverUltimaSincronizacao_NenhumaContaSincronizou_DizIsso()
+        => ShellViewModel.DescribeLastSync(null, Now).Should().Contain("Nenhuma conta");
+
+    /// <summary>O ícone do botão muda com o estado, e não só a dica.</summary>
+    /// <remarks>
+    /// Estado que só existe na dica é estado que ninguém lê: exige parar o mouse em cima, e
+    /// uma sincronização de dois segundos ninguém pega.
+    /// </remarks>
+    [Fact]
+    public void IconeDeConectividade_MudaComOEstado()
+    {
+        var shell = CreateShell();
+        var vistos = new List<string>();
+
+        foreach (var estado in Enum.GetValues<ConnectivityState>())
+        {
+            shell.Connectivity = estado;
+            vistos.Add(shell.ConnectivityIcon);
+        }
+
+        vistos.Should().OnlyContain(g => !string.IsNullOrEmpty(g), "todo estado precisa de glifo");
+        vistos.Distinct().Should().HaveCountGreaterThan(1, "senão o ícone não comunica nada");
+    }
+}
+
+/// <summary>Relógio fixo, para o texto de "sincronizado há X" ser verificável.</summary>
+internal sealed class FixedClock(DateTimeOffset now) : TimeProvider
+{
+    public override DateTimeOffset GetUtcNow() => now;
 }

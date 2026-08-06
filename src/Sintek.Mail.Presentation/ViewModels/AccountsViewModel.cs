@@ -46,6 +46,47 @@ public sealed partial class AccountListItemViewModel : ObservableObject
     [ObservableProperty]
     private string? _lastSyncError;
 
+    /// <summary>Intervalo entre sincronizações automáticas, em minutos.</summary>
+    /// <remarks>
+    /// O campo existe no banco desde a fase 1 e nunca teve tela. Sem ela, todas as contas
+    /// ficavam presas ao padrão de cinco minutos, e a única forma de mudar era editar o banco.
+    /// </remarks>
+    [ObservableProperty]
+    private int _syncIntervalMinutes = 5;
+
+    /// <summary>
+    /// O mesmo intervalo, em <see cref="double"/>, para ligar ao <c>NumberBox</c>.
+    /// </summary>
+    /// <remarks>
+    /// <c>NumberBox.Value</c> é <c>double</c>, e ligar uma propriedade <c>int</c> de duas vias
+    /// a ele faz o compilador de XAML recusar a conversão. A conversão fica explícita aqui,
+    /// como já acontece em <c>AccountSetupViewModel.ImapPortValue</c>.
+    /// </remarks>
+    public double SyncIntervalValue
+    {
+        get => SyncIntervalMinutes;
+        set => SyncIntervalMinutes = (int)Math.Clamp(Math.Round(value), MinimumInterval, MaximumInterval);
+    }
+
+    /// <summary>
+    /// Um minuto é o piso.
+    /// </summary>
+    /// <remarks>
+    /// Zero ou negativo faria <c>ConfigureSync</c> lançar, e valores muito curtos rendem
+    /// bloqueio temporário no provedor — o Gmail e o Outlook penalizam conexão em excesso.
+    /// </remarks>
+    public const int MinimumInterval = 1;
+
+    /// <summary>Um dia é o teto: acima disso, "automático" deixa de ser automático.</summary>
+    public const int MaximumInterval = 1440;
+
+    /// <summary>Instante da última sincronização bem-sucedida.</summary>
+    [ObservableProperty]
+    private DateTimeOffset? _lastSyncAt;
+
+    partial void OnSyncIntervalMinutesChanged(int value)
+        => OnPropertyChanged(nameof(SyncIntervalValue));
+
     /// <summary>
     /// Descrição textual do estado, para leitores de tela e para a coluna de situação.
     /// </summary>
@@ -159,6 +200,8 @@ public sealed partial class AccountsViewModel : ObservableObject
                         SyncStatus = account.SyncStatus,
                         IsActive = account.IsActive,
                         LastSyncError = account.LastSyncError,
+                        SyncIntervalMinutes = account.SyncIntervalMinutes,
+                        LastSyncAt = account.LastSyncAt,
                     });
                 }
             }
@@ -193,6 +236,11 @@ public sealed partial class AccountsViewModel : ObservableObject
                 SmtpHost = item.SmtpHost,
                 IsActive = desiredState,
                 TestBeforeSaving = desiredState,
+
+                // O comando reescreve a conta inteira, e o que ele não traz vira o padrão do
+                // registro. Omitir o intervalo aqui devolvia toda conta a cinco minutos por
+                // ter sido ligada e desligada — apagando a configuração sem avisar (D-045).
+                SyncIntervalMinutes = item.SyncIntervalMinutes,
             },
             cancellationToken).ConfigureAwait(true);
 
@@ -205,6 +253,46 @@ public sealed partial class AccountsViewModel : ObservableObject
         StatusMessage = null;
         item.IsActive = desiredState;
         item.SyncStatus = desiredState ? AccountSyncStatus.Online : AccountSyncStatus.Disabled;
+    }
+
+    /// <summary>
+    /// Grava o intervalo de sincronização da conta selecionada.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Sem teste de conexão: o usuário está ajustando com que frequência falar com um
+    /// servidor que já funciona, e exigir uma ida à rede aqui tornaria impossível reduzir a
+    /// frequência justamente quando o servidor está instável — que é quando mais se quer.
+    /// </para>
+    /// <para>
+    /// Gravar também devolve a conta ao ciclo (D-040), o que é o comportamento desejado:
+    /// quem mexeu no intervalo quer que ele passe a valer.
+    /// </para>
+    /// </remarks>
+    [RelayCommand]
+    public async Task SaveSyncIntervalAsync(CancellationToken cancellationToken = default)
+    {
+        if (SelectedAccount is not { } item)
+        {
+            return;
+        }
+
+        var result = await _update.HandleAsync(
+            new UpdateAccountCommand
+            {
+                AccountId = item.AccountId,
+                DisplayName = item.DisplayName,
+                ImapHost = item.ImapHost,
+                SmtpHost = item.SmtpHost,
+                IsActive = item.IsActive,
+                SyncIntervalMinutes = item.SyncIntervalMinutes,
+                TestBeforeSaving = false,
+            },
+            cancellationToken).ConfigureAwait(true);
+
+        StatusMessage = result.Succeeded
+            ? $"Intervalo de {item.DisplayName} definido em {item.SyncIntervalMinutes} minuto(s)."
+            : result.ErrorMessage;
     }
 
     /// <summary>Mede o que a remoção da conta selecionada levaria junto.</summary>

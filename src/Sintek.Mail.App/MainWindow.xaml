@@ -228,13 +228,19 @@
                 <!--
                     O indicador de estado tem rótulo de automação dinâmico: quem usa leitor
                     de tela precisa saber que está offline, e um ícone sozinho não comunica isso.
+
+                    O glifo também acompanha o estado. Era fixo, e só a dica mudava — para
+                    saber o que estava acontecendo era preciso parar o mouse em cima, e uma
+                    sincronização de dois segundos ninguém pegava. A dica traz a hora relativa
+                    da última sincronização, que é a pergunta real de quem desconfia que algo
+                    não está chegando.
                 -->
                 <Button x:Name="SyncButton"
                         Command="{x:Bind Shell.SyncNowCommand}"
                         AutomationProperties.Name="Sincronizar agora"
                         AutomationProperties.HelpText="{x:Bind Shell.ConnectivityDescription, Mode=OneWay}"
                         ToolTipService.ToolTip="{x:Bind Shell.ConnectivityDescription, Mode=OneWay}">
-                    <FontIcon Glyph="&#xE895;" FontSize="16" />
+                    <FontIcon Glyph="{x:Bind Shell.ConnectivityIcon, Mode=OneWay}" FontSize="16" />
                 </Button>
 
                 <Button x:Name="OutboxButton"
