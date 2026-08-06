@@ -12,16 +12,26 @@ servidor e os provedores em nuvem — também.
 
 ## Marco atual
 
-**1008 testes verdes no núcleo multiplataforma** (169 → 272 → 336 → 426 → 441 → 478 → 485
-→ 530 → 535 → 569 → 584 → 587 → 692 → 790 → 865 → 928 ao longo das catorze fases; 987 e depois
-1008 com os defeitos da primeira execução real).
+**1022 testes verdes no núcleo multiplataforma** (169 → 272 → 336 → 426 → 441 → 478 → 485
+→ 530 → 535 → 569 → 584 → 587 → 692 → 790 → 865 → 928 ao longo das catorze fases; 987, 1008 e
+1022 com os defeitos que a primeira execução real revelou).
 
 **A primeira execução real aconteceu**, em Windows 11, e é o marco que separa "compila e passa
 nos testes" de "roda". Ela encontrou o que catorze fases de teste não encontraram, porque os
 defeitos estavam onde não havia teste: na composição do contêiner, no encadeamento entre
-ViewModel e `WebView2`, e no estado de conexão de um cliente com escopo. Os quatro achados
-estão em D-034 a D-036 e no `CLAUDE.md`; o mais grave — um `DbContext` único para a execução
-inteira — existia desde a fase 1.
+ViewModel e `WebView2`, no estado de conexão de um cliente com escopo, na reconciliação de UID
+e no que a interface deixava de contar ao usuário. Os achados estão em **D-034 a D-042**.
+
+Três deles existiam desde a fase 1 ou 3 e nenhum teste os alcançava, porque todos eram de
+composição ou de integração entre camadas: o `DbContext` único para a execução inteira
+(D-034), a reconciliação por `Message-ID` na conta inteira — que no Gmail carimbava na linha
+da Caixa de Entrada o UID de um rótulo e impedia todo download de corpo (D-037) —, e a falha
+de sincronização gravada na conta que **ninguém lia** (D-038).
+
+Dois erros meus entraram na conta desta fase e ficam registrados: afirmei que os bancos
+corrompidos se curariam sozinhos sem verificar o caminho incremental, que nunca revisita linha
+antiga (corrigido em D-042); e atribuí a parada do CI a cota de Actions esgotada, hipótese que
+o dono verificou e descartou.
 
 A fase 7 entregou a filtragem local inteira: `RuleEvaluator` puro no Domain (campos,
 operadores e combinação E/OU da seção 6.5), `ApplyArrivalRulesHandler` aplicando bloqueio
@@ -234,16 +244,26 @@ entrada dos próprios usuários.
    ficaram em `queued` por mais de dezessete minutos sem nunca passar a `in_progress` —
    inclusive o de Linux, que costuma ser recolhido em segundos.
 
+3. Os jobs enfileirados são **cancelados** cerca de quinze minutos depois, com `runner_id: 0`
+   e `runner_name` vazio — nunca chegaram a receber uma máquina.
+
 O GitGuardian continua rodando e passando, então os webhooks estão vivos e o problema não é de
-entrega de evento. Fila aceita mais runner que não recolhe, nos dois sistemas operacionais ao
-mesmo tempo, é o quadro de **limite de gasto ou minutos incluídos esgotados** na conta — em
-repositório privado, o runner Windows consome 2× e este workflow tem job Windows mais
-empacotamento MSIX. Não é verificável pela API com as permissões da sessão: quem confirma é o
-dono da conta, em Settings → Billing → Actions.
+entrega de evento.
+
+**A hipótese de cota foi verificada e descartada.** O dono conferiu Settings → Billing →
+Actions em 2026-08-06 21:5x: **855 de 3.000 minutos** usados no mês, cobrança em zero, 0 de
+2 GB de armazenamento. Havia folga de sobra, e outros repositórios da conta consumiram Actions
+no mesmo período. O raciocínio que levou à hipótese — fila aceita, runner não recolhe, nos dois
+sistemas operacionais ao mesmo tempo — estava correto no sintoma e errado na causa.
+
+Sem cota esgotada, sem Actions desabilitado (o `workflow_dispatch` é aceito com 204) e sem
+falha de webhook, o que resta é indisponibilidade de runner do lado do GitHub. Não é acionável
+daqui: a conduta é redisparar periodicamente e seguir verificando o núcleo localmente.
 
 **Enquanto isso, a verificação do job `windows` está suspensa** — e é a única que alcança
-XAML, `x:Bind` e o compilador de marcação. O núcleo multiplataforma segue verificado
-localmente (1008 testes, Debug e Release).
+XAML, `x:Bind` e o compilador de marcação. Já são seis rodadas de alterações em XAML e no
+code-behind de `App` sem nenhuma compilação de marcação. O núcleo multiplataforma segue
+verificado localmente (1022 testes, Debug e Release).
 
 ## Notas
 
