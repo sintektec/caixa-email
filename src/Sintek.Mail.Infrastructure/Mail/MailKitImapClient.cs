@@ -26,6 +26,9 @@ public sealed class MailKitImapClient : Application.Abstractions.Mail.IImapClien
 
     private IMailFolder? _openFolder;
 
+    /// <summary>Cancela o IDLE em curso; nulo quando não há nenhum.</summary>
+    private CancellationTokenSource? _idle;
+
     public MailKitImapClient(MailKitAuthenticator authenticator, ILogger<MailKitImapClient> logger)
     {
         _authenticator = authenticator;
@@ -35,36 +38,75 @@ public sealed class MailKitImapClient : Application.Abstractions.Mail.IImapClien
     /// <inheritdoc />
     public bool IsConnected => _client.IsConnected && _client.IsAuthenticated;
 
+    /// <summary>
+    /// Toma a conexão para uma operação, interrompendo o IDLE se houver um em curso.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>O <c>ImapClient</c> do MailKit não aceita dois comandos ao mesmo tempo</b>, e a
+    /// segunda chamada morre com "The ImapClient is currently busy processing a command in
+    /// another thread". Neste aplicativo isso é rotina, não caso raro: o laço de
+    /// sincronização roda em segundo plano enquanto a pessoa clica numa mensagem, e as duas
+    /// coisas caem na mesma conexão. Pior, comandos intercalados deixam a pasta selecionada
+    /// incoerente, e aí um <c>FETCH</c> por UID falha com <c>MessageNotFoundException</c> —
+    /// um sintoma que não se parece nada com a causa.
+    /// </para>
+    /// <para>
+    /// <b>Serializar sozinho não bastaria.</b> O IDLE segura a conexão por até 29 minutos; um
+    /// clique atrás dele esperaria meia hora, que é o mesmo travamento com outro nome. Por
+    /// isso quem chega cancela o IDLE em curso antes de pedir a vez: o IDLE trata cancelamento
+    /// como fim normal, devolve o que já viu, e o agendador entra de novo na rodada seguinte.
+    /// </para>
+    /// </remarks>
+    private async Task<Guard> LockAsync(CancellationToken cancellationToken)
+    {
+        // Fora da ordem não funciona: pedir a vez antes de cancelar deixaria quem chega
+        // esperando o IDLE inteiro, que é justamente o que se quer evitar.
+        try
+        {
+            _idle?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // O IDLE terminou entre a leitura do campo e o cancelamento. Não há o que
+            // interromper, e é o resultado desejado de qualquer forma.
+        }
+
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        return new Guard(_gate);
+    }
+
+    /// <summary>Devolve a vez ao sair do escopo.</summary>
+    private readonly struct Guard(SemaphoreSlim gate) : IDisposable
+    {
+        public void Dispose() => gate.Release();
+    }
+
     /// <inheritdoc />
     public async Task<ConnectionTestResult> ConnectAsync(
         Account account, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(account);
 
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            if (IsConnected)
-            {
-                return ConnectionTestResult.Success();
-            }
+        using var guard = await LockAsync(cancellationToken).ConfigureAwait(false);
 
-            if (_client.IsConnected)
-            {
-                await _client.DisconnectAsync(quit: true, cancellationToken).ConfigureAwait(false);
-            }
-
-            return await _authenticator.ConnectImapAsync(_client, account, cancellationToken).ConfigureAwait(false);
-        }
-        finally
+        if (IsConnected)
         {
-            _gate.Release();
+            return ConnectionTestResult.Success();
         }
+
+        if (_client.IsConnected)
+        {
+            await _client.DisconnectAsync(quit: true, cancellationToken).ConfigureAwait(false);
+        }
+
+        return await _authenticator.ConnectImapAsync(_client, account, cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
     public async Task DisconnectAsync(CancellationToken cancellationToken = default)
     {
+        using var guard = await LockAsync(cancellationToken).ConfigureAwait(false);
         if (_client.IsConnected)
         {
             await _client.DisconnectAsync(quit: true, cancellationToken).ConfigureAwait(false);
@@ -76,6 +118,7 @@ public sealed class MailKitImapClient : Application.Abstractions.Mail.IImapClien
     /// <inheritdoc />
     public async Task<IReadOnlyList<RemoteFolder>> ListFoldersAsync(CancellationToken cancellationToken = default)
     {
+        using var guard = await LockAsync(cancellationToken).ConfigureAwait(false);
         EnsureConnected();
 
         var folders = new List<RemoteFolder>();
@@ -162,6 +205,7 @@ public sealed class MailKitImapClient : Application.Abstractions.Mail.IImapClien
     public async Task<FolderSyncState> OpenFolderAsync(
         string remotePath, CancellationToken cancellationToken = default)
     {
+        using var guard = await LockAsync(cancellationToken).ConfigureAwait(false);
         var folder = await OpenAsync(remotePath, cancellationToken).ConfigureAwait(false);
 
         return new FolderSyncState(
@@ -176,6 +220,7 @@ public sealed class MailKitImapClient : Application.Abstractions.Mail.IImapClien
     public async Task<IReadOnlyList<FetchedMessage>> FetchHeadersAsync(
         string remotePath, long sinceUid, int limit, CancellationToken cancellationToken = default)
     {
+        using var guard = await LockAsync(cancellationToken).ConfigureAwait(false);
         var folder = await OpenAsync(remotePath, cancellationToken).ConfigureAwait(false);
 
         // Busca por faixa de UID, não por índice: índices mudam quando qualquer mensagem
@@ -307,6 +352,7 @@ public sealed class MailKitImapClient : Application.Abstractions.Mail.IImapClien
     public async Task<IReadOnlyList<FetchedFlags>> FetchFlagChangesAsync(
         string remotePath, long sinceModSeq, CancellationToken cancellationToken = default)
     {
+        using var guard = await LockAsync(cancellationToken).ConfigureAwait(false);
         var folder = await OpenAsync(remotePath, cancellationToken).ConfigureAwait(false);
 
         // Servidor sem CONDSTORE não tem o que responder aqui. Devolver vazio deixa o
@@ -341,11 +387,27 @@ public sealed class MailKitImapClient : Application.Abstractions.Mail.IImapClien
     public async Task<FetchedBody?> FetchBodyAsync(
         string remotePath, long uid, CancellationToken cancellationToken = default)
     {
+        using var guard = await LockAsync(cancellationToken).ConfigureAwait(false);
         var folder = await OpenAsync(remotePath, cancellationToken).ConfigureAwait(false);
 
-        var message = await folder
-            .GetMessageAsync(new UniqueId((uint)uid), cancellationToken)
-            .ConfigureAwait(false);
+        MimeMessage? message;
+
+        try
+        {
+            message = await folder
+                .GetMessageAsync(new UniqueId((uint)uid), cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (MessageNotFoundException)
+        {
+            // A mensagem saiu do servidor entre a listagem e o download — apagada por outro
+            // cliente, movida, ou expurgada. É rotina em caixa compartilhada, não defeito, e
+            // derrubar a leitura por isso trocaria uma linha que sumiu por uma tela de erro.
+            _logger.LogInformation(
+                "A mensagem {Uid} não está mais em {RemotePath}.", uid, remotePath);
+
+            return null;
+        }
 
         if (message is null)
         {
@@ -416,6 +478,7 @@ public sealed class MailKitImapClient : Application.Abstractions.Mail.IImapClien
     public async Task<Stream?> FetchAttachmentAsync(
         string remotePath, long uid, string partSpecifier, CancellationToken cancellationToken = default)
     {
+        using var guard = await LockAsync(cancellationToken).ConfigureAwait(false);
         var folder = await OpenAsync(remotePath, cancellationToken).ConfigureAwait(false);
 
         var bodyPart = new BodyPartBasic(new ContentType("application", "octet-stream"), partSpecifier)
@@ -448,6 +511,7 @@ public sealed class MailKitImapClient : Application.Abstractions.Mail.IImapClien
         MessageFlagChange change,
         CancellationToken cancellationToken = default)
     {
+        using var guard = await LockAsync(cancellationToken).ConfigureAwait(false);
         ArgumentNullException.ThrowIfNull(uids);
 
         if (uids.Count == 0)
@@ -511,6 +575,7 @@ public sealed class MailKitImapClient : Application.Abstractions.Mail.IImapClien
         IReadOnlyCollection<long> uids,
         CancellationToken cancellationToken = default)
     {
+        using var guard = await LockAsync(cancellationToken).ConfigureAwait(false);
         ArgumentNullException.ThrowIfNull(uids);
 
         if (uids.Count == 0)
@@ -543,6 +608,7 @@ public sealed class MailKitImapClient : Application.Abstractions.Mail.IImapClien
         IReadOnlyCollection<long> uids,
         CancellationToken cancellationToken = default)
     {
+        using var guard = await LockAsync(cancellationToken).ConfigureAwait(false);
         ArgumentNullException.ThrowIfNull(uids);
 
         if (uids.Count == 0)
@@ -568,6 +634,7 @@ public sealed class MailKitImapClient : Application.Abstractions.Mail.IImapClien
     /// <inheritdoc />
     public async Task ExpungeAsync(string remotePath, CancellationToken cancellationToken = default)
     {
+        using var guard = await LockAsync(cancellationToken).ConfigureAwait(false);
         var folder = await OpenAsync(remotePath, cancellationToken).ConfigureAwait(false);
         await folder.ExpungeAsync(cancellationToken).ConfigureAwait(false);
     }
@@ -576,6 +643,7 @@ public sealed class MailKitImapClient : Application.Abstractions.Mail.IImapClien
     public async Task SetSubscriptionAsync(
         string remotePath, bool isSubscribed, CancellationToken cancellationToken = default)
     {
+        using var guard = await LockAsync(cancellationToken).ConfigureAwait(false);
         EnsureConnected();
 
         var folder = await _client.GetFolderAsync(remotePath, cancellationToken).ConfigureAwait(false);
@@ -602,6 +670,7 @@ public sealed class MailKitImapClient : Application.Abstractions.Mail.IImapClien
     public async Task<bool> WaitForChangesAsync(
         string remotePath, TimeSpan timeout, CancellationToken cancellationToken = default)
     {
+        using var guard = await LockAsync(cancellationToken).ConfigureAwait(false);
         EnsureConnected();
 
         if (!SupportsIdle)
@@ -623,20 +692,28 @@ public sealed class MailKitImapClient : Application.Abstractions.Mail.IImapClien
         // aviso que nunca viria.
         var effective = timeout > TimeSpan.FromMinutes(29) ? TimeSpan.FromMinutes(29) : timeout;
 
+        using var deadline = new CancellationTokenSource(effective);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+            deadline.Token, cancellationToken);
+
+        // Publicado para que qualquer operação que chegue possa encurtar esta espera. Sem
+        // isso, um clique na interface ficaria atrás de até 29 minutos de IDLE — que é o
+        // mesmo travamento que a serialização veio resolver, com outro nome.
+        _idle = linked;
+
         try
         {
-            using var deadline = new CancellationTokenSource(effective);
-            using var linked = CancellationTokenSource.CreateLinkedTokenSource(
-                deadline.Token, cancellationToken);
-
             await _client.IdleAsync(linked.Token, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            // Tempo esgotado é o fim normal de um IDLE, não erro.
+            // Fim normal de um IDLE: o tempo esgotou, ou alguém precisou da conexão. Nos dois
+            // casos o que já foi observado vale, e o agendador entra de novo na rodada
+            // seguinte.
         }
         finally
         {
+            _idle = null;
             folder.CountChanged -= OnCountChanged;
             folder.MessageFlagsChanged -= OnFlagsChanged;
         }
@@ -647,6 +724,7 @@ public sealed class MailKitImapClient : Application.Abstractions.Mail.IImapClien
     /// <inheritdoc />
     public async Task CreateFolderAsync(string remotePath, CancellationToken cancellationToken = default)
     {
+        using var guard = await LockAsync(cancellationToken).ConfigureAwait(false);
         EnsureConnected();
 
         var separator = _client.PersonalNamespaces[0].DirectorySeparator;
@@ -687,6 +765,7 @@ public sealed class MailKitImapClient : Application.Abstractions.Mail.IImapClien
     public async Task RenameFolderAsync(
         string remotePath, string newRemotePath, CancellationToken cancellationToken = default)
     {
+        using var guard = await LockAsync(cancellationToken).ConfigureAwait(false);
         EnsureConnected();
 
         var folder = await _client.GetFolderAsync(remotePath, cancellationToken).ConfigureAwait(false);
@@ -703,6 +782,7 @@ public sealed class MailKitImapClient : Application.Abstractions.Mail.IImapClien
     /// <inheritdoc />
     public async Task DeleteFolderAsync(string remotePath, CancellationToken cancellationToken = default)
     {
+        using var guard = await LockAsync(cancellationToken).ConfigureAwait(false);
         EnsureConnected();
 
         var folder = await _client.GetFolderAsync(remotePath, cancellationToken).ConfigureAwait(false);
@@ -713,6 +793,7 @@ public sealed class MailKitImapClient : Application.Abstractions.Mail.IImapClien
     public async Task<long?> AppendAsync(
         string remotePath, Stream messageStream, bool isDraft, CancellationToken cancellationToken = default)
     {
+        using var guard = await LockAsync(cancellationToken).ConfigureAwait(false);
         ArgumentNullException.ThrowIfNull(messageStream);
 
         EnsureConnected();

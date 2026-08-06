@@ -146,6 +146,16 @@ assistente segura um `Deferral` enquanto o teste roda, o que deixa Cancelar e Vo
 junto: sem o teto, a única saída é encerrar o processo. O `CancellationTokenSource` recebe o
 `TimeProvider`, para o teto ser verificável sem esperá-lo.
 
+**Toda operação do `MailKitImapClient` toma o `_gate`, e o IDLE cede a vez.** O `ImapClient`
+do MailKit não aceita dois comandos ao mesmo tempo, e aqui isso é rotina: o laço de
+sincronização roda enquanto a pessoa clica numa mensagem, na mesma conexão. O erro direto é
+"currently busy processing a command in another thread"; o indireto é pior — comandos
+intercalados deixam a pasta selecionada incoerente, e o `FETCH` por UID falha com
+`MessageNotFoundException`, sintoma que não se parece com a causa. Serializar sozinho não
+basta: o IDLE segura a conexão por até 29 minutos, então quem chega **cancela o IDLE em curso
+antes de pedir a vez** (`LockAsync`). Um `using var guard = await LockAsync(...)` a menos em
+qualquer método público reabre o defeito.
+
 **A fila de saída drena antes da leitura do servidor.** `SyncAccountHandler` conecta, drena
 e só então lê. Ler primeiro traria o estado antigo e desfaria localmente o que o usuário fez
 offline — o marcador voltaria atrás e a fila o refaria em seguida, um pisca-pisca que parece
