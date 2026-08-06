@@ -136,6 +136,53 @@ public class DownloadAndComposeHandlersTests
     }
 
     /// <summary>
+    /// Servidor que responde "não achei" não é falha de conexão, e não pode dizer que é.
+    /// </summary>
+    /// <remarks>
+    /// A conexão funcionou — foi ela que trouxe a resposta negativa. Mandar "verifique a
+    /// conexão" faz o usuário procurar defeito onde não há, e esconde o que de fato
+    /// aconteceu: a mensagem saiu da pasta, apagada ou movida por outro programa.
+    /// </remarks>
+    [Fact]
+    public async Task BaixarCorpo_ServidorNaoAchaOUid_ExplicaQueSaiuDaPasta()
+    {
+        var (message, _) = ArrangeSyncedMessage();
+        _imap.IsConnected.Returns(true);
+
+        _imap.FetchBodyAsync("INBOX", 42, Arg.Any<CancellationToken>())
+            .Returns((FetchedBody?)null);
+
+        var result = await DownloadHandler().DownloadBodyAsync(message.Id);
+
+        result.Succeeded.Should().BeFalse();
+        result.ErrorMessage.Should().Contain("não está mais na pasta do servidor");
+        result.ErrorMessage.Should().NotContain("Verifique a conexão");
+    }
+
+    /// <summary>
+    /// Falha de rede durante a busca vira mensagem exibível, nunca exceção.
+    /// </summary>
+    /// <remarks>
+    /// Conectar já era protegido; buscar não era. Rede que cai no meio do <c>FETCH</c> subia
+    /// pelo manipulador <c>async void</c> da seleção e derrubava a aplicação — um clique
+    /// fechando o programa.
+    /// </remarks>
+    [Fact]
+    public async Task BaixarCorpo_RedeCaiDuranteABusca_DevolveMotivoSemLancar()
+    {
+        var (message, _) = ArrangeSyncedMessage();
+        _imap.IsConnected.Returns(true);
+
+        _imap.FetchBodyAsync("INBOX", 42, Arg.Any<CancellationToken>())
+            .Returns<FetchedBody?>(_ => throw new IOException("conexão encerrada pelo servidor"));
+
+        var result = await DownloadHandler().DownloadBodyAsync(message.Id);
+
+        result.Succeeded.Should().BeFalse();
+        result.ErrorMessage.Should().Contain("Verifique a conexão");
+    }
+
+    /// <summary>
     /// Falha de conexão vira mensagem exibível, nunca exceção.
     /// </summary>
     /// <remarks>

@@ -121,14 +121,38 @@ public sealed class DownloadMessageContentHandler
             return new DownloadBodyResult(false, failure.ErrorMessage);
         }
 
-        var fetched = await _imapClient
-            .FetchBodyAsync(folder.RemotePath, message.Uid.Value, cancellationToken)
-            .ConfigureAwait(false);
+        FetchedBody? fetched;
+
+        try
+        {
+            fetched = await _imapClient
+                .FetchBodyAsync(folder.RemotePath, message.Uid.Value, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Conectar já era protegido; buscar não era. Rede que cai no meio do FETCH,
+            // servidor que derruba a sessão, tempo esgotado do MailKit — tudo isso vinha como
+            // exceção, subia pelo manipulador `async void` da seleção de mensagem e derrubava
+            // a aplicação. Um clique não pode fechar o programa.
+            _logger.LogWarning(
+                ex, "Falha ao baixar o corpo da mensagem {MessageId}.", message.Id);
+
+            return new DownloadBodyResult(
+                false, "Não foi possível baixar o conteúdo. Verifique a conexão e tente de novo.");
+        }
 
         if (fetched is null)
         {
+            // Nulo aqui quer dizer uma coisa só: o servidor respondeu e não achou o UID na
+            // pasta. Falha de rede vem como exceção, tratada acima. Dizer "verifique a
+            // conexão" neste caso manda o usuário procurar defeito onde não há — a conexão
+            // funcionou, e foi ela que trouxe a resposta negativa.
             return new DownloadBodyResult(
-                false, "Não foi possível baixar o conteúdo. Verifique a conexão e tente de novo.");
+                false,
+                "Esta mensagem não está mais na pasta do servidor. "
+                    + "Ela pode ter sido apagada ou movida por outro programa. "
+                    + "Sincronize a conta para atualizar a lista.");
         }
 
         var now = _timeProvider.GetUtcNow();
@@ -227,15 +251,34 @@ public sealed class DownloadMessageContentHandler
             return new DownloadBodyResult(false, failure.ErrorMessage);
         }
 
-        await using var content = await _imapClient
-            .FetchAttachmentAsync(folder.RemotePath, message.Uid.Value, attachment.PartSpecifier, cancellationToken)
-            .ConfigureAwait(false);
+        Stream? fetched;
 
-        if (content is null)
+        try
         {
+            fetched = await _imapClient
+                .FetchAttachmentAsync(
+                    folder.RemotePath, message.Uid.Value, attachment.PartSpecifier, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Mesmo motivo do corpo: este caminho sai de um clique, e exceção aqui sobe pelo
+            // manipulador `async void` e derruba a aplicação.
+            _logger.LogWarning(
+                ex, "Falha ao baixar o anexo {AttachmentId}.", attachment.Id);
+
             return new DownloadBodyResult(
                 false, "Não foi possível baixar o anexo. Verifique a conexão e tente de novo.");
         }
+
+        if (fetched is null)
+        {
+            return new DownloadBodyResult(
+                false,
+                "Esta mensagem não está mais na pasta do servidor, então o anexo não pode ser baixado.");
+        }
+
+        await using var content = fetched;
 
         var path = await _attachmentStore
             .SaveAsync(message.Id, attachment.Id, attachment.FileName, content, cancellationToken)
