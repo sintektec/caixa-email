@@ -123,6 +123,13 @@ até o manipulador `async void` do `ContentDialog` e **derruba a aplicação**. 
 não pode fechar o programa, e por isso o teste de conexão também tem uma captura geral: ele
 conversa com um servidor que o usuário digitou.
 
+**O cache de token do MSAL não cabe numa entrada do cofre.** Cada entrada do Gerenciador de
+Credenciais aceita 2560 bytes, e o caminho até lá inflava o valor **2,67 vezes**: Base64
+multiplica por 4/3 e a gravação em UTF-16 dobra. Por isso `ChunkedSecret` comprime antes e
+fatia o que sobrar. Não gravar quando não cabe é a saída que primeiro ocorre e é a pior: o
+consentimento funciona, o provedor confirma por e-mail que o aplicativo foi conectado, e na
+abertura seguinte ele sumiu — sem erro, sem relação aparente com nada.
+
 **Token conquistado se grava antes de arriscar o próximo.** No Entra o consentimento são duas
 idas — e-mail em `outlook.office.com`, agenda em `graph.microsoft.com` —, e a segunda abre
 outra janela de navegador, que é a que o usuário fecha porque já autorizou uma vez.

@@ -212,7 +212,11 @@ public sealed class MicrosoftOAuthProvider : IOAuthProvider
             await application.RemoveAsync(account).ConfigureAwait(false);
         }
 
-        await _credentials.DeleteSecretAsync(CacheKey(emailAddress), cancellationToken).ConfigureAwait(false);
+        // Pelo ChunkedSecret, e não pelo cofre direto: o cache ocupa várias entradas, e
+        // apagar só o cabeçalho deixaria as fatias para trás — tokens de uma conta removida
+        // sobrevivendo no Gerenciador de Credenciais.
+        await ChunkedSecret.DeleteAsync(_credentials, CacheKey(emailAddress), cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private async Task<IPublicClientApplication> GetApplicationAsync(
@@ -253,24 +257,32 @@ public sealed class MicrosoftOAuthProvider : IOAuthProvider
     {
         var key = CacheKey(emailAddress);
 
-        application.UserTokenCache.SetBeforeAccess(args =>
+        // As sobrecargas assíncronas existem e são as corretas aqui: as síncronas obrigariam
+        // a um `GetAwaiter().GetResult()` sobre uma chamada P/Invoke, e o MSAL dispara esses
+        // eventos na linha de execução de quem pediu o token — que neste aplicativo é a da
+        // interface.
+        application.UserTokenCache.SetBeforeAccessAsync(async args =>
         {
-            var stored = _credentials.GetSecretAsync(key).GetAwaiter().GetResult();
-            if (!string.IsNullOrEmpty(stored))
+            var stored = await ChunkedSecret.ReadAsync(_credentials, key).ConfigureAwait(false);
+
+            if (stored is { Length: > 0 })
             {
-                args.TokenCache.DeserializeMsalV3(Convert.FromBase64String(stored));
+                args.TokenCache.DeserializeMsalV3(stored);
             }
         });
 
-        application.UserTokenCache.SetAfterAccess(args =>
+        application.UserTokenCache.SetAfterAccessAsync(async args =>
         {
             if (!args.HasStateChanged)
             {
                 return;
             }
 
-            var serialized = Convert.ToBase64String(args.TokenCache.SerializeMsalV3());
-            _credentials.SetSecretAsync(key, serialized).GetAwaiter().GetResult();
+            // Comprimido e fatiado: o cache do MSAL não cabe numa entrada do Gerenciador de
+            // Credenciais, e o caminho até lá ainda o inflava 2,67 vezes. Ver ChunkedSecret.
+            await ChunkedSecret
+                .WriteAsync(_credentials, key, args.TokenCache.SerializeMsalV3())
+                .ConfigureAwait(false);
         });
     }
 
