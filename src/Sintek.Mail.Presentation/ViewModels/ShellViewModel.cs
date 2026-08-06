@@ -177,9 +177,15 @@ public sealed partial class ShellViewModel : ObservableObject
     private async Task<NavigationNode> BuildAccountNodeAsync(
         Account account, NavigationNode favorites, CancellationToken cancellationToken)
     {
+        // Mesma escolha do diretório: a descrição é o nome que a pessoa deu, e é o que ela
+        // procura na árvore. O endereço continua sendo o rótulo de reserva, porque conta sem
+        // descrição viraria linha em branco — e porque, quando a descrição repete em duas
+        // contas, é o endereço que desempata.
         var accountNode = new NavigationNode(
             NavigationNodeKind.Account,
-            account.EmailAddress.Value,
+            string.IsNullOrWhiteSpace(account.DisplayName)
+                ? account.EmailAddress.Value
+                : account.DisplayName,
             NavigationNode.AccountIcon)
         {
             EntityId = account.Id,
