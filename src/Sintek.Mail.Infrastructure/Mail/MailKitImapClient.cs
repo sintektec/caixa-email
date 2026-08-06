@@ -670,23 +670,6 @@ public sealed class MailKitImapClient : Application.Abstractions.Mail.IImapClien
     public async Task<bool> WaitForChangesAsync(
         string remotePath, TimeSpan timeout, CancellationToken cancellationToken = default)
     {
-        using var guard = await LockAsync(cancellationToken).ConfigureAwait(false);
-        EnsureConnected();
-
-        if (!SupportsIdle)
-        {
-            return false;
-        }
-
-        var folder = await OpenAsync(remotePath, cancellationToken).ConfigureAwait(false);
-        var changed = false;
-
-        void OnCountChanged(object? sender, EventArgs e) => changed = true;
-        void OnFlagsChanged(object? sender, MessageFlagsChangedEventArgs e) => changed = true;
-
-        folder.CountChanged += OnCountChanged;
-        folder.MessageFlagsChanged += OnFlagsChanged;
-
         // O teto de 29 minutos vem da RFC 2177: passado esse tempo, muitos servidores e
         // intermediários derrubam a conexão em silêncio, e o cliente ficaria esperando um
         // aviso que nunca viria.
@@ -696,29 +679,55 @@ public sealed class MailKitImapClient : Application.Abstractions.Mail.IImapClien
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(
             deadline.Token, cancellationToken);
 
-        // Publicado para que qualquer operação que chegue possa encurtar esta espera. Sem
-        // isso, um clique na interface ficaria atrás de até 29 minutos de IDLE — que é o
-        // mesmo travamento que a serialização veio resolver, com outro nome.
+        // Publicado **antes** de pedir a vez, e esta ordem é o ponto. Publicar depois deixa
+        // uma janela entre tomar o cadeado e anunciar a espera: quem chega ali encontra o
+        // campo nulo, não cancela nada, e fica atrás de até 29 minutos de IDLE — travamento
+        // com outro nome, e foi exatamente o que sobrou da primeira tentativa de conserto.
+        // Publicar antes é seguro porque cancelar uma espera que ainda não começou apenas
+        // faz o IDLE terminar assim que começar.
         _idle = linked;
 
         try
         {
-            await _client.IdleAsync(linked.Token, cancellationToken).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            // Fim normal de um IDLE: o tempo esgotou, ou alguém precisou da conexão. Nos dois
-            // casos o que já foi observado vale, e o agendador entra de novo na rodada
-            // seguinte.
+            using var guard = await LockAsync(cancellationToken).ConfigureAwait(false);
+            EnsureConnected();
+
+            if (!SupportsIdle)
+            {
+                return false;
+            }
+
+            var folder = await OpenAsync(remotePath, cancellationToken).ConfigureAwait(false);
+            var changed = false;
+
+            void OnCountChanged(object? sender, EventArgs e) => changed = true;
+            void OnFlagsChanged(object? sender, MessageFlagsChangedEventArgs e) => changed = true;
+
+            folder.CountChanged += OnCountChanged;
+            folder.MessageFlagsChanged += OnFlagsChanged;
+
+            try
+            {
+                await _client.IdleAsync(linked.Token, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                // Fim normal de um IDLE: o tempo esgotou, ou alguém precisou da conexão. Nos
+                // dois casos o que já foi observado vale, e o agendador entra de novo na
+                // rodada seguinte.
+            }
+            finally
+            {
+                folder.CountChanged -= OnCountChanged;
+                folder.MessageFlagsChanged -= OnFlagsChanged;
+            }
+
+            return changed;
         }
         finally
         {
             _idle = null;
-            folder.CountChanged -= OnCountChanged;
-            folder.MessageFlagsChanged -= OnFlagsChanged;
         }
-
-        return changed;
     }
 
     /// <inheritdoc />
