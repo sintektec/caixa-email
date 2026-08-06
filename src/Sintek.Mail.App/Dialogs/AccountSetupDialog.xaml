@@ -18,9 +18,29 @@
     <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="520">
         <StackPanel Spacing="12" Width="480">
 
-            <ProgressBar IsIndeterminate="True"
-                         Visibility="{x:Bind ViewModel.IsBusy, Mode=OneWay}"
-                         AutomationProperties.Name="Operação em andamento" />
+<!--
+                O botão de interromper vive aqui, no conteúdo, e não entre os botões do
+                diálogo. Enquanto um `Deferral` está pendente o `ContentDialog` desliga
+                Cancelar e Voltar, e um teste contra servidor lento deixava a tela sem saída
+                nenhuma — a única alternativa era encerrar o processo. Um botão do conteúdo
+                não passa por esse bloqueio.
+            -->
+            <Grid Visibility="{x:Bind ViewModel.IsBusy, Mode=OneWay}" ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <ProgressBar Grid.Column="0"
+                             VerticalAlignment="Center"
+                             IsIndeterminate="True"
+                             AutomationProperties.Name="Operação em andamento" />
+
+                <Button Grid.Column="1"
+                        Content="Interromper"
+                        Command="{x:Bind ViewModel.CancelRunningCommand}"
+                        AutomationProperties.Name="Interromper a operação em andamento" />
+            </Grid>
 
             <InfoBar IsOpen="{x:Bind ViewModel.HasStatusMessage, Mode=OneWay}"
                      Severity="Warning"

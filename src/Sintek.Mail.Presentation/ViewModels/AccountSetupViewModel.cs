@@ -319,6 +319,52 @@ public sealed partial class AccountSetupViewModel : ObservableObject
     [ObservableProperty]
     private bool _isBusy;
 
+    /// <summary>Cancela a operação em andamento; nulo quando não há nenhuma.</summary>
+    private CancellationTokenSource? _running;
+
+    /// <summary>
+    /// Interrompe a operação em andamento.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Existe porque os botões do diálogo não servem enquanto ela roda.</b> O
+    /// <c>ContentDialog</c> do WinUI desliga Cancelar e Voltar enquanto há um
+    /// <c>Deferral</c> pendente — e o assistente segura um durante todo o teste de conexão,
+    /// para o diálogo não fechar no meio e perder o que já foi preenchido. O resultado é que
+    /// um servidor lento deixava a tela sem saída nenhuma, e a única alternativa era encerrar
+    /// o processo. Aconteceu três vezes na validação manual.
+    /// </para>
+    /// <para>
+    /// Os tetos de espera do caso de uso continuam valendo, e são a rede de segurança para
+    /// quando ninguém está olhando. Este comando é o contrário: devolve a decisão a quem está
+    /// olhando e não quer esperar.
+    /// </para>
+    /// </remarks>
+    [RelayCommand]
+    public void CancelRunning()
+    {
+        // O `Cancel` dispara a continuação de quem espera, que devolve a mensagem e limpa o
+        // `IsBusy` no próprio `finally`. Mexer nele aqui competiria com essa limpeza.
+        _running?.Cancel();
+    }
+
+    /// <summary>
+    /// Prepara o cancelamento da operação que vai começar.
+    /// </summary>
+    private CancellationTokenSource BeginRunning(CancellationToken cancellationToken)
+    {
+        _running?.Dispose();
+        _running = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        return _running;
+    }
+
+    private void EndRunning()
+    {
+        _running?.Dispose();
+        _running = null;
+        IsBusy = false;
+    }
+
     /// <summary>Resultado do último teste de conexão.</summary>
     [ObservableProperty]
     private TestAccountConnectionResult? _lastTestResult;
@@ -522,6 +568,8 @@ public sealed partial class AccountSetupViewModel : ObservableObject
         StatusMessage = null;
         IsBusy = true;
 
+        using var running = BeginRunning(cancellationToken);
+
         try
         {
             var result = await _connectionTest.HandleAsync(
@@ -543,7 +591,7 @@ public sealed partial class AccountSetupViewModel : ObservableObject
                         : CalendarProviderKind.None,
                     CalendarUrl = SyncCalendar ? EffectiveCalendarUrl : null,
                 },
-                cancellationToken).ConfigureAwait(true);
+                running.Token).ConfigureAwait(true);
 
             LastTestResult = result;
 
@@ -555,9 +603,14 @@ public sealed partial class AccountSetupViewModel : ObservableObject
 
             Step = AccountSetupStep.Verification;
         }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // Interrompido por quem estava esperando, e não pelo fechamento da janela.
+            StatusMessage = "O teste foi interrompido. Confira os dados e tente de novo.";
+        }
         finally
         {
-            IsBusy = false;
+            EndRunning();
         }
     }
 
@@ -587,6 +640,8 @@ public sealed partial class AccountSetupViewModel : ObservableObject
 
         IsBusy = true;
 
+        using var running = BeginRunning(cancellationToken);
+
         try
         {
             var result = await _addAccount.HandleAsync(
@@ -610,7 +665,7 @@ public sealed partial class AccountSetupViewModel : ObservableObject
                         : CalendarProviderKind.None,
                     CalendarUrl = SyncCalendar ? EffectiveCalendarUrl : null,
                 },
-                cancellationToken).ConfigureAwait(true);
+                running.Token).ConfigureAwait(true);
 
             if (!result.Succeeded)
             {
@@ -629,9 +684,13 @@ public sealed partial class AccountSetupViewModel : ObservableObject
             StatusMessage = ex.UserMessage;
             _logger.LogInformation("Cadastro recusado pela regra de Diretório de Domínio.");
         }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            StatusMessage = "O cadastro foi interrompido. Nada foi gravado.";
+        }
         finally
         {
-            IsBusy = false;
+            EndRunning();
         }
     }
 

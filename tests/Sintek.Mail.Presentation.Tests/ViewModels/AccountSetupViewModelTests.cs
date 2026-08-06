@@ -283,6 +283,54 @@ public class AccountSetupViewModelTests
         viewModel.LastTestResult!.Value.Succeeded.Should().BeFalse();
     }
 
+    /// <summary>
+    /// Quem está esperando precisa poder desistir.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// O <c>ContentDialog</c> do WinUI desliga Cancelar e Voltar enquanto há um
+    /// <c>Deferral</c> pendente, e o assistente segura um durante todo o teste — para o
+    /// diálogo não fechar no meio e perder o que foi preenchido. Um servidor lento deixava a
+    /// tela sem saída nenhuma, e a única alternativa era encerrar o processo. Aconteceu três
+    /// vezes na validação manual em Windows.
+    /// </para>
+    /// <para>
+    /// Os tetos de espera do caso de uso continuam sendo a rede de segurança para quando
+    /// ninguém está olhando. Este comando é o contrário: devolve a decisão a quem está.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task Interromper_DuranteOTeste_DesbloqueiaAssistenteComMensagem()
+    {
+        var chegou = new TaskCompletionSource();
+
+        _imap.ConnectAsync(Arg.Any<Account>(), Arg.Any<CancellationToken>())
+            .Returns(async call =>
+            {
+                chegou.TrySetResult();
+                await Task.Delay(Timeout.Infinite, call.Arg<CancellationToken>());
+                return ConnectionTestResult.Success();
+            });
+
+        var viewModel = CreateViewModel();
+        viewModel.EmailAddress = "contato@sintek.com.br";
+        viewModel.ImapHost = "imap.sintek.com.br";
+        viewModel.SmtpHost = "smtp.sintek.com.br";
+        viewModel.Password = FakeSecret.For("servidor-mudo");
+
+        var teste = viewModel.VerifyAsync();
+
+        await chegou.Task;
+        viewModel.IsBusy.Should().BeTrue();
+
+        viewModel.CancelRunningCommand.Execute(null);
+        await teste;
+
+        viewModel.IsBusy.Should().BeFalse("o assistente precisa voltar a aceitar cliques");
+        viewModel.StatusMessage.Should().Contain("interrompido");
+        viewModel.Step.Should().NotBe(AccountSetupStep.Verification);
+    }
+
     [Fact]
     public async Task Verificar_ConexaoAceita_AvancaParaAConfirmacao()
     {

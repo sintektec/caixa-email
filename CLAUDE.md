@@ -183,6 +183,13 @@ que a função existe para pegar.
 vão em `InfoBar.Content`. O erro (`WMC0015`) só aparece na compilação do XAML, que não roda
 fora do Windows — o job `windows` do CI é o primeiro lugar onde ele existe.
 
+**`Deferral` pendente desliga os botões do `ContentDialog`.** Inclusive Cancelar e Voltar. O
+assistente de conta segura um durante o teste de conexão — sem ele o diálogo fecharia no
+primeiro clique e perderia o preenchimento —, e enquanto isso a tela não tem saída nenhuma. Por
+isso o botão de interromper vive **no conteúdo** do diálogo, e não entre os botões dele: um
+`Button` do conteúdo não passa por esse bloqueio. Teto de espera no caso de uso é rede de
+segurança para quando ninguém está olhando; não substitui a saída para quem está.
+
 **Um `ContentDialog` por vez.** Abrir o segundo enquanto o primeiro está aberto não empilha:
 simplesmente não aparece. As telas de configuração se chamam fechando a atual e sinalizando
 a próxima (`SettingsFollowUp`, `RequestedDirectoryCreation`), e o encadeamento acontece em
