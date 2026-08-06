@@ -116,6 +116,13 @@ exclusão que tem o marcador de leitura alterado continua pendente de exclusão.
 isso faz a fila propagar o marcador e esquecer a exclusão, e a mensagem reaparece na
 sincronização seguinte. `Restore` é a exceção deliberada e atribui o estado diretamente.
 
+**O `TimeoutException` do MailKit não é `IOException` nem `SocketException`.** Ele tem teto
+próprio de 120 segundos e o sinaliza com esse tipo, que escapa de uma lista de capturas montada
+para erros de rede. `MailKitAuthenticator` o captura explicitamente — sem isso a exceção sobe
+até o manipulador `async void` do `ContentDialog` e **derruba a aplicação**. Uma porta errada
+não pode fechar o programa, e por isso o teste de conexão também tem uma captura geral: ele
+conversa com um servidor que o usuário digitou.
+
 **Consentimento OAuth interativo sempre com teto de espera.** A biblioteca da Google abre um
 ouvinte local e aguarda o redirecionamento para `http://localhost`; quando o provedor recusa —
 `403 org_internal`, conta de fora da organização em aplicativo interno — ele exibe a página de

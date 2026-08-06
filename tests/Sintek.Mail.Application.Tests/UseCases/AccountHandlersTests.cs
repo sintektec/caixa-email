@@ -405,6 +405,73 @@ public class AccountHandlersTests
     }
 
     /// <summary>
+    /// Servidor que aceita a conexão e não responde precisa ser abandonado.
+    /// </summary>
+    /// <remarks>
+    /// Porta filtrada engole o SYN sem recusar, e o sistema fica retransmitindo por minutos —
+    /// diferente de host inexistente, que falha rápido no DNS. É o que se encontra ao errar a
+    /// porta ou o modo de proteção, 465 esperando STARTTLS ou 587 esperando SSL direto. Com o
+    /// diálogo segurando um <c>Deferral</c>, isso apagava Cancelar e Voltar junto.
+    /// </remarks>
+    [Fact]
+    public async Task TestarConexao_ServidorQueNuncaResponde_DesisteEExplica()
+    {
+        _clock.TimerDelayOverride = TimeSpan.FromMilliseconds(50);
+
+        _imap
+            .ConnectAsync(Arg.Any<Account>(), Arg.Any<CancellationToken>())
+            .Returns(async call =>
+            {
+                await Task.Delay(Timeout.Infinite, call.Arg<CancellationToken>());
+                return ConnectionTestResult.Success();
+            });
+
+        var result = await ConnectionTestHandler().HandleAsync(new TestAccountConnectionCommand
+        {
+            EmailAddress = "contato@eversis.com.br",
+            ImapHost = "imap.eversis.com.br",
+            SmtpHost = "smtp.eversis.com.br",
+            Password = FakeSecret.For("hostinger"),
+        });
+
+        result.Succeeded.Should().BeFalse();
+        result.FirstError.Should().Contain("não respondeu");
+
+        _credentials.Keys.Should().BeEmpty(
+            "a chave temporária do teste é apagada mesmo quando a espera estoura — senão o " +
+            "Gerenciador de Credenciais acumularia a senha de cada tentativa abandonada");
+    }
+
+    /// <summary>
+    /// Nenhuma resposta de servidor pode derrubar a aplicação.
+    /// </summary>
+    /// <remarks>
+    /// O <c>TimeoutException</c> do MailKit — teto próprio de 120 segundos — não é
+    /// <c>IOException</c> nem <c>SocketException</c>, escapava da lista de capturas do
+    /// autenticador e subia até o manipulador <c>async void</c> do diálogo, que encerra o
+    /// processo. Uma porta errada não pode fechar o programa.
+    /// </remarks>
+    [Fact]
+    public async Task TestarConexao_ExcecaoInesperadaDoCliente_ViraFalhaEmVezDeDerrubar()
+    {
+        _imap
+            .ConnectAsync(Arg.Any<Account>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new TimeoutException("Operation timed out after 120000 milliseconds"));
+
+        var result = await ConnectionTestHandler().HandleAsync(new TestAccountConnectionCommand
+        {
+            EmailAddress = "contato@eversis.com.br",
+            ImapHost = "imap.eversis.com.br",
+            SmtpHost = "smtp.eversis.com.br",
+            Password = FakeSecret.For("hostinger"),
+        });
+
+        result.Succeeded.Should().BeFalse();
+        result.FirstError.Should().NotBeNullOrWhiteSpace();
+        _credentials.Keys.Should().BeEmpty("a chave temporária sai mesmo em falha inesperada");
+    }
+
+    /// <summary>
     /// Consentimento que nunca volta precisa desistir sozinho.
     /// </summary>
     /// <remarks>

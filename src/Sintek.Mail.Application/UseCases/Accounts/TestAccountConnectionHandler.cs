@@ -161,6 +161,14 @@ public sealed class TestAccountConnectionHandler
         var probe = BuildProbeAccount(command, address);
         var storedSecret = false;
 
+        // Teto para a conversa com os servidores. Um host que aceita a conexão e depois
+        // silencia, ou uma porta filtrada que engole o SYN, deixa o `ConnectAsync` pendurado
+        // por minutos — e o assistente segura um `Deferral` enquanto isso, o que apaga
+        // Cancelar e Voltar junto. Sem teto, a única saída é encerrar o processo.
+        using var timeout = new CancellationTokenSource(NetworkTimeout, _timeProvider);
+        using var linked = CancellationTokenSource
+            .CreateLinkedTokenSource(cancellationToken, timeout.Token);
+
         try
         {
             if (command.AuthenticationType == AuthenticationType.Password)
@@ -172,24 +180,50 @@ public sealed class TestAccountConnectionHandler
                 storedSecret = true;
             }
 
-            var imap = await _imapClient.ConnectAsync(probe, cancellationToken).ConfigureAwait(false);
+            var imap = await _imapClient.ConnectAsync(probe, linked.Token).ConfigureAwait(false);
 
             // O SMTP é testado mesmo com o IMAP falhando: host errado nos dois é comum, e
             // mostrar os dois erros de uma vez poupa uma rodada inteira de tentativa e erro.
-            var smtp = await _smtpSender.TestConnectionAsync(probe, cancellationToken).ConfigureAwait(false);
+            var smtp = await _smtpSender.TestConnectionAsync(probe, linked.Token).ConfigureAwait(false);
 
             if (imap.Succeeded)
             {
-                await _imapClient.DisconnectAsync(cancellationToken).ConfigureAwait(false);
+                await _imapClient.DisconnectAsync(linked.Token).ConfigureAwait(false);
             }
 
-            var calendar = await TestCalendarAsync(probe, cancellationToken).ConfigureAwait(false);
+            var calendar = await TestCalendarAsync(probe, linked.Token).ConfigureAwait(false);
 
             _logger.LogInformation(
                 "Teste de conexão para {ImapHost}/{SmtpHost}: IMAP {ImapOk}, SMTP {SmtpOk}.",
                 command.ImapHost, command.SmtpHost, imap.Succeeded, smtp.Succeeded);
 
             return new TestAccountConnectionResult(imap, smtp, calendar);
+        }
+        catch (OperationCanceledException) when (timeout.IsCancellationRequested)
+        {
+            var expired = ConnectionTestResult.Failure(
+                $"O servidor não respondeu em {NetworkTimeout.TotalSeconds:0} segundos. " +
+                "Confira o endereço e a porta, e se o modo de proteção (SSL ou STARTTLS) " +
+                "corresponde à porta escolhida.");
+
+            return new TestAccountConnectionResult(expired, expired);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Rede de segurança deliberada, e não descuido. Quem chama isto é um manipulador
+            // `async void` do diálogo, onde exceção não tratada **derruba a aplicação**: o
+            // `TimeoutException` do MailKit já fez isso uma vez, por não ser IOException nem
+            // SocketException e escapar da lista de capturas do autenticador. Testar conexão
+            // é conversar com um servidor que o usuário digitou, e nenhuma resposta dele
+            // deveria custar o programa inteiro. O registro guarda o que a mensagem omite.
+            _logger.LogWarning(
+                ex, "Falha inesperada ao testar {ImapHost}/{SmtpHost}.",
+                command.ImapHost, command.SmtpHost);
+
+            var failure = ConnectionTestResult.Failure(
+                $"Não foi possível testar a conexão: {ex.Message}");
+
+            return new TestAccountConnectionResult(failure, failure);
         }
         finally
         {
@@ -347,6 +381,24 @@ public sealed class TestAccountConnectionHandler
     /// </para>
     /// </remarks>
     private static readonly TimeSpan ConsentTimeout = TimeSpan.FromMinutes(3);
+
+    /// <summary>
+    /// Teto para a conversa com os servidores de correio e agenda.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Separado do teto do consentimento porque as duas esperas não se parecem. Consentir
+    /// depende de uma pessoa lendo uma tela; conectar depende de uma máquina responder, e
+    /// servidor que leva mais de um minuto para dizer "olá" não está saudável.
+    /// </para>
+    /// <para>
+    /// O caso que não termina sozinho é a porta filtrada: o SYN é engolido sem recusa, e o
+    /// sistema fica retransmitindo. É diferente de host inexistente, que falha rápido no DNS,
+    /// e é o que o usuário encontra ao errar a porta ou o modo de proteção — 465 esperando
+    /// STARTTLS, 587 esperando SSL direto.
+    /// </para>
+    /// </remarks>
+    private static readonly TimeSpan NetworkTimeout = TimeSpan.FromSeconds(60);
 
     /// <summary>
     /// Monta uma conta desanexada, só para o teste.

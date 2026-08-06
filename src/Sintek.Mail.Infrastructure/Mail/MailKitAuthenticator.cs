@@ -138,6 +138,17 @@ public sealed class MailKitAuthenticator
                 $"Falha na negociação TLS com o servidor: {ex.Message}. " +
                 "Verifique a porta e o modo de segurança configurados.");
         }
+        catch (TimeoutException)
+        {
+            // O MailKit tem teto próprio de 120 segundos e o sinaliza com TimeoutException,
+            // que não é IOException nem SocketException. Sem esta captura ela escapa daqui,
+            // sobe até o manipulador `async void` do diálogo e derruba a aplicação — uma
+            // porta errada não pode fechar o programa.
+            return ConnectionTestResult.Failure(
+                "O servidor aceitou a conexão e não respondeu. Isso costuma ser porta " +
+                "filtrada por firewall, ou o modo de proteção trocado — SSL direto numa " +
+                "porta que espera STARTTLS, ou o contrário.");
+        }
         catch (Exception ex) when (ex is IOException or SocketException or ImapProtocolException or SmtpProtocolException)
         {
             return ConnectionTestResult.Failure(
