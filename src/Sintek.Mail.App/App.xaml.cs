@@ -51,6 +51,26 @@ public partial class App : Microsoft.UI.Xaml.Application
     /// <summary>Abre um escopo para uma operação, a ser descartado ao final dela.</summary>
     public static AsyncServiceScope CreateScope() => _root.CreateAsyncScope();
 
+    /// <summary>
+    /// Identificador nativo da janela principal, exigido pelos seletores de arquivo.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Em aplicativo desktop o seletor precisa da janela dona; sem isto ele simplesmente não
+    /// abre, e sem erro nenhum.
+    /// </para>
+    /// <para>
+    /// Resolver um <b>singleton</b> do provedor raiz é correto — é onde ele vive. O que a
+    /// privacidade de <see cref="_root"/> impede é resolver serviço <i>com escopo</i> dali,
+    /// que era o que prendia o <c>DbContext</c>. Abrir um escopo só para alcançar a janela
+    /// devolveria a mesma instância, obrigaria quem chama a ser assíncrono — e, no
+    /// compositor, deixaria um contexto aberto durante todo o tempo em que o usuário
+    /// escolhe o arquivo.
+    /// </para>
+    /// </remarks>
+    public static nint MainWindowHandle
+        => WinRT.Interop.WindowNative.GetWindowHandle(_root.GetRequiredService<MainWindow>());
+
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
         _root = await AppHost.BuildAsync().ConfigureAwait(true);

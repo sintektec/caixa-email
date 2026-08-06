@@ -304,15 +304,7 @@ public sealed partial class ComposerDialog : ContentDialog
         var picker = new FileOpenPicker { SuggestedStartLocation = PickerLocationId.DocumentsLibrary };
         picker.FileTypeFilter.Add("*");
 
-        // Em aplicativo desktop o picker precisa da janela dona; sem isto ele simplesmente
-        // não abre, sem erro nenhum.
-        // MainWindow é singleton; resolvê-la de um escopo curto devolve a mesma instância.
-        // O descarte é assíncrono porque o MailKitImapClient do contêiner só implementa
-        // IAsyncDisposable, e um `using` comum lançaria se ele viesse a ser resolvido aqui.
-        await using var scope = App.CreateScope();
-        var window = scope.ServiceProvider.GetRequiredService<MainWindow>();
-        WinRT.Interop.InitializeWithWindow.Initialize(
-            picker, WinRT.Interop.WindowNative.GetWindowHandle(window));
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, App.MainWindowHandle);
 
         var file = await picker.PickSingleFileAsync();
 
