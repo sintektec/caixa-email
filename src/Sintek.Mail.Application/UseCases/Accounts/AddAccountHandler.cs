@@ -298,6 +298,22 @@ public sealed class AddAccountHandler
 
         try
         {
+            // O consentimento dado no teste de conexão vale aqui: o token está no cofre, sob
+            // o endereço. Ir direto ao interativo abriria o navegador de novo — o
+            // `AcquireTokenInteractive` do MSAL sempre mostra a janela, mesmo com token
+            // válido em cache —, e quem acabou de autorizar leria isso como defeito.
+            await provider.GetAccessTokenAsync(account.EmailAddress.Value, cancellationToken)
+                .ConfigureAwait(false);
+
+            return null;
+        }
+        catch (ReauthenticationRequiredException)
+        {
+            // Não há token utilizável: segue para o consentimento interativo.
+        }
+
+        try
+        {
             await provider.AuthenticateInteractivelyAsync(account.EmailAddress.Value, cancellationToken)
                 .ConfigureAwait(false);
 

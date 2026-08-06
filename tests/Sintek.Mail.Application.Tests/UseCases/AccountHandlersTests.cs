@@ -56,6 +56,14 @@ public class AccountHandlersTests
         _oauthProvider
             .AuthenticateInteractivelyAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new OAuthAccessToken("token", Now.AddHours(1)));
+
+        // Conta nova não tem token no cofre, e é isso que leva ao consentimento interativo.
+        // Sem este padrão o dublê devolveria um token vazio e o caminho silencioso passaria,
+        // escondendo justamente o defeito que fecha o laço do assistente.
+        _oauthProvider
+            .GetAccessTokenAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new ReauthenticationRequiredException("contato@sintek.com.br"));
+
         _oauthRegistry.Resolve(OAuthProviderKind.Microsoft).Returns(_oauthProvider);
     }
 
@@ -310,6 +318,120 @@ public class AccountHandlersTests
 
         result.Succeeded.Should().BeFalse();
         await _imap.DidNotReceive().ConnectAsync(Arg.Any<Account>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Sem isto o assistente não cadastra conta OAuth nenhuma.
+    /// </summary>
+    /// <remarks>
+    /// O teste de conexão é obrigatório para avançar, e ele autentica com o token guardado no
+    /// cofre. Numa conta que ainda não existe não há token, e o IMAP falhava com "o acesso
+    /// autorizado expirou" — que descreve o oposto do que houve, porque nunca houve
+    /// autorização para expirar. O consentimento só acontecia no cadastro, que fica depois do
+    /// teste e nunca era alcançado: um laço fechado, e o mesmo nos dois provedores. Foi a
+    /// validação manual em Windows que encontrou.
+    /// </remarks>
+    [Fact]
+    public async Task TestarConexao_ContaOAuthSemTokenGuardado_PedeConsentimentoAntesDeConectar()
+    {
+        var result = await ConnectionTestHandler().HandleAsync(new TestAccountConnectionCommand
+        {
+            EmailAddress = "contato@sintek.com.br",
+            ImapHost = "outlook.office365.com",
+            SmtpHost = "smtp.office365.com",
+            AuthenticationType = AuthenticationType.OAuth2,
+            OAuthProvider = OAuthProviderKind.Microsoft,
+        });
+
+        result.Succeeded.Should().BeTrue();
+
+        await _oauthProvider.Received(1)
+            .AuthenticateInteractivelyAsync("contato@sintek.com.br", Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Com token válido em cache, nada de navegador.
+    /// </summary>
+    /// <remarks>
+    /// O <c>AcquireTokenInteractive</c> do MSAL <b>sempre</b> mostra a janela, mesmo com token
+    /// válido. Sem a tentativa silenciosa, testar duas vezes — que é o que se faz enquanto se
+    /// corrige host e porta — pediria consentimento a cada vez.
+    /// </remarks>
+    [Fact]
+    public async Task TestarConexao_ContaOAuthComTokenValido_NaoAbreOConsentimento()
+    {
+        _oauthProvider
+            .GetAccessTokenAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new OAuthAccessToken("token", Now.AddHours(1)));
+
+        var result = await ConnectionTestHandler().HandleAsync(new TestAccountConnectionCommand
+        {
+            EmailAddress = "contato@sintek.com.br",
+            ImapHost = "outlook.office365.com",
+            SmtpHost = "smtp.office365.com",
+            AuthenticationType = AuthenticationType.OAuth2,
+            OAuthProvider = OAuthProviderKind.Microsoft,
+        });
+
+        result.Succeeded.Should().BeTrue();
+
+        await _oauthProvider.DidNotReceive()
+            .AuthenticateInteractivelyAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Fechar a janela de consentimento é decisão do usuário, e a mensagem precisa dizer
+    /// isso — não "acesso expirado".
+    /// </summary>
+    [Fact]
+    public async Task TestarConexao_ConsentimentoCancelado_ExplicaOCancelamento()
+    {
+        _oauthProvider
+            .AuthenticateInteractivelyAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new OperationCanceledException());
+
+        var result = await ConnectionTestHandler().HandleAsync(new TestAccountConnectionCommand
+        {
+            EmailAddress = "contato@sintek.com.br",
+            ImapHost = "outlook.office365.com",
+            SmtpHost = "smtp.office365.com",
+            AuthenticationType = AuthenticationType.OAuth2,
+            OAuthProvider = OAuthProviderKind.Microsoft,
+        });
+
+        result.Succeeded.Should().BeFalse();
+        result.FirstError.Should().Contain("cancelada");
+        await _imap.DidNotReceive().ConnectAsync(Arg.Any<Account>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// O cadastro reaproveita o consentimento dado no teste — abrir o navegador de novo, logo
+    /// depois de a pessoa ter autorizado, seria lido como defeito.
+    /// </summary>
+    [Fact]
+    public async Task CadastrarConta_ComTokenJaObtidoNoTeste_NaoAbreOConsentimentoDeNovo()
+    {
+        _oauthProvider
+            .GetAccessTokenAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new OAuthAccessToken("token", Now.AddHours(1)));
+
+        var directory = ArrangeDirectory();
+
+        var result = await AddHandler().HandleAsync(new AddAccountCommand
+        {
+            DomainDirectoryId = directory.Id,
+            EmailAddress = "contato@sintek.com.br",
+            DisplayName = "Contato",
+            ImapHost = "outlook.office365.com",
+            SmtpHost = "smtp.office365.com",
+            AuthenticationType = AuthenticationType.OAuth2,
+            OAuthProvider = OAuthProviderKind.Microsoft,
+        });
+
+        result.Succeeded.Should().BeTrue();
+
+        await _oauthProvider.DidNotReceive()
+            .AuthenticateInteractivelyAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     // ----- Alteração -----------------------------------------------------------------

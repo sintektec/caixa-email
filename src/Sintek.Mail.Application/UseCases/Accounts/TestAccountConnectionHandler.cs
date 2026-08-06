@@ -143,6 +143,14 @@ public sealed class TestAccountConnectionHandler
             {
                 return new TestAccountConnectionResult(unavailable.Value, unavailable.Value);
             }
+
+            var consent = await EnsureConsentAsync(command.OAuthProvider, address, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (consent is not null)
+            {
+                return new TestAccountConnectionResult(consent.Value, consent.Value);
+            }
         }
         else if (string.IsNullOrEmpty(command.Password))
         {
@@ -252,6 +260,62 @@ public sealed class TestAccountConnectionHandler
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Garante que existe consentimento antes de testar uma conta OAuth.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Sem isto o assistente não cadastra conta OAuth nenhuma.</b> O teste é obrigatório
+    /// para avançar, e ele autentica com o token guardado no cofre; numa conta que ainda não
+    /// existe não há token, então o IMAP falhava com "o acesso autorizado expirou" — mensagem
+    /// que descreve o oposto do que houve, porque nunca houve autorização para expirar. O
+    /// consentimento só acontecia no <c>AddAccountHandler</c>, que fica depois do teste e
+    /// nunca era alcançado. Um laço fechado, e o mesmo nos dois provedores.
+    /// </para>
+    /// <para>
+    /// Pedir o token em silêncio antes de abrir o navegador não é otimização. O
+    /// <c>AcquireTokenInteractive</c> do MSAL <b>sempre</b> mostra a janela, mesmo com token
+    /// válido em cache; sem a tentativa silenciosa, testar duas vezes — que é o que se faz
+    /// enquanto se corrige host e porta — pediria consentimento a cada vez.
+    /// </para>
+    /// </remarks>
+    private async Task<ConnectionTestResult?> EnsureConsentAsync(
+        OAuthProviderKind kind, EmailAddress address, CancellationToken cancellationToken)
+    {
+        var provider = _oauthProviders.Resolve(kind)!;
+
+        try
+        {
+            await provider.GetAccessTokenAsync(address.Value, cancellationToken).ConfigureAwait(false);
+            return null;
+        }
+        catch (ReauthenticationRequiredException)
+        {
+            // Não há token utilizável: é a primeira vez, ou o consentimento foi revogado.
+        }
+
+        try
+        {
+            await provider.AuthenticateInteractivelyAsync(address.Value, cancellationToken)
+                .ConfigureAwait(false);
+
+            return null;
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // Fechar a janela de consentimento é decisão do usuário, não defeito.
+            return ConnectionTestResult.AuthenticationFailure(
+                "A autorização foi cancelada antes de ser concluída.");
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "Falha no consentimento OAuth de {Provider}.", kind);
+
+            return ConnectionTestResult.AuthenticationFailure(
+                $"Não foi possível concluir a autorização com {kind}: {ex.Message}");
+        }
     }
 
     /// <summary>
