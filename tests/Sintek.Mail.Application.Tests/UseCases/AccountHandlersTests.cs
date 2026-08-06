@@ -405,6 +405,57 @@ public class AccountHandlersTests
     }
 
     /// <summary>
+    /// Consentimento que nunca volta precisa desistir sozinho.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A biblioteca da Google abre um ouvinte local e aguarda o redirecionamento para
+    /// <c>http://localhost</c>. Quando o provedor recusa — conta de fora da organização num
+    /// aplicativo interno, que devolve <c>403 org_internal</c> — ele exibe a página de erro e
+    /// <b>nunca redireciona</b>. A espera não termina sozinha.
+    /// </para>
+    /// <para>
+    /// E o custo não fica na espera: o diálogo do assistente segura um <c>Deferral</c>
+    /// enquanto o teste roda, o que deixa Cancelar e Voltar inertes junto. Sem este teto, a
+    /// única saída era encerrar o processo — foi assim que apareceu, na validação manual.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task TestarConexao_ConsentimentoQueNuncaResponde_DesisteEExplica()
+    {
+        _clock.TimerDelayOverride = TimeSpan.FromMilliseconds(50);
+
+        _oauthProvider
+            .AuthenticateInteractivelyAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(async call =>
+            {
+                // O provedor pendura, como pendura de verdade quando a página de erro não
+                // redireciona: só o cancelamento tira daqui.
+                await Task.Delay(Timeout.Infinite, call.Arg<CancellationToken>());
+                return new OAuthAccessToken("nunca chega", Now);
+            });
+
+        var result = await ConnectionTestHandler().HandleAsync(new TestAccountConnectionCommand
+        {
+            EmailAddress = "contato@sintek.com.br",
+            ImapHost = "outlook.office365.com",
+            SmtpHost = "smtp.office365.com",
+            AuthenticationType = AuthenticationType.OAuth2,
+            OAuthProvider = OAuthProviderKind.Microsoft,
+        });
+
+        result.Succeeded.Should().BeFalse();
+
+        result.FirstError.Should()
+            .Contain("não foi concluída no navegador").And
+            .NotContain("cancelada",
+                "quem não concluiu é o provedor, e mandar o usuário procurar o que ele cancelou " +
+                "desperdiça a única pista que a mensagem tem para dar");
+
+        await _imap.DidNotReceive().ConnectAsync(Arg.Any<Account>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
     /// O cadastro reaproveita o consentimento dado no teste — abrir o navegador de novo, logo
     /// depois de a pessoa ter autorizado, seria lido como defeito.
     /// </summary>

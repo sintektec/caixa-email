@@ -116,6 +116,14 @@ exclusão que tem o marcador de leitura alterado continua pendente de exclusão.
 isso faz a fila propagar o marcador e esquecer a exclusão, e a mensagem reaparece na
 sincronização seguinte. `Restore` é a exceção deliberada e atribui o estado diretamente.
 
+**Consentimento OAuth interativo sempre com teto de espera.** A biblioteca da Google abre um
+ouvinte local e aguarda o redirecionamento para `http://localhost`; quando o provedor recusa —
+`403 org_internal`, conta de fora da organização em aplicativo interno — ele exibe a página de
+erro e **nunca redireciona**. O `await` fica pendurado para sempre. E o `ContentDialog` do
+assistente segura um `Deferral` enquanto o teste roda, o que deixa Cancelar e Voltar inertes
+junto: sem o teto, a única saída é encerrar o processo. O `CancellationTokenSource` recebe o
+`TimeProvider`, para o teto ser verificável sem esperá-lo.
+
 **A fila de saída drena antes da leitura do servidor.** `SyncAccountHandler` conecta, drena
 e só então lê. Ler primeiro traria o estado antigo e desfaria localmente o que o usuário fez
 offline — o marcador voltaria atrás e a fila o refaria em seguida, um pisca-pisca que parece

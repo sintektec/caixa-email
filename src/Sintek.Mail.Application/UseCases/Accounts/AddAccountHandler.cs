@@ -98,6 +98,16 @@ public sealed class AddAccountHandler
     private readonly IImapClient _imapClient;
     private readonly IOAuthProviderRegistry _oauthProviders;
     private readonly TimeProvider _timeProvider;
+
+    /// <summary>
+    /// Teto para a espera do consentimento no navegador, igual ao do teste de conexão.
+    /// </summary>
+    /// <remarks>
+    /// Três minutos porque o consentimento legítimo é lento — escolher a conta, digitar a
+    /// senha, o segundo fator, ler a lista de permissões. Um teto curto reprovaria quem está
+    /// autorizando de verdade, que é o erro caro aqui.
+    /// </remarks>
+    private static readonly TimeSpan ConsentTimeout = TimeSpan.FromMinutes(3);
     private readonly ILogger<AddAccountHandler> _logger;
 
     public AddAccountHandler(
@@ -312,12 +322,24 @@ public sealed class AddAccountHandler
             // Não há token utilizável: segue para o consentimento interativo.
         }
 
+        // O mesmo teto do teste de conexão, e pelo mesmo motivo: o provedor pode exibir uma
+        // página de erro e nunca redirecionar para `http://localhost`, e aí a espera não
+        // termina — com o diálogo segurando um `Deferral`, o assistente trava sem saída.
+        using var timeout = new CancellationTokenSource(ConsentTimeout, _timeProvider);
+        using var linked = CancellationTokenSource
+            .CreateLinkedTokenSource(cancellationToken, timeout.Token);
+
         try
         {
-            await provider.AuthenticateInteractivelyAsync(account.EmailAddress.Value, cancellationToken)
+            await provider.AuthenticateInteractivelyAsync(account.EmailAddress.Value, linked.Token)
                 .ConfigureAwait(false);
 
             return null;
+        }
+        catch (OperationCanceledException) when (timeout.IsCancellationRequested)
+        {
+            return "A autorização não foi concluída no navegador. Verifique se a janela abriu, " +
+                   "se o provedor recusou o acesso desta conta, e tente de novo.";
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {

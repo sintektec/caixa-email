@@ -151,7 +151,24 @@ internal static class TestFactories
 /// <summary>Relógio fixo, para tornar os testes determinísticos.</summary>
 internal sealed class FakeTimeProvider(DateTimeOffset now) : TimeProvider
 {
+    /// <summary>
+    /// Encurta todo temporizador criado a partir deste relógio.
+    /// </summary>
+    /// <remarks>
+    /// Existe para testar teto de espera sem esperar de verdade. Um
+    /// <c>CancellationTokenSource(atraso, relógio)</c> pede um temporizador ao
+    /// <see cref="TimeProvider"/>; sem esta substituição, verificar um teto de três minutos
+    /// custaria três minutos de suíte. O que o teste comprova é o encadeamento — que o teto
+    /// existe, que está ligado a este relógio e que a cancelação produz a mensagem certa —,
+    /// não a duração em si, que é uma constante lida do código.
+    /// </remarks>
+    public TimeSpan? TimerDelayOverride { get; set; }
+
     public override DateTimeOffset GetUtcNow() => now;
+
+    public override ITimer CreateTimer(
+        TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        => base.CreateTimer(callback, state, TimerDelayOverride ?? dueTime, period);
 }
 
 /// <summary>

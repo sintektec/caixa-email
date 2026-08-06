@@ -296,12 +296,22 @@ public sealed class TestAccountConnectionHandler
             // Não há token utilizável: é a primeira vez, ou o consentimento foi revogado.
         }
 
+        using var timeout = new CancellationTokenSource(ConsentTimeout, _timeProvider);
+        using var linked = CancellationTokenSource
+            .CreateLinkedTokenSource(cancellationToken, timeout.Token);
+
         try
         {
-            await provider.AuthenticateInteractivelyAsync(address.Value, cancellationToken)
+            await provider.AuthenticateInteractivelyAsync(address.Value, linked.Token)
                 .ConfigureAwait(false);
 
             return null;
+        }
+        catch (OperationCanceledException) when (timeout.IsCancellationRequested)
+        {
+            return ConnectionTestResult.AuthenticationFailure(
+                "A autorização não foi concluída no navegador. Verifique se a janela abriu, " +
+                "se o provedor recusou o acesso desta conta, e tente de novo.");
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -317,6 +327,26 @@ public sealed class TestAccountConnectionHandler
                 $"Não foi possível concluir a autorização com {kind}: {ex.Message}");
         }
     }
+
+    /// <summary>
+    /// Teto para a espera do consentimento no navegador.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Sem teto, o assistente trava sem saída.</b> A biblioteca da Google abre um ouvinte
+    /// local e aguarda o redirecionamento para <c>http://localhost</c>; quando o provedor
+    /// recusa — conta fora da organização em aplicativo interno, por exemplo — ele exibe a
+    /// página de erro e <b>nunca redireciona</b>. A espera não termina. E como o diálogo
+    /// segura um <c>Deferral</c> enquanto o teste roda, os botões Cancelar e Voltar ficam
+    /// inertes junto: a única saída seria encerrar o processo.
+    /// </para>
+    /// <para>
+    /// Três minutos porque o consentimento legítimo é lento — escolher a conta, digitar a
+    /// senha, o segundo fator, ler a lista de permissões. Um teto curto reprovaria quem está
+    /// autorizando de verdade, que é o erro caro aqui.
+    /// </para>
+    /// </remarks>
+    private static readonly TimeSpan ConsentTimeout = TimeSpan.FromMinutes(3);
 
     /// <summary>
     /// Monta uma conta desanexada, só para o teste.
