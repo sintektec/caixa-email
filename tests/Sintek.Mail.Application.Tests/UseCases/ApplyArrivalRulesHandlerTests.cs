@@ -87,7 +87,7 @@ public class ApplyArrivalRulesHandlerTests
                 _messages, _folders, moveMessage, enqueuer, _unitOfWork,
                 NullLogger<MarkAsSpamHandler>.Instance),
             TestFactories.Download(
-                _messages, _folders, _unitOfWork, _imap, _sanitizer, _attachments, _clock),
+                _messages, _folders, _accounts, _unitOfWork, _imap, _sanitizer, _attachments, _clock),
             TestFactories.Compose(_messages, _folders, _accounts, _unitOfWork, enqueuer, _clock),
             enqueuer,
             _clock,
@@ -372,6 +372,11 @@ public class ApplyArrivalRulesHandlerTests
         // A prévia chega vazia da sincronização; o termo só existe no corpo.
         _message.SetRemoteIdentity(42, null, Now);
         _folders.GetByIdAsync(_inbox.Id, Arg.Any<CancellationToken>()).Returns(_inbox);
+
+        // Este motor só roda a partir do SyncAccountHandler, no escopo em que o cliente já
+        // foi conectado — é por isso que o download não precisa reconectar aqui. O caminho
+        // do clique em uma mensagem é o outro, e lá a instância nasce desconectada.
+        _imap.IsConnected.Returns(true);
 
         _imap.FetchBodyAsync("INBOX", 42, Arg.Any<CancellationToken>())
             .Returns(new Abstractions.Mail.FetchedBody

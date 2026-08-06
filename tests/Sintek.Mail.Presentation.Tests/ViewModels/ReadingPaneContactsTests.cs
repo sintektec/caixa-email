@@ -52,29 +52,31 @@ public class ReadingPaneContactsTests
             Substitute.For<IOutboxRepository>(), _clock);
 
         return new ReadingPaneViewModel(
-            _messages,
-            _sanitizer,
-            ComposeFactory.Download(
-                _messages,
-                folders,
-                _unitOfWork,
-                Substitute.For<Sintek.Mail.Application.Abstractions.Mail.IImapClient>(),
-                _sanitizer,
-                Substitute.For<IAttachmentStore>(),
-                _clock),
-            new Sintek.Mail.Application.UseCases.Organization.ManageSenderReputationHandler(
-                Substitute.For<ISenderReputationRepository>(), _unitOfWork, _clock),
-            new ReadReceiptHandler(
-                _messages,
-                _accounts,
-                ComposeFactory.Create(
-                    _messages, folders, _accounts, _unitOfWork, outbox,
-                    ComposeFactory.InertRecipientHistory(_unitOfWork, _clock), _clock),
-                _unitOfWork,
-                _clock,
-                NullLogger<ReadReceiptHandler>.Instance),
-            new ManageContactsHandler(
-                _contacts, _accounts, _unitOfWork, _clock, NullLogger<ManageContactsHandler>.Instance));
+            new TestScopes()
+                .With(_messages)
+                .With(_sanitizer)
+                .With(ComposeFactory.Download(
+                    _messages,
+                    folders,
+                    _unitOfWork,
+                    Substitute.For<Sintek.Mail.Application.Abstractions.Mail.IImapClient>(),
+                    _sanitizer,
+                    Substitute.For<IAttachmentStore>(),
+                    _clock))
+                .With(new Sintek.Mail.Application.UseCases.Organization.ManageSenderReputationHandler(
+                    Substitute.For<ISenderReputationRepository>(), _unitOfWork, _clock))
+                .With(new ReadReceiptHandler(
+                    _messages,
+                    _accounts,
+                    ComposeFactory.Create(
+                        _messages, folders, _accounts, _unitOfWork, outbox,
+                        ComposeFactory.InertRecipientHistory(_unitOfWork, _clock), _clock),
+                    _unitOfWork,
+                    _clock,
+                    NullLogger<ReadReceiptHandler>.Instance))
+                .With(new ManageContactsHandler(
+                    _contacts, _accounts, _unitOfWork, _clock, NullLogger<ManageContactsHandler>.Instance))
+                .Build());
     }
 
     private Message ArrangeMessage(string from = "ana@cliente.com.br", string? displayName = "Ana Souza")

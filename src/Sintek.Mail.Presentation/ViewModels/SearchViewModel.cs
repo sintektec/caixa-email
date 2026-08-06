@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.DependencyInjection;
 using Sintek.Mail.Application.Abstractions.Persistence;
 using Sintek.Mail.Application.Abstractions.Search;
 using Sintek.Mail.Application.UseCases.Search;
@@ -18,27 +19,11 @@ public sealed record SavedSearchItemViewModel(Guid Id, string Name, bool IsPinne
 /// code-behind, para ser testável no job Linux: cada combinação de filtro tem teste sem
 /// precisar de uma janela.
 /// </remarks>
-public sealed partial class SearchViewModel : ObservableObject
+public sealed partial class SearchViewModel : ScopedViewModel
 {
-    private readonly ISearchService _searchService;
-    private readonly SavedSearchesHandler _savedSearchesHandler;
-    private readonly IAccountRepository _accounts;
-    private readonly IDomainDirectoryRepository _directories;
-    private readonly ICategoryRepository _categories;
-
-    public SearchViewModel(
-        ISearchService searchService,
-        SavedSearchesHandler savedSearchesHandler,
-        IAccountRepository accounts,
-        IDomainDirectoryRepository directories,
-        ICategoryRepository categories)
+    public SearchViewModel(IServiceScopeFactory scopes)
+        : base(scopes)
     {
-        _searchService = searchService;
-        _savedSearchesHandler = savedSearchesHandler;
-        _accounts = accounts;
-        _directories = directories;
-        _categories = categories;
-
         SelectedReadState = ReadStates[0];
         SelectedFlagState = FlagStates[0];
         SelectedAttachmentState = AttachmentStates[0];
@@ -154,34 +139,8 @@ public sealed partial class SearchViewModel : ObservableObject
 
     /// <summary>Carrega contas, diretórios e pesquisas salvas para os filtros.</summary>
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
-    {
-        AccountOptions.Clear();
-        AccountOptions.Add(new ScopeFilterOption(null, "Todas as contas"));
-        foreach (var account in await _accounts.ListActiveAsync(cancellationToken).ConfigureAwait(true))
-        {
-            AccountOptions.Add(new ScopeFilterOption(account.Id, account.EmailAddress.Value));
-        }
-
-        DomainOptions.Clear();
-        DomainOptions.Add(new ScopeFilterOption(null, "Todos os diretórios"));
-        foreach (var directory in await _directories.ListAsync(cancellationToken).ConfigureAwait(true))
-        {
-            DomainOptions.Add(new ScopeFilterOption(directory.Id, directory.DomainName.Value));
-        }
-
-        CategoryOptions.Clear();
-        CategoryOptions.Add(new ScopeFilterOption(null, "Todas as categorias"));
-        foreach (var category in await _categories.ListAsync(null, cancellationToken).ConfigureAwait(true))
-        {
-            CategoryOptions.Add(new ScopeFilterOption(category.Id, category.Name));
-        }
-
-        SelectedAccount = AccountOptions[0];
-        SelectedDomain = DomainOptions[0];
-        SelectedCategory = CategoryOptions[0];
-
-        await RefreshSavedSearchesAsync(cancellationToken).ConfigureAwait(true);
-    }
+        => await InScopeAsync(sp => LoadFiltersAsync(sp, cancellationToken), cancellationToken)
+            .ConfigureAwait(true);
 
     /// <summary>Monta os critérios a partir do estado atual dos filtros.</summary>
     public MessageSearchQuery BuildQuery() => new()
@@ -212,18 +171,8 @@ public sealed partial class SearchViewModel : ObservableObject
     /// critério algum.
     /// </summary>
     public async Task<IReadOnlyList<Guid>?> ExecuteAsync(CancellationToken cancellationToken = default)
-    {
-        var query = BuildQuery();
-
-        if (!query.HasAnyCriteria)
-        {
-            StatusMessage = "Digite um termo ou escolha ao menos um filtro para pesquisar.";
-            return null;
-        }
-
-        StatusMessage = null;
-        return await _searchService.SearchAsync(query, cancellationToken).ConfigureAwait(true);
-    }
+        => await InScopeAsync<IReadOnlyList<Guid>?>(
+            sp => RunSearchAsync(sp, cancellationToken), cancellationToken).ConfigureAwait(true);
 
     /// <summary>Título exibido no painel central para os resultados.</summary>
     public string ResultsDescription
@@ -255,12 +204,21 @@ public sealed partial class SearchViewModel : ObservableObject
             return;
         }
 
-        await _savedSearchesHandler.SaveAsync(name, query, isPinned: false, cancellationToken)
-            .ConfigureAwait(true);
+        await InScopeAsync(
+            async sp =>
+            {
+                var savedSearches = sp.GetRequiredService<SavedSearchesHandler>();
 
-        SaveSearchName = string.Empty;
-        StatusMessage = null;
-        await RefreshSavedSearchesAsync(cancellationToken).ConfigureAwait(true);
+                // A pesquisa gravada é devolvida como entidade e descartada aqui de
+                // propósito: a lista é remontada pela releitura, no mesmo escopo.
+                await savedSearches.SaveAsync(name, query, isPinned: false, cancellationToken)
+                    .ConfigureAwait(true);
+
+                SaveSearchName = string.Empty;
+                StatusMessage = null;
+                await LoadSavedSearchesAsync(savedSearches, cancellationToken).ConfigureAwait(true);
+            },
+            cancellationToken).ConfigureAwait(true);
     }
 
     /// <summary>Exclui uma pesquisa salva.</summary>
@@ -269,8 +227,15 @@ public sealed partial class SearchViewModel : ObservableObject
     {
         ArgumentNullException.ThrowIfNull(item);
 
-        await _savedSearchesHandler.DeleteAsync(item.Id, cancellationToken).ConfigureAwait(true);
-        await RefreshSavedSearchesAsync(cancellationToken).ConfigureAwait(true);
+        await InScopeAsync(
+            async sp =>
+            {
+                var savedSearches = sp.GetRequiredService<SavedSearchesHandler>();
+
+                await savedSearches.DeleteAsync(item.Id, cancellationToken).ConfigureAwait(true);
+                await LoadSavedSearchesAsync(savedSearches, cancellationToken).ConfigureAwait(true);
+            },
+            cancellationToken).ConfigureAwait(true);
     }
 
     /// <summary>
@@ -282,20 +247,26 @@ public sealed partial class SearchViewModel : ObservableObject
     /// </remarks>
     public async Task<IReadOnlyList<Guid>?> ExecuteSavedSearchAsync(
         Guid savedSearchId, CancellationToken cancellationToken = default)
-    {
-        await InitializeAsync(cancellationToken).ConfigureAwait(true);
+        => await InScopeAsync<IReadOnlyList<Guid>?>(
+            async sp =>
+            {
+                // Carregar os filtros e pesquisar é uma ação só do usuário, e por isso um
+                // escopo só: os critérios aplicados aos filtros vêm da mesma leitura que a
+                // pesquisa em seguida usa.
+                await LoadFiltersAsync(sp, cancellationToken).ConfigureAwait(true);
 
-        var item = SavedSearches.FirstOrDefault(s => s.Id == savedSearchId);
+                var item = SavedSearches.FirstOrDefault(s => s.Id == savedSearchId);
 
-        if (item is null)
-        {
-            StatusMessage = "A pesquisa salva não foi encontrada.";
-            return null;
-        }
+                if (item is null)
+                {
+                    StatusMessage = "A pesquisa salva não foi encontrada.";
+                    return null;
+                }
 
-        ApplySavedSearch(item);
-        return await ExecuteAsync(cancellationToken).ConfigureAwait(true);
-    }
+                ApplySavedSearch(item);
+                return await RunSearchAsync(sp, cancellationToken).ConfigureAwait(true);
+            },
+            cancellationToken).ConfigureAwait(true);
 
     /// <summary>Preenche os filtros com os critérios de uma pesquisa salva.</summary>
     public void ApplySavedSearch(SavedSearchItemViewModel item)
@@ -354,11 +325,81 @@ public sealed partial class SearchViewModel : ObservableObject
         StatusMessage = null;
     }
 
-    private async Task RefreshSavedSearchesAsync(CancellationToken cancellationToken)
+    /// <summary>
+    /// Preenche as listas de filtro e as pesquisas salvas num escopo já aberto por quem chama.
+    /// </summary>
+    /// <remarks>
+    /// Recebe o provedor em vez de abrir escopo próprio para que executar uma pesquisa salva
+    /// — carregar os filtros e pesquisar — leia tudo do mesmo contexto. Das entidades lidas
+    /// aqui só saem identificador e rótulo, dentro de <see cref="ScopeFilterOption"/>.
+    /// </remarks>
+    private async Task LoadFiltersAsync(
+        IServiceProvider services, CancellationToken cancellationToken)
+    {
+        var accounts = services.GetRequiredService<IAccountRepository>();
+        var directories = services.GetRequiredService<IDomainDirectoryRepository>();
+        var categories = services.GetRequiredService<ICategoryRepository>();
+
+        AccountOptions.Clear();
+        AccountOptions.Add(new ScopeFilterOption(null, "Todas as contas"));
+        foreach (var account in await accounts.ListActiveAsync(cancellationToken).ConfigureAwait(true))
+        {
+            AccountOptions.Add(new ScopeFilterOption(account.Id, account.EmailAddress.Value));
+        }
+
+        DomainOptions.Clear();
+        DomainOptions.Add(new ScopeFilterOption(null, "Todos os diretórios"));
+        foreach (var directory in await directories.ListAsync(cancellationToken).ConfigureAwait(true))
+        {
+            DomainOptions.Add(new ScopeFilterOption(directory.Id, directory.DomainName.Value));
+        }
+
+        CategoryOptions.Clear();
+        CategoryOptions.Add(new ScopeFilterOption(null, "Todas as categorias"));
+        foreach (var category in await categories.ListAsync(null, cancellationToken).ConfigureAwait(true))
+        {
+            CategoryOptions.Add(new ScopeFilterOption(category.Id, category.Name));
+        }
+
+        SelectedAccount = AccountOptions[0];
+        SelectedDomain = DomainOptions[0];
+        SelectedCategory = CategoryOptions[0];
+
+        await LoadSavedSearchesAsync(
+            services.GetRequiredService<SavedSearchesHandler>(), cancellationToken)
+            .ConfigureAwait(true);
+    }
+
+    /// <summary>Executa a pesquisa num escopo já aberto por quem chama.</summary>
+    private async Task<IReadOnlyList<Guid>?> RunSearchAsync(
+        IServiceProvider services, CancellationToken cancellationToken)
+    {
+        var query = BuildQuery();
+
+        if (!query.HasAnyCriteria)
+        {
+            StatusMessage = "Digite um termo ou escolha ao menos um filtro para pesquisar.";
+            return null;
+        }
+
+        StatusMessage = null;
+        return await services.GetRequiredService<ISearchService>()
+            .SearchAsync(query, cancellationToken).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// Remonta a lista de pesquisas salvas com o manipulador do escopo em curso.
+    /// </summary>
+    /// <remarks>
+    /// A entidade lida vira <see cref="SavedSearchItemViewModel"/> aqui dentro: é esse
+    /// registro, e não a entidade, que fica guardado na coleção depois do escopo fechar.
+    /// </remarks>
+    private async Task LoadSavedSearchesAsync(
+        SavedSearchesHandler savedSearches, CancellationToken cancellationToken)
     {
         SavedSearches.Clear();
 
-        foreach (var saved in await _savedSearchesHandler.ListAsync(cancellationToken).ConfigureAwait(true))
+        foreach (var saved in await savedSearches.ListAsync(cancellationToken).ConfigureAwait(true))
         {
             SavedSearches.Add(new SavedSearchItemViewModel(
                 saved.Id, saved.Name, saved.IsPinned, saved.QueryJson));

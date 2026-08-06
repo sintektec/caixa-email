@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Sintek.Mail.App.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Sintek.Mail.Presentation.ViewModels;
@@ -71,8 +72,15 @@ public sealed partial class DomainDirectoryDialog : ContentDialog
 
     /// <summary>Cria o diálogo com as dependências do contêiner.</summary>
     public static DomainDirectoryDialog Create(XamlRoot xamlRoot)
-        => new(App.Services.GetRequiredService<DomainDirectoryEditorViewModel>())
+    {
+        // O escopo vive o tempo do diálogo: nasce aqui e é descartado no Closed,
+        // levando junto o DbContext e tudo que ele rastreou.
+        var scope = App.CreateScope();
+
+        return new DomainDirectoryDialog(
+            scope.ServiceProvider.GetRequiredService<DomainDirectoryEditorViewModel>())
         {
             XamlRoot = xamlRoot,
-        };
+        }.WithScope(scope);
+    }
 }

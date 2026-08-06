@@ -809,3 +809,115 @@ série que não soubemos ler, e o custo dos dois erros não é simétrico.
 D-030 já recusava); ignorar a parte `BY*` desconhecida em vez de recusar a regra (produz série
 diferente com aparência correta, que é o pior resultado possível); omitir sempre o campo de
 recorrência (mantém o defeito de a remoção nunca chegar ao servidor).
+
+
+## D-034
+
+**A interface abre um escopo por operação; ViewModel residente recebe a fábrica, nunca o repositório.**
+
+`MainWindow` e `ShellViewModel` eram `AddSingleton` e dependiam de repositórios `AddScoped`. O
+`BuildServiceProvider()` sem `ValidateScopes` aceita isso em silêncio, e o resultado é que a
+interface inteira capturava o `MailDbContext` do escopo raiz e o compartilhava por toda a
+execução — enquanto o `AccountSyncWorker`, que abre escopo novo a cada rodada, escrevia nas
+mesmas linhas.
+
+Três sintomas, uma causa: `DbUpdateConcurrencyException` ao clicar numa mensagem, porque o
+contexto da interface guardava valores que o laço já havia mudado; travamento, porque
+`DbContext` não é seguro para uso concorrente; e painel de leitura vazio, porque a exceção
+subia de `LoadMessageAsync` — chamado de um `async void` — e abortava a carga antes de
+renderizar.
+
+**Existia desde a fase 1 e nenhum dos 987 testes o alcançava**, porque todos montam
+repositórios direto, com o contexto que o próprio teste cria. O defeito só existe na
+composição, e não havia teste de composição.
+
+A escolha entre quatro desenhos foi feita comparando-os, não por instinto: fábrica de contexto,
+escopo por operação, mexer só no rastreamento, e prevenção. Os quatro convergiram para escopo
+por operação — inclusive o que investigava não mexer no tempo de vida, que concluiu que
+`NoTracking`, recarga explícita e token de concorrência atacam só valor velho, e dois dos três
+sintomas não nascem de valor velho.
+
+O que a proposta vencedora acrescentou foi a **prevenção**, e ela vale mais que a correção:
+
+- `ValidateScopes` e `ValidateOnBuild` — o contêiner errado deixa de abrir, dizendo qual
+  serviço e qual consumidor. Sem isso, a próxima dependência cativa entra igual.
+- `App.Services` deixou de existir. Não há mais como resolver do provedor raiz, e quem tentar
+  encontra o **compilador**, não um analisador nem uma revisão.
+- `Sintek.Mail.Composition` existe para o teste montar o **mesmo** contêiner que o aplicativo.
+  Uma lista paralela de chamadas `AddSintekMail*` divergiria da real com o tempo, e o teste
+  passaria a provar um contêiner que ninguém executa.
+- `ContainerCompositionTests` prende a invariante nos **dois** sentidos: ViewModel residente
+  precisa resolver do raiz, ViewModel de diálogo precisa **falhar** no raiz. Só a primeira
+  metade deixaria alguém "consertar" uma falha promovendo um repositório a singleton.
+
+**Duas armadilhas que a correção arma, e que entraram junto.** `GetWithParticipantsAsync` não
+fazia `Include` de `Message.Body`; isso não aparecia porque o contexto único devolvia, por
+resolução de identidade, a mesma instância que o download acabara de preencher. Com contexto
+por operação o corpo passaria a chegar nulo. E `LoadFolderAsync`, disparado sem `await` ao
+alternar o agrupamento, antes batia em "a second operation was started on this context
+instance" — falha alta; agora as duas cargas correm de verdade sobre a mesma
+`ObservableCollection`, e o que era exceção barulhenta viraria lista errada em silêncio. Daí a
+guarda por número de geração.
+
+**Alternativas rejeitadas:** `IDbContextFactory` com `IWorkSession` (nota 7,0 — mexe em
+repositórios, `UnitOfWork` e `Fts5SearchService`, e o custo não se paga contra o escopo por
+operação, que o `AccountSyncWorker` já usa); resolver só com `NoTracking` e recarga (nota 7,33
+— não trata uso concorrente, que é causa de travamento e não de valor velho); manter o provedor
+raiz acessível e confiar em revisão (o defeito atravessou catorze fases assim).
+
+---
+
+## D-035 — A CSP do painel de leitura acompanha a autorização de imagens
+
+**Data:** 2026-08-06
+**Contexto:** primeira execução real; "Exibir imagens" não fazia nada.
+
+O botão estava ligado direto em `AllowRemoteContentCommand`. O comando reescrevia
+`SanitizedHtml` no ViewModel, mas quem entrega o HTML ao `WebView2` é `RenderBodyAsync`, na
+janela, e nada o chamava depois — o documento antigo, sem imagem nenhuma, continuava na tela.
+
+E reapresentar sozinho não resolveria: `WrapInDocument` fixava `img-src cid: data:` na CSP.
+Com as imagens autorizadas, o `MessageHtmlSanitizer` preserva os `src` remotos e o navegador
+recusaria **todos** — a CSP era mais restritiva que o HTML que ela deveria conter. O bloqueio
+só apareceria no console das DevTools, que estão desligadas ali de propósito.
+
+**Decisão:** o `img-src` é montado a partir de `RemoteContentAllowed`, com os mesmos esquemas
+que `MessageHtmlSanitizer.CreateSanitizer` passa a aceitar; sem autorização volta a ser o mais
+estreito possível. O botão vira `Click`, que autoriza **e** reapresenta.
+
+**Por quê:** as duas listas descrevem a mesma decisão do usuário e precisam concordar. Uma
+barreira que contraria a decisão em vez de a proteger não é defesa em profundidade — é defeito,
+e do tipo que não deixa rastro.
+
+**Alternativa rejeitada:** manter a CSP fixa e aceitar que a autorização vale só para o
+sanitizador. Seria uma opção de menu que não faz nada, que é pior do que não ter a opção.
+
+---
+
+## D-036 — Quem baixa conteúdo sob demanda também conecta
+
+**Data:** 2026-08-06
+**Contexto:** consequência direta de D-034, encontrada ao revisar as minas que a mudança de
+escopo armava.
+
+`IImapClient` tem escopo. O laço de sincronização conecta o cliente **do escopo dele**; o
+clique numa mensagem abre outro escopo, com outra instância, que nasce desconectada. Nada em
+`DownloadMessageContentHandler` chamava `ConnectAsync`, então `FetchBodyAsync` caía no
+`EnsureConnected` da implementação e lançava `InvalidOperationException` — que sobe pelo
+manipulador `async void` da seleção de mensagem e **derruba a aplicação**. Clicar numa mensagem
+ainda não baixada fechava o programa.
+
+Não era regressão de D-034: com o provedor raiz a instância também nunca era conectada. A
+mudança de escopo só tornou o defeito determinístico, o que é uma melhora.
+
+**Decisão:** o caso de uso conecta o próprio cliente antes de buscar, nos dois caminhos (corpo
+e anexo), e a falha vira `DownloadBodyResult`, nunca exceção.
+
+**Por quê:** o caminho é disparado por um clique. Sem rede, o esperado é a faixa de aviso do
+painel de leitura — uma exceção fecharia a aplicação pelo mesmo `async void`. Conectar no caso
+de uso, e não no ViewModel, é o que `OutboxProcessor` e `SyncAccountHandler` já fazem: quem
+sabe que precisa da rede e conhece a conta é quem conecta.
+
+**Detalhe que importa:** `ApplyArrivalRulesHandler` também baixa corpo, para avaliar condição
+sobre o texto completo — mas roda a partir do `SyncAccountHandler`, no escopo em que o cliente
+já está conectado. `IsConnected` curto-circuita, e nenhuma ida e volta é acrescentada ao laço.

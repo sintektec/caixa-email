@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Sintek.Mail.Application.Abstractions.Persistence;
 using Sintek.Mail.Application.Sync;
@@ -31,44 +32,11 @@ public enum ConnectivityState
 /// <summary>
 /// ViewModel da janela principal: monta a árvore de navegação e coordena os painéis.
 /// </summary>
-public sealed partial class ShellViewModel : ObservableObject
+public sealed partial class ShellViewModel : ScopedViewModel
 {
-    private readonly IDomainDirectoryRepository _directories;
-    private readonly IAccountRepository _accounts;
-    private readonly IFolderRepository _folders;
-    private readonly IOutboxRepository _outbox;
-    private readonly ISavedSearchRepository _savedSearches;
-    private readonly MoveMessageHandler _moveMessage;
-    private readonly MarkAsSpamHandler _markAsSpam;
-    private readonly MessageFlagsHandler _messageFlags;
-    private readonly SyncAccountHandler _syncAccount;
-    private readonly ReorderNavigationHandler _reorder;
-    private readonly ILogger<ShellViewModel> _logger;
-
-    public ShellViewModel(
-        IDomainDirectoryRepository directories,
-        IAccountRepository accounts,
-        IFolderRepository folders,
-        IOutboxRepository outbox,
-        ISavedSearchRepository savedSearches,
-        MoveMessageHandler moveMessage,
-        MarkAsSpamHandler markAsSpam,
-        MessageFlagsHandler messageFlags,
-        SyncAccountHandler syncAccount,
-        ReorderNavigationHandler reorder,
-        ILogger<ShellViewModel> logger)
+    public ShellViewModel(IServiceScopeFactory scopes)
+        : base(scopes)
     {
-        _directories = directories;
-        _accounts = accounts;
-        _folders = folders;
-        _outbox = outbox;
-        _savedSearches = savedSearches;
-        _moveMessage = moveMessage;
-        _markAsSpam = markAsSpam;
-        _messageFlags = messageFlags;
-        _syncAccount = syncAccount;
-        _reorder = reorder;
-        _logger = logger;
     }
 
     /// <summary>Raízes da árvore de navegação.</summary>
@@ -95,6 +63,12 @@ public sealed partial class ShellViewModel : ObservableObject
     private bool _isBusy;
 
     /// <summary>Monta a árvore a partir do banco local.</summary>
+    /// <remarks>
+    /// A árvore inteira — diretórios, contas, pastas, pesquisas salvas e o contador da fila —
+    /// sai de um escopo só, e portanto de um instante só do banco. Um escopo por leitura
+    /// deixaria a montagem misturar dois estados quando a sincronização gravasse no meio dela:
+    /// a conta de antes com as pastas de depois.
+    /// </remarks>
     [RelayCommand]
     public async Task LoadNavigationAsync(CancellationToken cancellationToken = default)
     {
@@ -102,71 +76,83 @@ public sealed partial class ShellViewModel : ObservableObject
 
         try
         {
-            NavigationRoots.Clear();
-
-            var favorites = new NavigationNode(
-                NavigationNodeKind.Section, "Favoritos", NavigationNode.FavoriteIcon);
-
-            var accountsRoot = new NavigationNode(
-                NavigationNodeKind.Section, "Contas e Diretórios", NavigationNode.DomainIcon);
-
-            foreach (var directory in await _directories.ListAsync(cancellationToken).ConfigureAwait(true))
-            {
-                // A descrição é o nome que a pessoa deu; o domínio é o que a regra usa. Quem
-                // olha a árvore quer o primeiro — mas um diretório sem descrição viraria linha
-                // em branco, então o domínio continua sendo o rótulo de reserva.
-                var domainNode = new NavigationNode(
-                    NavigationNodeKind.DomainDirectory,
-                    string.IsNullOrWhiteSpace(directory.Description)
-                        ? directory.DomainName.Value
-                        : directory.Description,
-                    NavigationNode.DomainIcon)
+            await InScopeAsync(
+                async sp =>
                 {
-                    EntityId = directory.Id,
-                };
+                    var directories = sp.GetRequiredService<IDomainDirectoryRepository>();
+                    var accounts = sp.GetRequiredService<IAccountRepository>();
+                    var folders = sp.GetRequiredService<IFolderRepository>();
+                    var savedSearchRepository = sp.GetRequiredService<ISavedSearchRepository>();
 
-                foreach (var account in await _accounts
-                    .ListByDomainAsync(directory.Id, cancellationToken).ConfigureAwait(true))
-                {
-                    domainNode.Children.Add(
-                        await BuildAccountNodeAsync(account, favorites, cancellationToken).ConfigureAwait(true));
-                }
+                    NavigationRoots.Clear();
 
-                // O contador do domínio é a soma das contas: é o que o usuário espera ver
-                // ao manter o nível recolhido.
-                domainNode.UnreadCount = domainNode.Children.Sum(c => c.UnreadCount);
-                accountsRoot.Children.Add(domainNode);
-            }
+                    var favorites = new NavigationNode(
+                        NavigationNodeKind.Section, "Favoritos", NavigationNode.FavoriteIcon);
 
-            if (favorites.Children.Count > 0)
-            {
-                NavigationRoots.Add(favorites);
-            }
+                    var accountsRoot = new NavigationNode(
+                        NavigationNodeKind.Section, "Contas e Diretórios", NavigationNode.DomainIcon);
 
-            NavigationRoots.Add(accountsRoot);
-
-            // Pesquisas salvas na barra lateral, fixadas primeiro — selecionar uma executa
-            // a pesquisa no painel central.
-            var savedSearches = await _savedSearches.ListAsync(cancellationToken).ConfigureAwait(true);
-
-            if (savedSearches.Count > 0)
-            {
-                var searchesRoot = new NavigationNode(
-                    NavigationNodeKind.Section, "Pesquisas salvas", NavigationNode.SavedSearchIcon);
-
-                foreach (var saved in savedSearches)
-                {
-                    searchesRoot.Children.Add(new NavigationNode(
-                        NavigationNodeKind.SavedSearch, saved.Name, NavigationNode.SavedSearchIcon)
+                    foreach (var directory in await directories.ListAsync(cancellationToken).ConfigureAwait(true))
                     {
-                        EntityId = saved.Id,
-                    });
-                }
+                        // A descrição é o nome que a pessoa deu; o domínio é o que a regra usa. Quem
+                        // olha a árvore quer o primeiro — mas um diretório sem descrição viraria linha
+                        // em branco, então o domínio continua sendo o rótulo de reserva.
+                        var domainNode = new NavigationNode(
+                            NavigationNodeKind.DomainDirectory,
+                            string.IsNullOrWhiteSpace(directory.Description)
+                                ? directory.DomainName.Value
+                                : directory.Description,
+                            NavigationNode.DomainIcon)
+                        {
+                            EntityId = directory.Id,
+                        };
 
-                NavigationRoots.Add(searchesRoot);
-            }
+                        foreach (var account in await accounts
+                            .ListByDomainAsync(directory.Id, cancellationToken).ConfigureAwait(true))
+                        {
+                            domainNode.Children.Add(
+                                await BuildAccountNodeAsync(folders, account, favorites, cancellationToken)
+                                    .ConfigureAwait(true));
+                        }
 
-            await RefreshPendingCountAsync(cancellationToken).ConfigureAwait(true);
+                        // O contador do domínio é a soma das contas: é o que o usuário espera ver
+                        // ao manter o nível recolhido.
+                        domainNode.UnreadCount = domainNode.Children.Sum(c => c.UnreadCount);
+                        accountsRoot.Children.Add(domainNode);
+                    }
+
+                    if (favorites.Children.Count > 0)
+                    {
+                        NavigationRoots.Add(favorites);
+                    }
+
+                    NavigationRoots.Add(accountsRoot);
+
+                    // Pesquisas salvas na barra lateral, fixadas primeiro — selecionar uma executa
+                    // a pesquisa no painel central.
+                    var savedSearches = await savedSearchRepository.ListAsync(cancellationToken).ConfigureAwait(true);
+
+                    if (savedSearches.Count > 0)
+                    {
+                        var searchesRoot = new NavigationNode(
+                            NavigationNodeKind.Section, "Pesquisas salvas", NavigationNode.SavedSearchIcon);
+
+                        foreach (var saved in savedSearches)
+                        {
+                            searchesRoot.Children.Add(new NavigationNode(
+                                NavigationNodeKind.SavedSearch, saved.Name, NavigationNode.SavedSearchIcon)
+                            {
+                                EntityId = saved.Id,
+                            });
+                        }
+
+                        NavigationRoots.Add(searchesRoot);
+                    }
+
+                    await RefreshPendingCountAsync(
+                        sp.GetRequiredService<IOutboxRepository>(), cancellationToken).ConfigureAwait(true);
+                },
+                cancellationToken).ConfigureAwait(true);
         }
         finally
         {
@@ -174,8 +160,15 @@ public sealed partial class ShellViewModel : ObservableObject
         }
     }
 
-    private async Task<NavigationNode> BuildAccountNodeAsync(
-        Account account, NavigationNode favorites, CancellationToken cancellationToken)
+    /// <remarks>
+    /// Recebe o repositório em vez de resolvê-lo: os nós da conta pertencem à mesma leitura
+    /// da árvore, e as entidades de pasta não passam daqui — só viram <c>NavigationNode</c>.
+    /// </remarks>
+    private static async Task<NavigationNode> BuildAccountNodeAsync(
+        IFolderRepository folderRepository,
+        Account account,
+        NavigationNode favorites,
+        CancellationToken cancellationToken)
     {
         // Mesma escolha do diretório: a descrição é o nome que a pessoa deu, e é o que ela
         // procura na árvore. O endereço continua sendo o rótulo de reserva, porque conta sem
@@ -192,7 +185,8 @@ public sealed partial class ShellViewModel : ObservableObject
             AccountId = account.Id,
         };
 
-        var folders = await _folders.ListByAccountAsync(account.Id, cancellationToken).ConfigureAwait(true);
+        var folders = await folderRepository
+            .ListByAccountAsync(account.Id, cancellationToken).ConfigureAwait(true);
         var nodesByFolderId = new Dictionary<Guid, NavigationNode>();
 
         // Duas passagens: a primeira cria os nós, a segunda os conecta. Uma passagem só
@@ -243,8 +237,19 @@ public sealed partial class ShellViewModel : ObservableObject
 
     /// <summary>Atualiza o contador da fila de sincronização.</summary>
     public async Task RefreshPendingCountAsync(CancellationToken cancellationToken = default)
+        => await InScopeAsync(
+            sp => RefreshPendingCountAsync(sp.GetRequiredService<IOutboxRepository>(), cancellationToken),
+            cancellationToken).ConfigureAwait(true);
+
+    /// <remarks>
+    /// A sobrecarga interna deixa o contador ser lido dentro do escopo de quem enfileirou:
+    /// quem grava e quem conta precisam do mesmo contexto, senão o número exibido é o de
+    /// antes da gravação.
+    /// </remarks>
+    private async Task RefreshPendingCountAsync(
+        IOutboxRepository outbox, CancellationToken cancellationToken)
     {
-        var pending = await _outbox.ListPendingAsync(null, cancellationToken).ConfigureAwait(true);
+        var pending = await outbox.ListPendingAsync(null, cancellationToken).ConfigureAwait(true);
         PendingOperationCount = pending.Count;
     }
 
@@ -300,11 +305,16 @@ public sealed partial class ShellViewModel : ObservableObject
 
         var orderedIds = collection.Select(n => n.EntityId).ToList();
 
-        var result = moved.Kind == NavigationNodeKind.DomainDirectory
-            ? await _reorder.ReorderDirectoriesAsync(orderedIds, cancellationToken).ConfigureAwait(true)
-            : await _reorder
-                .ReorderAccountsAsync(parent!.EntityId, orderedIds, cancellationToken)
-                .ConfigureAwait(true);
+        var result = await InScopeAsync(
+            sp =>
+            {
+                var reorder = sp.GetRequiredService<ReorderNavigationHandler>();
+
+                return moved.Kind == NavigationNodeKind.DomainDirectory
+                    ? reorder.ReorderDirectoriesAsync(orderedIds, cancellationToken)
+                    : reorder.ReorderAccountsAsync(parent!.EntityId, orderedIds, cancellationToken);
+            },
+            cancellationToken).ConfigureAwait(true);
 
         if (result.Succeeded)
         {
@@ -314,7 +324,8 @@ public sealed partial class ShellViewModel : ObservableObject
         StatusMessage = result.ErrorMessage;
 
         // Recarregar é mais honesto que desfazer o Move à mão: a recusa quase sempre
-        // significa que a árvore na tela não corresponde mais ao banco.
+        // significa que a árvore na tela não corresponde mais ao banco. A recarga é outra
+        // operação e abre o escopo dela — o da gravação já foi descartado aqui.
         await LoadNavigationAsync(cancellationToken).ConfigureAwait(true);
         return false;
     }
@@ -352,37 +363,39 @@ public sealed partial class ShellViewModel : ObservableObject
     /// code-behind, que é onde a mensagem e a pasta de destino são conhecidas.
     /// </remarks>
     public async Task<bool> MoveMessageAsync(Guid messageId, Guid targetFolderId, bool userConfirmed = false)
-    {
-        try
+        => await InScopeAsync(async sp =>
         {
-            var result = await _moveMessage
-                .HandleAsync(new MoveMessageCommand(messageId, targetFolderId, userConfirmed))
-                .ConfigureAwait(true);
-
-            switch (result.Outcome)
+            try
             {
-                case MoveMessageOutcome.RequiresConfirmation:
-                    StatusMessage = result.UserMessage;
-                    return false;
+                var result = await sp.GetRequiredService<MoveMessageHandler>()
+                    .HandleAsync(new MoveMessageCommand(messageId, targetFolderId, userConfirmed))
+                    .ConfigureAwait(true);
 
-                case MoveMessageOutcome.MovedToPending:
-                    StatusMessage =
-                        "A mensagem foi movida para a pasta de pendências por não pertencer ao domínio da pasta.";
-                    return true;
+                switch (result.Outcome)
+                {
+                    case MoveMessageOutcome.RequiresConfirmation:
+                        StatusMessage = result.UserMessage;
+                        return false;
 
-                default:
-                    StatusMessage = null;
-                    return true;
+                    case MoveMessageOutcome.MovedToPending:
+                        StatusMessage =
+                            "A mensagem foi movida para a pasta de pendências por não pertencer ao domínio da pasta.";
+                        return true;
+
+                    default:
+                        StatusMessage = null;
+                        return true;
+                }
             }
-        }
-        catch (FolderDomainRestrictionException ex)
-        {
-            // Mensagem literal da especificação, redigida para leitura do usuário.
-            StatusMessage = ex.UserMessage;
-            _logger.LogInformation("Movimentação recusada pela regra de domínio da pasta {FolderId}.", targetFolderId);
-            return false;
-        }
-    }
+            catch (FolderDomainRestrictionException ex)
+            {
+                // Mensagem literal da especificação, redigida para leitura do usuário.
+                StatusMessage = ex.UserMessage;
+                sp.GetRequiredService<ILogger<ShellViewModel>>().LogInformation(
+                    "Movimentação recusada pela regra de domínio da pasta {FolderId}.", targetFolderId);
+                return false;
+            }
+        }).ConfigureAwait(true);
 
     /// <summary>
     /// Sincroniza todas as contas ativas agora.
@@ -406,46 +419,72 @@ public sealed partial class ShellViewModel : ObservableObject
 
         try
         {
-            var accounts = await _accounts.ListActiveAsync(cancellationToken).ConfigureAwait(true);
-
-            if (accounts.Count == 0)
-            {
-                Connectivity = ConnectivityState.Offline;
-                StatusMessage = "Nenhuma conta cadastrada. Adicione uma conta para começar.";
-                return;
-            }
-
-            var worst = ConnectivityState.Online;
-            string? firstError = null;
-
-            foreach (var account in accounts)
-            {
-                var result = await _syncAccount.HandleAsync(account.Id, cancellationToken).ConfigureAwait(true);
-
-                if (result.Succeeded)
+            // A varredura inteira num escopo só, como o AccountSyncWorker faz a cada volta.
+            var reloadNavigation = await InScopeAsync(
+                async sp =>
                 {
-                    continue;
-                }
+                    var accountRepository = sp.GetRequiredService<IAccountRepository>();
+                    var syncAccount = sp.GetRequiredService<SyncAccountHandler>();
 
-                firstError ??= result.ErrorMessage;
-                worst = result.IsAuthenticationFailure ? ConnectivityState.Error : worst;
+                    // Da listagem saem só os identificadores: a sincronização reescreve as
+                    // mesmas linhas, e a entidade lida antes dela já não vale nada.
+                    var accountIds =
+                        (await accountRepository.ListActiveAsync(cancellationToken).ConfigureAwait(true))
+                        .Select(a => a.Id)
+                        .ToList();
 
-                if (worst != ConnectivityState.Error)
-                {
-                    worst = ConnectivityState.Offline;
-                }
+                    if (accountIds.Count == 0)
+                    {
+                        Connectivity = ConnectivityState.Offline;
+                        StatusMessage = "Nenhuma conta cadastrada. Adicione uma conta para começar.";
+                        return false;
+                    }
+
+                    var worst = ConnectivityState.Online;
+                    string? firstError = null;
+
+                    foreach (var accountId in accountIds)
+                    {
+                        var result = await syncAccount.HandleAsync(accountId, cancellationToken).ConfigureAwait(true);
+
+                        if (result.Succeeded)
+                        {
+                            continue;
+                        }
+
+                        firstError ??= result.ErrorMessage;
+                        worst = result.IsAuthenticationFailure ? ConnectivityState.Error : worst;
+
+                        if (worst != ConnectivityState.Error)
+                        {
+                            worst = ConnectivityState.Offline;
+                        }
+                    }
+
+                    Connectivity = worst;
+                    StatusMessage = firstError;
+                    return true;
+                },
+                cancellationToken).ConfigureAwait(true);
+
+            if (reloadNavigation)
+            {
+                await LoadNavigationAsync(cancellationToken).ConfigureAwait(true);
             }
-
-            Connectivity = worst;
-            StatusMessage = firstError;
-
-            await LoadNavigationAsync(cancellationToken).ConfigureAwait(true);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             Connectivity = ConnectivityState.Error;
             StatusMessage = ex.Message;
-            _logger.LogError(ex, "A sincronização manual falhou.");
+
+            // O escopo da operação já foi descartado quando a exceção chega aqui, e o
+            // registrador precisa de um. Sem token: um cancelamento não pode calar o registro.
+            await InScopeAsync(sp =>
+            {
+                sp.GetRequiredService<ILogger<ShellViewModel>>()
+                    .LogError(ex, "A sincronização manual falhou.");
+                return Task.CompletedTask;
+            }).ConfigureAwait(true);
         }
         finally
         {
@@ -463,18 +502,23 @@ public sealed partial class ShellViewModel : ObservableObject
     /// </remarks>
     public async Task<bool> MarkAsSpamAsync(
         Guid messageId, bool isSpam, CancellationToken cancellationToken = default)
-    {
-        var result = await _markAsSpam.HandleAsync(messageId, isSpam, cancellationToken).ConfigureAwait(true);
+        => await InScopeAsync(
+            async sp =>
+            {
+                var result = await sp.GetRequiredService<MarkAsSpamHandler>()
+                    .HandleAsync(messageId, isSpam, cancellationToken).ConfigureAwait(true);
 
-        StatusMessage = result.ErrorMessage;
+                StatusMessage = result.ErrorMessage;
 
-        if (result.Succeeded)
-        {
-            await RefreshPendingCountAsync(cancellationToken).ConfigureAwait(true);
-        }
+                if (result.Succeeded)
+                {
+                    await RefreshPendingCountAsync(
+                        sp.GetRequiredService<IOutboxRepository>(), cancellationToken).ConfigureAwait(true);
+                }
 
-        return result.Succeeded;
-    }
+                return result.Succeeded;
+            },
+            cancellationToken).ConfigureAwait(true);
 
     /// <summary>
     /// Marca uma mensagem como lida ou não lida, propagando pela fila.
@@ -485,34 +529,42 @@ public sealed partial class ShellViewModel : ObservableObject
     /// </remarks>
     public async Task<bool> SetMessageReadAsync(
         Guid messageId, bool isRead, CancellationToken cancellationToken = default)
-    {
-        var changed = await _messageFlags.SetReadAsync(messageId, isRead, cancellationToken)
-            .ConfigureAwait(true);
+        => await InScopeAsync(
+            async sp =>
+            {
+                var changed = await sp.GetRequiredService<MessageFlagsHandler>()
+                    .SetReadAsync(messageId, isRead, cancellationToken).ConfigureAwait(true);
 
-        if (changed)
-        {
-            await RefreshPendingCountAsync(cancellationToken).ConfigureAwait(true);
-        }
+                if (changed)
+                {
+                    await RefreshPendingCountAsync(
+                        sp.GetRequiredService<IOutboxRepository>(), cancellationToken).ConfigureAwait(true);
+                }
 
-        return changed;
-    }
+                return changed;
+            },
+            cancellationToken).ConfigureAwait(true);
 
     /// <summary>Move uma mensagem para a lixeira.</summary>
     public async Task<bool> DeleteMessageAsync(
         Guid messageId, CancellationToken cancellationToken = default)
-    {
-        var result = await _messageFlags.MoveToTrashAsync(messageId, cancellationToken)
-            .ConfigureAwait(true);
+        => await InScopeAsync(
+            async sp =>
+            {
+                var result = await sp.GetRequiredService<MessageFlagsHandler>()
+                    .MoveToTrashAsync(messageId, cancellationToken).ConfigureAwait(true);
 
-        StatusMessage = result.ErrorMessage;
+                StatusMessage = result.ErrorMessage;
 
-        if (result.Succeeded)
-        {
-            await RefreshPendingCountAsync(cancellationToken).ConfigureAwait(true);
-        }
+                if (result.Succeeded)
+                {
+                    await RefreshPendingCountAsync(
+                        sp.GetRequiredService<IOutboxRepository>(), cancellationToken).ConfigureAwait(true);
+                }
 
-        return result.Succeeded;
-    }
+                return result.Succeeded;
+            },
+            cancellationToken).ConfigureAwait(true);
 
     /// <summary>Descrição textual do estado de conectividade, para leitores de tela.</summary>
     public string ConnectivityDescription => Connectivity switch

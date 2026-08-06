@@ -152,10 +152,19 @@ public sealed class MessageRepository : IMessageRepository
         => _context.Messages.FirstOrDefaultAsync(m => m.Id == id, cancellationToken);
 
     /// <inheritdoc />
+    /// <remarks>
+    /// O <c>Body</c> entra junto porque quem chama é o painel de leitura, e ele lê
+    /// <c>message.Body?.SanitizedHtml</c> logo em seguida. Faltava, e não aparecia: o
+    /// contexto único da interface guardava a instância que o download acabara de preencher,
+    /// e a resolução de identidade devolvia essa mesma instância com a navegação já cheia.
+    /// Com um contexto por operação essa proteção acidental some — o corpo passaria a chegar
+    /// nulo e o painel renderizaria vazio, sem erro nenhum.
+    /// </remarks>
     public Task<Message?> GetWithParticipantsAsync(Guid id, CancellationToken cancellationToken = default)
         => _context.Messages
             .Include(m => m.Addresses)
             .Include(m => m.Attachments)
+            .Include(m => m.Body)
             .FirstOrDefaultAsync(m => m.Id == id, cancellationToken);
 
     /// <inheritdoc />

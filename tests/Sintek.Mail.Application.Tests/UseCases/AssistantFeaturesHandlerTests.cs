@@ -86,7 +86,7 @@ public class AssistantFeaturesHandlerTests
             NullLogger<AssistantGateway>.Instance),
         _messages,
         TestFactories.Download(
-            _messages, _folders, _unitOfWork, _imap, _sanitizer, _attachments, _clock));
+            _messages, _folders, _accounts, _unitOfWork, _imap, _sanitizer, _attachments, _clock));
 
     private void ArrangeDownloadedBody(string text)
     {

@@ -71,16 +71,22 @@ internal static class TestFactories
             NullLogger<Sintek.Mail.Application.Sync.CalendarSyncService>.Instance);
 
     /// <summary>Download de conteúdo com o importador de convites inerte.</summary>
+    /// <remarks>
+    /// O repositório de contas é obrigatório porque o caso de uso conecta o próprio cliente
+    /// IMAP antes de buscar: ele roda no escopo do clique, não no do laço de sincronização, e
+    /// a instância que recebe nasce desconectada.
+    /// </remarks>
     public static DownloadMessageContentHandler Download(
         IMessageRepository messages,
         IFolderRepository folders,
+        IAccountRepository accounts,
         IUnitOfWork unitOfWork,
         Abstractions.Mail.IImapClient imapClient,
         IHtmlSanitizer sanitizer,
         IAttachmentStore attachmentStore,
         TimeProvider clock)
         => new(
-            messages, folders, unitOfWork, imapClient, sanitizer, attachmentStore,
+            messages, folders, accounts, unitOfWork, imapClient, sanitizer, attachmentStore,
             InertInvitations(unitOfWork, clock),
             clock,
             NullLogger<DownloadMessageContentHandler>.Instance);
@@ -136,7 +142,7 @@ internal static class TestFactories
                 messages, folders, moveMessage, outbox, unitOfWork,
                 NullLogger<MarkAsSpamHandler>.Instance),
             Download(
-                messages, folders, unitOfWork,
+                messages, folders, accounts, unitOfWork,
                 Substitute.For<Abstractions.Mail.IImapClient>(),
                 Substitute.For<IHtmlSanitizer>(),
                 Substitute.For<IAttachmentStore>(),

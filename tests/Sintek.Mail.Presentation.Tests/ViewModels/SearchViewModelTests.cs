@@ -34,11 +34,13 @@ public class SearchViewModelTests
     }
 
     private SearchViewModel CreateViewModel() => new(
-        _searchService,
-        new SavedSearchesHandler(_savedSearches, _unitOfWork, new FakeTimeProvider(Now)),
-        _accounts,
-        _directories,
-        _categories);
+        new TestScopes()
+            .With(_searchService)
+            .With(new SavedSearchesHandler(_savedSearches, _unitOfWork, new FakeTimeProvider(Now)))
+            .With(_accounts)
+            .With(_directories)
+            .With(_categories)
+            .Build());
 
     [Fact]
     public void MontarCriterios_CamposEmBranco_ViramNulosENaoStringVazia()

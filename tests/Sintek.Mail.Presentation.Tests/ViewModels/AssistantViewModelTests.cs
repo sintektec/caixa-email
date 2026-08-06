@@ -69,17 +69,19 @@ public class AssistantViewModelTests
     }
 
     private AssistantViewModel CreateViewModel(params IAssistantProvider[] providers) => new(
-        new AssistantFeaturesHandler(
-            new AssistantGateway(
-                providers, _accounts, _directories, _audit, _unitOfWork, _clock,
-                NullLogger<AssistantGateway>.Instance),
-            _messages,
-            ComposeFactory.Download(
-                _messages, _folders, _unitOfWork,
-                Substitute.For<IImapClient>(),
-                Substitute.For<IHtmlSanitizer>(),
-                Substitute.For<IAttachmentStore>(),
-                _clock)));
+        new TestScopes()
+            .With(new AssistantFeaturesHandler(
+                new AssistantGateway(
+                    providers, _accounts, _directories, _audit, _unitOfWork, _clock,
+                    NullLogger<AssistantGateway>.Instance),
+                _messages,
+                ComposeFactory.Download(
+                    _messages, _folders, _unitOfWork,
+                    Substitute.For<IImapClient>(),
+                    Substitute.For<IHtmlSanitizer>(),
+                    Substitute.For<IAttachmentStore>(),
+                    _clock)))
+            .Build());
 
     [Fact]
     public async Task Inicializar_SemProvedor_DesligaOsRecursos()

@@ -18,7 +18,8 @@ public class MessageListViewModelTests
     private readonly IMessageRepository _messages = Substitute.For<IMessageRepository>();
     private readonly IFolderRepository _folders = Substitute.For<IFolderRepository>();
 
-    private MessageListViewModel CreateViewModel() => new(_messages, _folders);
+    private MessageListViewModel CreateViewModel() => new(
+        new TestScopes().With(_messages).With(_folders).Build());
 
     private static Message CreateMessage(string subject)
     {

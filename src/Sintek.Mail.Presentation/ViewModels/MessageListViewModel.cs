@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.DependencyInjection;
 using Sintek.Mail.Application.Abstractions.Persistence;
 using Sintek.Mail.Domain.Entities;
 using Sintek.Mail.Domain.Enums;
@@ -122,15 +123,30 @@ public sealed partial class MessageListItemViewModel : ObservableObject
 }
 
 /// <summary>ViewModel do painel central: a lista de mensagens da pasta selecionada.</summary>
-public sealed partial class MessageListViewModel : ObservableObject
+public sealed partial class MessageListViewModel : ScopedViewModel
 {
-    private readonly IMessageRepository _messages;
-    private readonly IFolderRepository _folders;
+    /// <summary>
+    /// Número da carga em curso, para descartar o resultado de uma carga superada.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Passou a ser necessário com o escopo por operação. Antes, duas cargas sobrepostas
+    /// batiam em "a second operation was started on this context instance" — falha alta, e a
+    /// mesma que motivou a refatoração. Agora cada carga tem contexto próprio e as duas
+    /// correm de verdade, sobre a mesma <c>ObservableCollection</c>.
+    /// </para>
+    /// <para>
+    /// O caminho que expõe isso é <c>OnGroupByConversationChanged</c>, que dispara sem
+    /// aguardar: com a pasta ainda carregando, alternar o agrupamento fazia a carga nova
+    /// limpar a lista e a antiga continuar inserindo o rabo da anterior. O resultado não era
+    /// erro, era lista errada em silêncio.
+    /// </para>
+    /// </remarks>
+    private int _generation;
 
-    public MessageListViewModel(IMessageRepository messages, IFolderRepository folders)
+    public MessageListViewModel(IServiceScopeFactory scopes)
+        : base(scopes)
     {
-        _messages = messages;
-        _folders = folders;
     }
 
     /// <summary>Mensagens exibidas.</summary>
@@ -167,6 +183,10 @@ public sealed partial class MessageListViewModel : ObservableObject
     [RelayCommand]
     public async Task LoadFolderAsync(Guid folderId, CancellationToken cancellationToken = default)
     {
+        // Marca esta carga. Se outra começar antes de esta terminar, a antiga descobre pelo
+        // número e desiste de escrever.
+        var generation = ++_generation;
+
         IsLoading = true;
 
         try
@@ -174,33 +194,58 @@ public sealed partial class MessageListViewModel : ObservableObject
             FolderId = folderId;
             IsSearchResults = false;
 
-            var folder = await _folders.GetByIdAsync(folderId, cancellationToken).ConfigureAwait(true);
-            FolderName = folder?.DisplayName ?? string.Empty;
-            IsFolderDomainRestricted = folder?.IsDomainRestricted ?? false;
-
-            Messages.Clear();
-
-            var ids = await _messages.ListIdsByFolderAsync(folderId, cancellationToken).ConfigureAwait(true);
-
-            var items = new List<MessageListItemViewModel>();
-
-            foreach (var id in ids)
-            {
-                var message = await _messages.GetByIdAsync(id, cancellationToken).ConfigureAwait(true);
-                if (message is not null)
+            // Um escopo para a carga inteira: cabeçalho e linhas saem da mesma leitura. As
+            // entidades ficam aqui dentro; para fora vão só as linhas já projetadas.
+            await InScopeAsync(
+                async sp =>
                 {
-                    items.Add(ToListItem(message));
-                }
-            }
+                    var folders = sp.GetRequiredService<IFolderRepository>();
+                    var messages = sp.GetRequiredService<IMessageRepository>();
 
-            foreach (var item in GroupByConversation ? CollapseConversations(items) : items)
-            {
-                Messages.Add(item);
-            }
+                    var folder = await folders.GetByIdAsync(folderId, cancellationToken).ConfigureAwait(true);
+                    FolderName = folder?.DisplayName ?? string.Empty;
+                    IsFolderDomainRestricted = folder?.IsDomainRestricted ?? false;
+
+                    if (generation != _generation)
+                    {
+                        return;
+                    }
+
+                    Messages.Clear();
+
+                    var ids = await messages.ListIdsByFolderAsync(folderId, cancellationToken).ConfigureAwait(true);
+
+                    var items = new List<MessageListItemViewModel>();
+
+                    foreach (var id in ids)
+                    {
+                        var message = await messages.GetByIdAsync(id, cancellationToken).ConfigureAwait(true);
+                        if (message is not null)
+                        {
+                            items.Add(ToListItem(message));
+                        }
+                    }
+
+                    if (generation != _generation)
+                    {
+                        return;
+                    }
+
+                    foreach (var item in GroupByConversation ? CollapseConversations(items) : items)
+                    {
+                        Messages.Add(item);
+                    }
+                },
+                cancellationToken).ConfigureAwait(true);
         }
         finally
         {
-            IsLoading = false;
+            // Só a carga mais recente apaga o indicador: a antiga terminando depois o
+            // desligaria com a nova ainda em andamento.
+            if (generation == _generation)
+            {
+                IsLoading = false;
+            }
         }
     }
 
@@ -230,14 +275,21 @@ public sealed partial class MessageListViewModel : ObservableObject
 
             Messages.Clear();
 
-            foreach (var id in messageIds)
-            {
-                var message = await _messages.GetByIdAsync(id, cancellationToken).ConfigureAwait(true);
-                if (message is not null)
+            await InScopeAsync(
+                async sp =>
                 {
-                    Messages.Add(ToListItem(message));
-                }
-            }
+                    var messages = sp.GetRequiredService<IMessageRepository>();
+
+                    foreach (var id in messageIds)
+                    {
+                        var message = await messages.GetByIdAsync(id, cancellationToken).ConfigureAwait(true);
+                        if (message is not null)
+                        {
+                            Messages.Add(ToListItem(message));
+                        }
+                    }
+                },
+                cancellationToken).ConfigureAwait(true);
         }
         finally
         {

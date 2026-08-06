@@ -28,14 +28,36 @@ public partial class App : Microsoft.UI.Xaml.Application
         UnhandledException += OnUnhandledException;
     }
 
-    /// <summary>Contêiner de serviços da aplicação.</summary>
-    public static IServiceProvider Services { get; private set; } = null!;
+    /// <summary>
+    /// Contêiner da aplicação. <b>Privado de propósito.</b>
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Era público, e por isso qualquer tela resolvia serviços direto dele. O provedor raiz
+    /// <b>é um escopo</b> — o mais longo que existe —, então um repositório resolvido ali vive
+    /// enquanto a aplicação viver, e é o mesmo para todo mundo. Junto dele vinha um
+    /// <c>DbContext</c> único, compartilhado entre a interface e tudo o mais, com valores
+    /// envelhecendo enquanto o laço de sincronização escrevia nas mesmas linhas.
+    /// </para>
+    /// <para>
+    /// Fechar a propriedade é o que impede a reincidência: sem ela não há como resolver do
+    /// raiz, e o <b>compilador</b> recusa — em vez de um analisador avisar, ou de ninguém
+    /// perceber. Quem precisa de serviço abre um escopo por <see cref="CreateScope"/> e o
+    /// descarta ao terminar.
+    /// </para>
+    /// </remarks>
+    private static IServiceProvider _root = null!;
+
+    /// <summary>Abre um escopo para uma operação, a ser descartado ao final dela.</summary>
+    public static AsyncServiceScope CreateScope() => _root.CreateAsyncScope();
 
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
-        Services = await AppHost.BuildAsync().ConfigureAwait(true);
+        _root = await AppHost.BuildAsync().ConfigureAwait(true);
 
-        _window = Services.GetRequiredService<MainWindow>();
+        // A janela é singleton e não recebe serviço scoped — ela distribui a fábrica de
+        // escopos aos ViewModels residentes, que abrem o seu a cada operação.
+        _window = _root.GetRequiredService<MainWindow>();
         _window.Activate();
 
         // O laço de sincronização começa depois de a janela aparecer. Iniciá-lo antes
@@ -54,7 +76,7 @@ public partial class App : Microsoft.UI.Xaml.Application
     /// </remarks>
     private void StartSyncLoop()
     {
-        var worker = Services.GetRequiredService<AccountSyncWorker>();
+        var worker = _root.GetRequiredService<AccountSyncWorker>();
 
         _ = Task.Run(async () =>
         {

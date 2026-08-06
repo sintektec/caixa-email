@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.DependencyInjection;
 using Sintek.Mail.Application.Abstractions.Persistence;
 using Sintek.Mail.Application.Abstractions.Security;
 using Sintek.Mail.Application.UseCases.Messages;
@@ -42,32 +43,18 @@ public sealed record AttachmentViewModel
 }
 
 /// <summary>ViewModel do painel de leitura.</summary>
-public sealed partial class ReadingPaneViewModel : ObservableObject
+public sealed partial class ReadingPaneViewModel : ScopedViewModel
 {
-    private readonly IMessageRepository _messages;
-    private readonly IHtmlSanitizer _sanitizer;
-    private readonly DownloadMessageContentHandler _download;
-    private readonly Application.UseCases.Organization.ManageSenderReputationHandler _reputation;
-    private readonly ReadReceiptHandler _readReceipt;
-    private readonly Application.UseCases.Contacts.ManageContactsHandler _contacts;
-
-    public ReadingPaneViewModel(
-        IMessageRepository messages,
-        IHtmlSanitizer sanitizer,
-        DownloadMessageContentHandler download,
-        Application.UseCases.Organization.ManageSenderReputationHandler reputation,
-        ReadReceiptHandler readReceipt,
-        Application.UseCases.Contacts.ManageContactsHandler contacts)
+    public ReadingPaneViewModel(IServiceScopeFactory scopes)
+        : base(scopes)
     {
-        _messages = messages;
-        _sanitizer = sanitizer;
-        _download = download;
-        _reputation = reputation;
-        _readReceipt = readReceipt;
-        _contacts = contacts;
     }
 
     /// <summary>Conta e remetente da mensagem aberta, para o botão de adicionar aos contatos.</summary>
+    /// <remarks>
+    /// São dados, não entidade: <see cref="EmailAddress"/> é objeto de valor imutável, gravado
+    /// por conversor. Guardá-lo entre escopos não prende nada ao <c>DbContext</c> que o leu.
+    /// </remarks>
     private Guid? _accountId;
     private EmailAddress? _senderAddress;
     private string? _senderDisplayName;
@@ -95,32 +82,42 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
             return;
         }
 
-        var existing = await _contacts.FindByEmailAsync(accountId, address, cancellationToken)
-            .ConfigureAwait(true);
+        var displayName = string.IsNullOrWhiteSpace(_senderDisplayName)
+            ? address.Value
+            : _senderDisplayName;
 
-        if (existing is not null)
-        {
-            ContactMessage = $"{existing.DisplayName} já está nos contatos.";
-            return;
-        }
-
-        var result = await _contacts.SaveAsync(
-            new Application.UseCases.Contacts.ContactCommand
+        // Busca e gravação no mesmo escopo. O contato encontrado é entidade rastreada e não
+        // sai daqui: o que atravessa é a mensagem já formada.
+        ContactMessage = await InScopeAsync(
+            async sp =>
             {
-                AccountId = accountId,
-                DisplayName = string.IsNullOrWhiteSpace(_senderDisplayName)
-                    ? address.Value
-                    : _senderDisplayName,
-                Emails =
-                [
-                    new Application.UseCases.Contacts.ContactEmailInput(address, null, true),
-                ],
+                var contacts = sp.GetRequiredService<Application.UseCases.Contacts.ManageContactsHandler>();
+
+                var existing = await contacts.FindByEmailAsync(accountId, address, cancellationToken)
+                    .ConfigureAwait(true);
+
+                if (existing is not null)
+                {
+                    return $"{existing.DisplayName} já está nos contatos.";
+                }
+
+                var result = await contacts.SaveAsync(
+                    new Application.UseCases.Contacts.ContactCommand
+                    {
+                        AccountId = accountId,
+                        DisplayName = displayName,
+                        Emails =
+                        [
+                            new Application.UseCases.Contacts.ContactEmailInput(address, null, true),
+                        ],
+                    },
+                    cancellationToken).ConfigureAwait(true);
+
+                return result.Succeeded
+                    ? "Remetente adicionado aos contatos."
+                    : result.ErrorMessage ?? string.Empty;
             },
             cancellationToken).ConfigureAwait(true);
-
-        ContactMessage = result.Succeeded
-            ? "Remetente adicionado aos contatos."
-            : result.ErrorMessage ?? string.Empty;
     }
 
     /// <summary>
@@ -143,7 +140,9 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
             return;
         }
 
-        var result = await _readReceipt.SendAsync(messageId, cancellationToken).ConfigureAwait(true);
+        var result = await InScopeAsync(
+            sp => sp.GetRequiredService<ReadReceiptHandler>().SendAsync(messageId, cancellationToken),
+            cancellationToken).ConfigureAwait(true);
 
         ShowReadReceiptPrompt = false;
         DownloadError = result.Succeeded ? string.Empty : result.ErrorMessage ?? string.Empty;
@@ -155,7 +154,9 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
     {
         if (MessageId is { } messageId)
         {
-            await _readReceipt.DeclineAsync(messageId, cancellationToken).ConfigureAwait(true);
+            await InScopeAsync(
+                sp => sp.GetRequiredService<ReadReceiptHandler>().DeclineAsync(messageId, cancellationToken),
+                cancellationToken).ConfigureAwait(true);
         }
 
         ShowReadReceiptPrompt = false;
@@ -242,73 +243,86 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
 
         try
         {
-            // O download é idempotente: corpo já presente devolve sem tocar na rede, e é
-            // isso que torna seguro chamá-lo em todo clique de mensagem.
-            var download = await _download.DownloadBodyAsync(messageId, cancellationToken)
-                .ConfigureAwait(true);
-
-            if (!download.Succeeded)
-            {
-                DownloadError = download.ErrorMessage ?? string.Empty;
-            }
-
-            var message = await _messages.GetWithParticipantsAsync(messageId, cancellationToken)
-                .ConfigureAwait(true);
-
-            if (message is null)
-            {
-                Clear();
-                return;
-            }
-
-            MessageId = message.Id;
-            Subject = string.IsNullOrWhiteSpace(message.Subject) ? "(sem assunto)" : message.Subject;
-            From = FormatSender(message);
-
-            _accountId = message.AccountId;
-            _senderAddress = message.FromAddress;
-            _senderDisplayName = message.FromDisplayName;
-            ContactMessage = string.Empty;
-            OnPropertyChanged(nameof(CanAddSenderToContacts));
-            To = FormatAddresses(message, AddressKind.To);
-            Cc = FormatAddresses(message, AddressKind.Cc);
-            SentAt = message.SentAt;
-
-            // A pergunta só aparece uma vez por mensagem: repeti-la depois de um "não"
-            // trataria a recusa como se não tivesse valido.
-            ShowReadReceiptPrompt = message.ReadReceiptRequested && !message.ReadReceiptHandled;
-
-            // Sempre parte do original: reaproveitar o HTML já higienizado impediria que
-            // uma atualização das regras de sanitização valesse para mensagens antigas.
-            RemoteContentAllowed = message.Body?.RemoteContentAllowed ?? false;
-
-            // Remetente confiável libera o conteúdo remoto sem perguntar — é para isso que
-            // a lista existe. A autorização vale só para a exibição; nada é gravado.
-            if (!RemoteContentAllowed && message.FromAddress is not null)
-            {
-                RemoteContentAllowed = await _reputation
-                    .IsTrustedAsync(message.FromAddress, message.AccountId, cancellationToken)
-                    .ConfigureAwait(true);
-            }
-
-            ApplySanitizedBody(message.Body?.HtmlBody, message.Body?.TextBody);
-
-            Attachments.Clear();
-            foreach (var attachment in message.Attachments.Where(a => !a.IsInline))
-            {
-                Attachments.Add(new AttachmentViewModel
+            // Um escopo para a operação inteira. O download grava o corpo na instância que o
+            // DbContext do escopo rastreia, e é essa mesma instância que a releitura devolve;
+            // em escopos separados a leitura viria de outro contexto e o corpo chegaria nulo.
+            await InScopeAsync(
+                async sp =>
                 {
-                    AttachmentId = attachment.Id,
-                    FileName = attachment.FileName,
-                    Size = attachment.Size,
-                    IsSuspicious = attachment.IsSuspicious,
-                    IsDownloaded = attachment.IsDownloaded,
-                });
-            }
+                    var messages = sp.GetRequiredService<IMessageRepository>();
+                    var sanitizer = sp.GetRequiredService<IHtmlSanitizer>();
 
-            OnPropertyChanged(nameof(HasSuspiciousAttachment));
+                    // O download é idempotente: corpo já presente devolve sem tocar na rede, e é
+                    // isso que torna seguro chamá-lo em todo clique de mensagem.
+                    var download = await sp.GetRequiredService<DownloadMessageContentHandler>()
+                        .DownloadBodyAsync(messageId, cancellationToken)
+                        .ConfigureAwait(true);
 
-            await EvaluateTrustAsync(message, cancellationToken).ConfigureAwait(true);
+                    if (!download.Succeeded)
+                    {
+                        DownloadError = download.ErrorMessage ?? string.Empty;
+                    }
+
+                    var message = await messages.GetWithParticipantsAsync(messageId, cancellationToken)
+                        .ConfigureAwait(true);
+
+                    if (message is null)
+                    {
+                        Clear();
+                        return;
+                    }
+
+                    MessageId = message.Id;
+                    Subject = string.IsNullOrWhiteSpace(message.Subject) ? "(sem assunto)" : message.Subject;
+                    From = FormatSender(message);
+
+                    _accountId = message.AccountId;
+                    _senderAddress = message.FromAddress;
+                    _senderDisplayName = message.FromDisplayName;
+                    ContactMessage = string.Empty;
+                    OnPropertyChanged(nameof(CanAddSenderToContacts));
+                    To = FormatAddresses(message, AddressKind.To);
+                    Cc = FormatAddresses(message, AddressKind.Cc);
+                    SentAt = message.SentAt;
+
+                    // A pergunta só aparece uma vez por mensagem: repeti-la depois de um "não"
+                    // trataria a recusa como se não tivesse valido.
+                    ShowReadReceiptPrompt = message.ReadReceiptRequested && !message.ReadReceiptHandled;
+
+                    // Sempre parte do original: reaproveitar o HTML já higienizado impediria que
+                    // uma atualização das regras de sanitização valesse para mensagens antigas.
+                    RemoteContentAllowed = message.Body?.RemoteContentAllowed ?? false;
+
+                    // Remetente confiável libera o conteúdo remoto sem perguntar — é para isso que
+                    // a lista existe. A autorização vale só para a exibição; nada é gravado.
+                    if (!RemoteContentAllowed && message.FromAddress is not null)
+                    {
+                        RemoteContentAllowed = await sp
+                            .GetRequiredService<Application.UseCases.Organization.ManageSenderReputationHandler>()
+                            .IsTrustedAsync(message.FromAddress, message.AccountId, cancellationToken)
+                            .ConfigureAwait(true);
+                    }
+
+                    ApplySanitizedBody(sanitizer, message.Body?.HtmlBody, message.Body?.TextBody);
+
+                    Attachments.Clear();
+                    foreach (var attachment in message.Attachments.Where(a => !a.IsInline))
+                    {
+                        Attachments.Add(new AttachmentViewModel
+                        {
+                            AttachmentId = attachment.Id,
+                            FileName = attachment.FileName,
+                            Size = attachment.Size,
+                            IsSuspicious = attachment.IsSuspicious,
+                            IsDownloaded = attachment.IsDownloaded,
+                        });
+                    }
+
+                    OnPropertyChanged(nameof(HasSuspiciousAttachment));
+
+                    await EvaluateTrustAsync(messages, message, cancellationToken).ConfigureAwait(true);
+                },
+                cancellationToken).ConfigureAwait(true);
         }
         finally
         {
@@ -325,32 +339,48 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
             return null;
         }
 
-        var result = await _download.DownloadAttachmentAsync(messageId, attachmentId, cancellationToken)
-            .ConfigureAwait(true);
+        // Mesmo motivo do carregamento: quem grava o anexo e quem relê o caminho precisam ver o
+        // mesmo DbContext. O que sai daqui é o caminho em disco, nunca a entidade.
+        return await InScopeAsync<string?>(
+            async sp =>
+            {
+                var result = await sp.GetRequiredService<DownloadMessageContentHandler>()
+                    .DownloadAttachmentAsync(messageId, attachmentId, cancellationToken)
+                    .ConfigureAwait(true);
 
-        if (!result.Succeeded)
-        {
-            DownloadError = result.ErrorMessage ?? string.Empty;
-            return null;
-        }
+                if (!result.Succeeded)
+                {
+                    DownloadError = result.ErrorMessage ?? string.Empty;
+                    return null;
+                }
 
-        var message = await _messages.GetWithParticipantsAsync(messageId, cancellationToken)
-            .ConfigureAwait(true);
+                var message = await sp.GetRequiredService<IMessageRepository>()
+                    .GetWithParticipantsAsync(messageId, cancellationToken)
+                    .ConfigureAwait(true);
 
-        return message?.Attachments.FirstOrDefault(a => a.Id == attachmentId)?.StoragePath;
+                return message?.Attachments.FirstOrDefault(a => a.Id == attachmentId)?.StoragePath;
+            },
+            cancellationToken).ConfigureAwait(true);
     }
 
     /// <summary>
     /// Avalia a procedência da mensagem.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// A regra vive em <see cref="SenderTrustEvaluator"/>, no domínio; aqui só se buscam os
     /// correspondentes conhecidos e se apresenta o veredito. A lista vem das mensagens que o
     /// usuário leu — é a leitura que indica que ele reconhece aquele remetente.
+    /// </para>
+    /// <para>
+    /// O repositório vem por parâmetro porque <paramref name="message"/> é entidade rastreada:
+    /// quem a leu é o escopo de quem chama, e ela não pode sair dele.
+    /// </para>
     /// </remarks>
-    private async Task EvaluateTrustAsync(Message message, CancellationToken cancellationToken)
+    private async Task EvaluateTrustAsync(
+        IMessageRepository messages, Message message, CancellationToken cancellationToken)
     {
-        var correspondents = await _messages
+        var correspondents = await messages
             .ListKnownCorrespondentsAsync(message.AccountId, cancellationToken)
             .ConfigureAwait(true);
 
@@ -366,34 +396,43 @@ public sealed partial class ReadingPaneViewModel : ObservableObject
     [RelayCommand]
     public async Task AllowRemoteContentAsync(CancellationToken cancellationToken = default)
     {
-        if (MessageId is null)
+        if (MessageId is not { } messageId)
         {
             return;
         }
 
-        var message = await _messages.GetWithParticipantsAsync(MessageId.Value, cancellationToken)
-            .ConfigureAwait(true);
+        await InScopeAsync(
+            async sp =>
+            {
+                var message = await sp.GetRequiredService<IMessageRepository>()
+                    .GetWithParticipantsAsync(messageId, cancellationToken)
+                    .ConfigureAwait(true);
 
-        if (message?.Body is null)
-        {
-            return;
-        }
+                if (message?.Body is null)
+                {
+                    return;
+                }
 
-        RemoteContentAllowed = true;
-        ApplySanitizedBody(message.Body.HtmlBody, message.Body.TextBody);
+                RemoteContentAllowed = true;
+                ApplySanitizedBody(
+                    sp.GetRequiredService<IHtmlSanitizer>(),
+                    message.Body.HtmlBody,
+                    message.Body.TextBody);
+            },
+            cancellationToken).ConfigureAwait(true);
     }
 
-    private void ApplySanitizedBody(string? htmlBody, string? textBody)
+    private void ApplySanitizedBody(IHtmlSanitizer sanitizer, string? htmlBody, string? textBody)
     {
         if (!string.IsNullOrWhiteSpace(htmlBody))
         {
-            var result = _sanitizer.Sanitize(htmlBody, RemoteContentAllowed);
+            var result = sanitizer.Sanitize(htmlBody, RemoteContentAllowed);
             SanitizedHtml = result.SanitizedHtml;
             HasRemoteContent = result.HasRemoteContent;
         }
         else
         {
-            SanitizedHtml = _sanitizer.PlainTextToHtml(textBody);
+            SanitizedHtml = sanitizer.PlainTextToHtml(textBody);
             HasRemoteContent = false;
         }
 

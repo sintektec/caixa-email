@@ -28,4 +28,14 @@
     <DotNetCliToolTelemetryOptOut>true</DotNetCliToolTelemetryOptOut>
   </PropertyGroup>
 
+  <!--
+    Lista de API proibida, em BannedSymbols.txt na raiz. O Domínio fica de fora porque a
+    regra arquitetural dele é não ter pacote NuGet nenhum — e, sem referência à injeção de
+    dependência, não há como chamar o que está banido ali.
+  -->
+  <ItemGroup Condition="'$(MSBuildProjectName)' != 'Sintek.Mail.Domain'">
+    <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
+    <AdditionalFiles Include="$(MSBuildThisFileDirectory)BannedSymbols.txt" />
+  </ItemGroup>
+
 </Project>

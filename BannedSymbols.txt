@@ -1,0 +1,9 @@
+; Formato: DocID do símbolo, ponto-e-vírgula, mensagem. Lido pelo
+; Microsoft.CodeAnalysis.BannedApiAnalyzers, que reporta RS0030 — erro, porque
+; TreatWarningsAsErrors está ligado.
+;
+; Suprimir uma entrada daqui é uma decisão, não um detalhe: cada uma existe porque
+; a chamada correspondente já causou um defeito neste repositório.
+
+M:Microsoft.Extensions.DependencyInjection.ServiceCollectionContainerBuilderExtensions.BuildServiceProvider(Microsoft.Extensions.DependencyInjection.IServiceCollection);Use a sobrecarga com ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true }. Sem ela, um singleton que consome serviço scoped e prende o DbContext pela execução inteira e aceito em silencio (D-034).
+M:Microsoft.Extensions.DependencyInjection.ServiceCollectionContainerBuilderExtensions.BuildServiceProvider(Microsoft.Extensions.DependencyInjection.IServiceCollection,System.Boolean);Use a sobrecarga com ServiceProviderOptions: o booleano liga so ValidateScopes, e a validacao passa a acontecer na primeira resolucao em vez de na construcao (D-034).

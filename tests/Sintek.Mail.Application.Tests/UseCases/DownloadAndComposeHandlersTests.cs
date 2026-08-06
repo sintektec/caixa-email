@@ -64,12 +64,17 @@ public class DownloadAndComposeHandlersTests
     }
 
     private DownloadMessageContentHandler DownloadHandler() => TestFactories.Download(
-        _messages, _folders, _unitOfWork, _imap, _sanitizer, _store, _clock);
+        _messages, _folders, _accounts, _unitOfWork, _imap, _sanitizer, _store, _clock);
 
     private ComposeMessageHandler ComposeHandler() => TestFactories.Compose(
         _messages, _folders, _accounts, _unitOfWork,
         new OutboxEnqueuer(_outbox, _clock), _clock);
 
+    /// <remarks>
+    /// A conta entra no arranjo porque o download conecta o próprio cliente antes de buscar:
+    /// no escopo do clique, a instância de <c>IImapClient</c> nasce desconectada, e sem a
+    /// conta não há como autenticar.
+    /// </remarks>
     private (Message Message, Folder Folder) ArrangeSyncedMessage()
     {
         var folder = Folder.Create(AccountId, "INBOX", FolderType.Inbox, Now, remotePath: "INBOX");
@@ -78,8 +83,81 @@ public class DownloadAndComposeHandlersTests
 
         _messages.GetWithParticipantsAsync(message.Id, Arg.Any<CancellationToken>()).Returns(message);
         _folders.GetByIdAsync(folder.Id, Arg.Any<CancellationToken>()).Returns(folder);
+        _accounts.GetByIdAsync(AccountId, Arg.Any<CancellationToken>()).Returns(ArrangeAccount());
+        _imap.ConnectAsync(Arg.Any<Account>(), Arg.Any<CancellationToken>())
+            .Returns(ConnectionTestResult.Success());
 
         return (message, folder);
+    }
+
+    private static Account ArrangeAccount()
+        => Account.Create(
+            Guid.CreateVersion7(), EmailAddress.Parse("contato@sintek.com.br"), "Contato", Now);
+
+    // ----- Conexão sob demanda --------------------------------------------------------
+
+    /// <summary>
+    /// Quem baixa também conecta: o cliente do escopo do clique não é o do laço de
+    /// sincronização.
+    /// </summary>
+    /// <remarks>
+    /// Sem esta etapa, <c>FetchBodyAsync</c> lançava <c>InvalidOperationException</c> — que
+    /// subia pelo manipulador <c>async void</c> da seleção de mensagem e derrubava a
+    /// aplicação. Clicar numa mensagem ainda não baixada fechava o programa.
+    /// </remarks>
+    [Fact]
+    public async Task BaixarCorpo_ClienteDesconectado_ConectaAntesDeBuscar()
+    {
+        var (message, _) = ArrangeSyncedMessage();
+        _imap.IsConnected.Returns(false);
+
+        _imap.FetchBodyAsync("INBOX", 42, Arg.Any<CancellationToken>())
+            .Returns(new FetchedBody { HtmlBody = "<p>Olá</p>", TextBody = "Olá" });
+
+        var result = await DownloadHandler().DownloadBodyAsync(message.Id);
+
+        result.Succeeded.Should().BeTrue();
+        await _imap.Received(1).ConnectAsync(Arg.Any<Account>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>Cliente já conectado não é reconectado — seria uma ida e volta por clique.</summary>
+    [Fact]
+    public async Task BaixarCorpo_ClienteJaConectado_NaoReconecta()
+    {
+        var (message, _) = ArrangeSyncedMessage();
+        _imap.IsConnected.Returns(true);
+
+        _imap.FetchBodyAsync("INBOX", 42, Arg.Any<CancellationToken>())
+            .Returns(new FetchedBody { HtmlBody = "<p>Olá</p>", TextBody = "Olá" });
+
+        await DownloadHandler().DownloadBodyAsync(message.Id);
+
+        await _imap.DidNotReceive().ConnectAsync(Arg.Any<Account>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Falha de conexão vira mensagem exibível, nunca exceção.
+    /// </summary>
+    /// <remarks>
+    /// Este caminho é disparado por um clique. Sem rede, o esperado é a faixa de aviso do
+    /// painel de leitura — uma exceção aqui fecharia a aplicação pelo mesmo manipulador
+    /// <c>async void</c>.
+    /// </remarks>
+    [Fact]
+    public async Task BaixarCorpo_ConexaoFalha_DevolveMotivoSemLancar()
+    {
+        var (message, _) = ArrangeSyncedMessage();
+        _imap.IsConnected.Returns(false);
+        _imap.ConnectAsync(Arg.Any<Account>(), Arg.Any<CancellationToken>())
+            .Returns(ConnectionTestResult.Failure("Servidor inacessível."));
+
+        var result = await DownloadHandler().DownloadBodyAsync(message.Id);
+
+        result.Succeeded.Should().BeFalse();
+        result.ErrorMessage.Should().Be("Servidor inacessível.");
+
+        await _imap.DidNotReceive()
+            .FetchBodyAsync(Arg.Any<string>(), Arg.Any<long>(), Arg.Any<CancellationToken>());
     }
 
     // ----- Download de corpo ----------------------------------------------------------

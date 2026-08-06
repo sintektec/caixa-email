@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Sintek.Mail.App.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Sintek.Mail.Presentation.ViewModels;
@@ -129,11 +130,14 @@ public sealed partial class AccountSetupDialog : ContentDialog
     /// <summary>Cria o assistente com as dependências do contêiner.</summary>
     public static AccountSetupDialog Create(XamlRoot xamlRoot)
     {
-        var dialog = new AccountSetupDialog(App.Services.GetRequiredService<AccountSetupViewModel>())
+        // O escopo vive o tempo do diálogo: nasce aqui e é descartado no Closed,
+        // levando junto o DbContext e tudo que ele rastreou.
+        var scope = App.CreateScope();
+
+        return new AccountSetupDialog(
+            scope.ServiceProvider.GetRequiredService<AccountSetupViewModel>())
         {
             XamlRoot = xamlRoot,
-        };
-
-        return dialog;
+        }.WithScope(scope);
     }
 }

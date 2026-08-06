@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
+using Sintek.Mail.App.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Sintek.Mail.Application.UseCases.Messages;
@@ -305,7 +306,11 @@ public sealed partial class ComposerDialog : ContentDialog
 
         // Em aplicativo desktop o picker precisa da janela dona; sem isto ele simplesmente
         // não abre, sem erro nenhum.
-        var window = App.Services.GetRequiredService<MainWindow>();
+        // MainWindow é singleton; resolvê-la de um escopo curto devolve a mesma instância.
+        // O descarte é assíncrono porque o MailKitImapClient do contêiner só implementa
+        // IAsyncDisposable, e um `using` comum lançaria se ele viesse a ser resolvido aqui.
+        await using var scope = App.CreateScope();
+        var window = scope.ServiceProvider.GetRequiredService<MainWindow>();
         WinRT.Interop.InitializeWithWindow.Initialize(
             picker, WinRT.Interop.WindowNative.GetWindowHandle(window));
 
@@ -352,10 +357,16 @@ public sealed partial class ComposerDialog : ContentDialog
 
     /// <summary>Cria o compositor com as dependências do contêiner.</summary>
     public static ComposerDialog Create(XamlRoot xamlRoot)
-        => new(
-            App.Services.GetRequiredService<ComposerViewModel>(),
-            App.Services.GetRequiredService<AssistantViewModel>())
+    {
+        // O escopo vive o tempo do diálogo: nasce aqui e é descartado no Closed,
+        // levando junto o DbContext e tudo que ele rastreou.
+        var scope = App.CreateScope();
+
+        return new ComposerDialog(
+            scope.ServiceProvider.GetRequiredService<ComposerViewModel>(),
+            scope.ServiceProvider.GetRequiredService<AssistantViewModel>())
         {
             XamlRoot = xamlRoot,
-        };
+        }.WithScope(scope);
+    }
 }

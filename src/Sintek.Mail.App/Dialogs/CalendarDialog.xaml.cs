@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Sintek.Mail.App.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Sintek.Mail.Domain.Enums;
@@ -116,8 +117,15 @@ public sealed partial class CalendarDialog : ContentDialog
 
     /// <summary>Cria o diálogo com as dependências do contêiner.</summary>
     public static CalendarDialog Create(XamlRoot xamlRoot)
-        => new(App.Services.GetRequiredService<CalendarViewModel>())
+    {
+        // O escopo vive o tempo do diálogo: nasce aqui e é descartado no Closed,
+        // levando junto o DbContext e tudo que ele rastreou.
+        var scope = App.CreateScope();
+
+        return new CalendarDialog(
+            scope.ServiceProvider.GetRequiredService<CalendarViewModel>())
         {
             XamlRoot = xamlRoot,
-        };
+        }.WithScope(scope);
+    }
 }

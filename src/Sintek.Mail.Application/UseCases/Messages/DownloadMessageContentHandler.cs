@@ -56,6 +56,7 @@ public sealed class DownloadMessageContentHandler
 {
     private readonly IMessageRepository _messages;
     private readonly IFolderRepository _folders;
+    private readonly IAccountRepository _accounts;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IImapClient _imapClient;
     private readonly IHtmlSanitizer _sanitizer;
@@ -67,6 +68,7 @@ public sealed class DownloadMessageContentHandler
     public DownloadMessageContentHandler(
         IMessageRepository messages,
         IFolderRepository folders,
+        IAccountRepository accounts,
         IUnitOfWork unitOfWork,
         IImapClient imapClient,
         IHtmlSanitizer sanitizer,
@@ -77,6 +79,7 @@ public sealed class DownloadMessageContentHandler
     {
         _messages = messages;
         _folders = folders;
+        _accounts = accounts;
         _unitOfWork = unitOfWork;
         _imapClient = imapClient;
         _sanitizer = sanitizer;
@@ -110,6 +113,12 @@ public sealed class DownloadMessageContentHandler
             // Sem contrapartida no servidor não há de onde baixar. Rascunho local e mensagem
             // desviada para pendências caem aqui — o corpo delas ou já existe ou nunca existiu.
             return new DownloadBodyResult(false, "Esta mensagem não tem conteúdo no servidor.");
+        }
+
+        if (await ConnectAsync(message.AccountId, cancellationToken).ConfigureAwait(false)
+            is { Succeeded: false } failure)
+        {
+            return new DownloadBodyResult(false, failure.ErrorMessage);
         }
 
         var fetched = await _imapClient
@@ -212,6 +221,12 @@ public sealed class DownloadMessageContentHandler
             return new DownloadBodyResult(false, "Este anexo não tem conteúdo no servidor.");
         }
 
+        if (await ConnectAsync(message.AccountId, cancellationToken).ConfigureAwait(false)
+            is { Succeeded: false } failure)
+        {
+            return new DownloadBodyResult(false, failure.ErrorMessage);
+        }
+
         await using var content = await _imapClient
             .FetchAttachmentAsync(folder.RemotePath, message.Uid.Value, attachment.PartSpecifier, cancellationToken)
             .ConfigureAwait(false);
@@ -233,5 +248,55 @@ public sealed class DownloadMessageContentHandler
             "Anexo {AttachmentId} da mensagem {MessageId} baixado.", attachment.Id, message.Id);
 
         return new DownloadBodyResult(true, null);
+    }
+
+    /// <summary>
+    /// Garante que o cliente IMAP deste escopo esteja conectado.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Quem baixa também conecta.</b> O <c>IImapClient</c> tem escopo, e este caso de uso
+    /// roda no escopo do clique em uma mensagem — não no do laço de sincronização, que conecta
+    /// o cliente dele. São instâncias diferentes, e a daqui nasce desconectada: sem esta etapa,
+    /// <c>FetchBodyAsync</c> cai no <c>EnsureConnected</c> da implementação e lança
+    /// <see cref="InvalidOperationException"/>, que sobe pelo manipulador <c>async void</c> da
+    /// seleção de mensagem e <b>derruba a aplicação</b> — o clique em uma mensagem ainda não
+    /// baixada fechava o programa.
+    /// </para>
+    /// <para>
+    /// A falha vira <see cref="DownloadBodyResult"/>, e não exceção, porque este caminho é
+    /// disparado por um clique: sem rede, o esperado é a faixa de aviso do painel de leitura,
+    /// nunca uma tela de erro.
+    /// </para>
+    /// </remarks>
+    /// <returns>
+    /// <see langword="null"/> quando a conexão está de pé; o resultado da falha, quando não.
+    /// </returns>
+    private async Task<ConnectionTestResult?> ConnectAsync(
+        Guid accountId, CancellationToken cancellationToken)
+    {
+        if (_imapClient.IsConnected)
+        {
+            return null;
+        }
+
+        var account = await _accounts.GetByIdAsync(accountId, cancellationToken).ConfigureAwait(false);
+
+        if (account is null)
+        {
+            return ConnectionTestResult.Failure("A conta desta mensagem não existe mais.");
+        }
+
+        var connection = await _imapClient.ConnectAsync(account, cancellationToken).ConfigureAwait(false);
+
+        if (connection.Succeeded)
+        {
+            return null;
+        }
+
+        _logger.LogWarning(
+            "Não foi possível conectar à conta {AccountId} para baixar conteúdo.", accountId);
+
+        return connection;
     }
 }

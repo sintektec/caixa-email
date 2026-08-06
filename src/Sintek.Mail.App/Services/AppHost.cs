@@ -55,7 +55,16 @@ public static class AppHost
         services.AddSingleton<Sintek.Mail.Application.UseCases.Messages.IAttachmentStore, FileAttachmentStore>();
         services.AddSingleton<MainWindow>();
 
-        var provider = services.BuildServiceProvider();
+        // ValidateScopes recusa serviço scoped consumido por singleton; ValidateOnBuild faz
+        // isso na construção, e não na primeira resolução. Sem os dois, a dependência cativa
+        // é aceita em silêncio: a aplicação abre, e o defeito só aparece quando duas escritas
+        // se cruzam — foi assim que um DbContext acabou valendo para a execução inteira.
+        // Ligados, o contêiner errado deixa de abrir, dizendo qual serviço e qual consumidor.
+        var provider = services.BuildServiceProvider(new ServiceProviderOptions
+        {
+            ValidateScopes = true,
+            ValidateOnBuild = true,
+        });
 
         await MigrateDatabaseAsync(provider, cancellationToken).ConfigureAwait(false);
 
@@ -81,7 +90,14 @@ public static class AppHost
         bootstrap.AddLogging(builder => builder.AddDebug());
         bootstrap.AddSintekMailWindows();
 
-        await using var provider = bootstrap.BuildServiceProvider();
+        // Mesmas opções do contêiner definitivo. Este aqui vive por três linhas e só
+        // resolve o cofre, então não teria como abrigar dependência cativa — mas deixar
+        // uma construção sem validação no repositório é o que reabre o hábito.
+        await using var provider = bootstrap.BuildServiceProvider(new ServiceProviderOptions
+        {
+            ValidateScopes = true,
+            ValidateOnBuild = true,
+        });
 
         return await provider
             .GetRequiredService<IDatabaseKeyProvider>()

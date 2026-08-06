@@ -1,6 +1,6 @@
 # STATUS.md — Sintek.Mail
 
-> Última atualização: 2026-08-05
+> Última atualização: 2026-08-06
 
 ---
 
@@ -12,8 +12,16 @@ servidor e os provedores em nuvem — também.
 
 ## Marco atual
 
-**928 testes verdes no núcleo multiplataforma** (169 → 272 → 336 → 426 → 441 → 478 → 485
-→ 530 → 535 → 569 → 584 → 587 → 692 → 790 → 865 → 928 ao longo das catorze fases).
+**1008 testes verdes no núcleo multiplataforma** (169 → 272 → 336 → 426 → 441 → 478 → 485
+→ 530 → 535 → 569 → 584 → 587 → 692 → 790 → 865 → 928 ao longo das catorze fases; 987 e depois
+1008 com os defeitos da primeira execução real).
+
+**A primeira execução real aconteceu**, em Windows 11, e é o marco que separa "compila e passa
+nos testes" de "roda". Ela encontrou o que catorze fases de teste não encontraram, porque os
+defeitos estavam onde não havia teste: na composição do contêiner, no encadeamento entre
+ViewModel e `WebView2`, e no estado de conexão de um cliente com escopo. Os quatro achados
+estão em D-034 a D-036 e no `CLAUDE.md`; o mais grave — um `DbContext` único para a execução
+inteira — existia desde a fase 1.
 
 A fase 7 entregou a filtragem local inteira: `RuleEvaluator` puro no Domain (campos,
 operadores e combinação E/OU da seção 6.5), `ApplyArrivalRulesHandler` aplicando bloqueio
@@ -167,11 +175,15 @@ Não há pendência de código em nenhuma das catorze fases. O que resta é **pe
 contra servidores IMAP/SMTP/CalDAV reais, e contra Microsoft 365 e Google, com Client IDs de
 OAuth.
 
-Vale notar: o MSIX compila mas **ainda não foi executado**. Nenhuma sessão automatizada
-consegue fazer isso — exige uma máquina Windows 11 real. A validação funcional da interface
-(assistente de conta, árvore de navegação, arrastar e soltar contra a regra de domínio,
-painel de leitura, fila de sincronização) segue pendente e é o primeiro item de qualquer
-revisão manual. Nenhuma sincronização foi executada contra um servidor IMAP real.
+**A validação manual começou e ainda não terminou.** Já foi verificado, em máquina real: o
+assistente de conta com OAuth da Google e da Microsoft, a criação de Diretório de Domínio, a
+listagem de mensagens e a sincronização inicial. Falta reverificar o painel de leitura, o
+"Exibir imagens" e o download sob demanda **depois** das correções desta rodada — as três
+mudaram, e nenhuma delas é observável no job Linux.
+
+Vale notar: o MSIX compila mas **ainda não foi empacotado nem instalado** — o que rodou na
+máquina de validação foi o build local, direto do Visual Studio. Arrastar e soltar contra a
+regra de domínio e a fila de sincronização offline seguem sem verificação em máquina real.
 
 O que mudou desde a fase 1: a lógica de interface que não depende do WinUI e o motor de
 sincronização inteiro passaram a ser verificados mecanicamente. O que resta para a validação

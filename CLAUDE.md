@@ -39,6 +39,15 @@ depende do WinUI — janela, XAML, WebView2 e o encadeamento de `ContentDialog`.
 colocado em `App` só é verificável no job Windows, e foi assim que a fase 1 gastou quatro
 rodadas de CI com erros que um teste local teria pego.
 
+**ViewModel residente da janela recebe `IServiceScopeFactory`, nunca repositório.** Os cinco
+que a `MainWindow` guarda — `Shell`, `MessageList`, `ReadingPane`, `Search`, `Assistant` —
+vivem enquanto a aplicação viver, e um repositório injetado neles arrasta o `DbContext` junto
+pelo mesmo tempo. Eles herdam de `ScopedViewModel` e abrem um escopo **por operação**, com
+`InScopeAsync`. Os de diálogo são o contrário: o escopo nasce na fábrica do diálogo e morre no
+`Closed` (`DialogScopes.WithScope`), porque um diálogo *é* uma operação com começo e fim. E
+entidade rastreada não atravessa escopo — o que sai do `InScopeAsync` é dado, nunca `Message`
+ou `Account` (D-034).
+
 **Documento de autoconfiguração vindo da rede é lido com DTD desligado.**
 `ClientConfigParser` usa `XmlReaderSettings { DtdProcessing = Prohibit, XmlResolver = null }`
 porque o host que responde é escolhido pelo domínio que o usuário digitou. Um
@@ -101,6 +110,31 @@ ela volta na sincronização seguinte. E mandar nulo no terceiro caso apagaria d
 que não soubemos ler. O custo dos dois erros não é simétrico.
 
 ## Armadilhas conhecidas
+
+**O provedor raiz é um escopo.** Serviço registrado como `Scoped` e resolvido dele não falha
+nem avisa: vive para sempre e é **o mesmo para todo mundo**. Foi assim que um `DbContext`
+acabou valendo para a execução inteira, compartilhado entre a interface e o laço de
+sincronização — que roda em escopo próprio e escreve nas mesmas linhas. `DbContext` não é
+seguro para uso concorrente, e o sintoma foi `DbUpdateConcurrencyException` com travamento ao
+clicar numa mensagem, meses depois de o defeito entrar.
+
+Por isso `ValidateScopes` e `ValidateOnBuild` estão ligados no `AppHost`, e por isso a
+sobrecarga `BuildServiceProvider()` sem `ServiceProviderOptions` está em `BannedSymbols.txt`
+— o analisador recusa a compilação (RS0030). `Sintek.Mail.Composition.Tests` monta o contêiner
+de verdade e verifica os dois sentidos: residente resolve do raiz, de diálogo **não** resolve.
+Prender a invariante só de um lado deixaria alguém "consertar" a falha promovendo um
+repositório a singleton, o que devolveria o defeito com o teste verde.
+
+**Escopo que resolveu um `MailKitImapClient` só descarta com `await using`.** Ele implementa
+`IAsyncDisposable` e não `IDisposable`, e um `using` comum sobre o escopo lança
+`"type only implements IAsyncDisposable"` — em tempo de execução, no fim do bloco, longe de
+onde o serviço foi pedido. Daí `App.CreateScope()` devolver `AsyncServiceScope`.
+
+**Quem baixa conteúdo sob demanda também conecta.** O `IImapClient` tem escopo, e o do clique
+numa mensagem não é o do laço de sincronização: são instâncias diferentes, e a do clique nasce
+desconectada. `DownloadMessageContentHandler` chama `ConnectAsync` antes de buscar e devolve a
+falha como `DownloadBodyResult`, nunca como exceção — o caminho é disparado por um clique, e
+uma exceção aqui sobe pelo manipulador `async void` da seleção e **derruba a aplicação**.
 
 **O pacote de SQLite é `Microsoft.Data.Sqlite.Core`, não `Microsoft.Data.Sqlite`.** O
 pacote agregador traz `bundle_e_sqlite3`, que registra um provider sem criptografia e

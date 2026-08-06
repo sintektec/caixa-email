@@ -53,6 +53,7 @@
   </ItemGroup>
 
   <ItemGroup Label="Infraestrutura">
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.10" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.10" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.10" />
     <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.10" />
@@ -75,6 +76,14 @@
     <PackageVersion Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.8249" />
     <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageVersion Include="WinUIEx" Version="2.9.2" />
+  </ItemGroup>
+
+  <ItemGroup Label="Analisadores">
+    <!--
+      Analisador de API proibida. A lista vive em BannedSymbols.txt, na raiz, e o
+      diagnóstico RS0030 vira erro por causa do TreatWarningsAsErrors.
+    -->
+    <PackageVersion Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.6.0" />
   </ItemGroup>
 
   <ItemGroup Label="Testes">

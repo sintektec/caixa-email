@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Sintek.Mail.App.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Sintek.Mail.Presentation.ViewModels;
@@ -70,12 +71,18 @@ public sealed partial class SettingsDialog : ContentDialog
 
     /// <summary>Cria o diálogo com as dependências do contêiner.</summary>
     public static SettingsDialog Create(XamlRoot xamlRoot)
-        => new(
-            App.Services.GetRequiredService<AccountsViewModel>(),
-            App.Services.GetRequiredService<MaintenanceViewModel>())
+    {
+        // O escopo vive o tempo do diálogo: nasce aqui e é descartado no Closed,
+        // levando junto o DbContext e tudo que ele rastreou.
+        var scope = App.CreateScope();
+
+        return new SettingsDialog(
+            scope.ServiceProvider.GetRequiredService<AccountsViewModel>(),
+            scope.ServiceProvider.GetRequiredService<MaintenanceViewModel>())
         {
             XamlRoot = xamlRoot,
-        };
+        }.WithScope(scope);
+    }
 }
 
 /// <summary>Tela a abrir depois de a de configurações fechar.</summary>

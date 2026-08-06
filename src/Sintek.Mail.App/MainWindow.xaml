@@ -638,8 +638,13 @@
                          Message="Esta mensagem contém imagens externas que foram bloqueadas para proteger sua privacidade."
                          IsClosable="False">
                     <InfoBar.ActionButton>
+                        <!--
+                            Click, e não Command: autorizar troca o SanitizedHtml no ViewModel,
+                            mas quem entrega o HTML ao WebView2 é a janela. Ligado só no comando,
+                            o botão mudava o estado e deixava o documento antigo na tela.
+                        -->
                         <Button Content="Exibir imagens"
-                                Command="{x:Bind Reading.AllowRemoteContentCommand}" />
+                                Click="OnAllowRemoteContentClick" />
                     </InfoBar.ActionButton>
                 </InfoBar>
 

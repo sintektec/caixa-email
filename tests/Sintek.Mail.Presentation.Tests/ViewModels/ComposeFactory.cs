@@ -78,6 +78,10 @@ internal static class ComposeFactory
             NullLogger<ImportInvitationHandler>.Instance);
 
     /// <summary>Download de conteúdo com o importador de convites inerte.</summary>
+    /// <remarks>
+    /// O repositório de contas é o que permite ao caso de uso conectar o próprio cliente IMAP:
+    /// no escopo do clique em uma mensagem, a instância que ele recebe nasce desconectada.
+    /// </remarks>
     public static DownloadMessageContentHandler Download(
         IMessageRepository messages,
         IFolderRepository folders,
@@ -85,9 +89,11 @@ internal static class ComposeFactory
         IImapClient imapClient,
         IHtmlSanitizer sanitizer,
         IAttachmentStore attachmentStore,
-        TimeProvider clock)
+        TimeProvider clock,
+        IAccountRepository? accounts = null)
         => new(
-            messages, folders, unitOfWork, imapClient, sanitizer, attachmentStore,
+            messages, folders, accounts ?? Substitute.For<IAccountRepository>(),
+            unitOfWork, imapClient, sanitizer, attachmentStore,
             InertInvitations(unitOfWork, clock),
             clock,
             NullLogger<DownloadMessageContentHandler>.Instance);

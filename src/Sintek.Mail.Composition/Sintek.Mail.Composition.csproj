@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Composição do núcleo: um único lugar que encadeia os registros das camadas.
+
+    Existe para que o teste de composição monte exatamente o mesmo contêiner que a aplicação
+    monta. Sem isto, o teste teria a própria lista de chamadas AddSintekMail*, e as duas
+    divergiriam em silêncio — que é justamente como uma dependência cativa volta mesmo
+    havendo teste.
+
+    É multiplataforma: nada aqui referencia WinUI. O que depende do Windows continua sendo
+    registrado por AddSintekMailWindows, chamado só pelo aplicativo.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Sintek.Mail.Composition</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Sintek.Mail.Application\Sintek.Mail.Application.csproj" />
+    <ProjectReference Include="..\Sintek.Mail.Infrastructure\Sintek.Mail.Infrastructure.csproj" />
+    <ProjectReference Include="..\Sintek.Mail.Persistence\Sintek.Mail.Persistence.csproj" />
+    <ProjectReference Include="..\Sintek.Mail.Presentation\Sintek.Mail.Presentation.csproj" />
+  </ItemGroup>
+
+</Project>

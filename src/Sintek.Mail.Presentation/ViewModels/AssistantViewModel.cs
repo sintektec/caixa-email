@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.DependencyInjection;
 using Sintek.Mail.Application.UseCases.Assistant;
 
 namespace Sintek.Mail.Presentation.ViewModels;
@@ -12,11 +13,12 @@ namespace Sintek.Mail.Presentation.ViewModels;
 /// de onde autorizar — e não como erro. O usuário que não autorizou não errou nada; ele
 /// escolheu, e a tela precisa refletir isso.
 /// </remarks>
-public sealed partial class AssistantViewModel : ObservableObject
+public sealed partial class AssistantViewModel : ScopedViewModel
 {
-    private readonly AssistantFeaturesHandler _features;
-
-    public AssistantViewModel(AssistantFeaturesHandler features) => _features = features;
+    public AssistantViewModel(IServiceScopeFactory scopes)
+        : base(scopes)
+    {
+    }
 
     /// <summary>Mensagem sobre a qual os recursos operam.</summary>
     [ObservableProperty]
@@ -65,8 +67,10 @@ public sealed partial class AssistantViewModel : ObservableObject
         StatusMessage = null;
         NeedsCloudConsent = false;
 
-        IsAvailable = await _features.IsAvailableForAsync(accountId, cancellationToken)
-            .ConfigureAwait(true);
+        IsAvailable = await InScopeAsync(
+            sp => sp.GetRequiredService<AssistantFeaturesHandler>()
+                .IsAvailableForAsync(accountId, cancellationToken),
+            cancellationToken).ConfigureAwait(true);
     }
 
     /// <summary>Resume a mensagem carregada.</summary>
@@ -79,7 +83,7 @@ public sealed partial class AssistantViewModel : ObservableObject
         }
 
         await RunAsync(
-            () => _features.SummarizeMessageAsync(messageId, cancellationToken)).ConfigureAwait(true);
+            f => f.SummarizeMessageAsync(messageId, cancellationToken)).ConfigureAwait(true);
     }
 
     /// <summary>Sugere uma resposta para a mensagem carregada.</summary>
@@ -92,7 +96,7 @@ public sealed partial class AssistantViewModel : ObservableObject
         }
 
         await RunAsync(
-            () => _features.SuggestReplyAsync(messageId, null, cancellationToken)).ConfigureAwait(true);
+            f => f.SuggestReplyAsync(messageId, null, cancellationToken)).ConfigureAwait(true);
     }
 
     /// <summary>Reescreve um texto do compositor.</summary>
@@ -105,13 +109,13 @@ public sealed partial class AssistantViewModel : ObservableObject
         }
 
         await RunAsync(
-            () => _features.RewriteAsync(accountId, text, instruction, cancellationToken))
+            f => f.RewriteAsync(accountId, text, instruction, cancellationToken))
             .ConfigureAwait(true);
 
         return HasResult ? Result : null;
     }
 
-    private async Task RunAsync(Func<Task<AssistantResult>> operation)
+    private async Task RunAsync(Func<AssistantFeaturesHandler, Task<AssistantResult>> operation)
     {
         if (IsBusy)
         {
@@ -124,7 +128,9 @@ public sealed partial class AssistantViewModel : ObservableObject
 
         try
         {
-            var result = await operation().ConfigureAwait(true);
+            var result = await InScopeAsync(
+                sp => operation(sp.GetRequiredService<AssistantFeaturesHandler>()))
+                .ConfigureAwait(true);
 
             if (result.Succeeded)
             {

@@ -288,7 +288,27 @@ public sealed partial class MainWindow : Window
         core.NavigationStarting -= OnNavigationStarting;
         core.NavigationStarting += OnNavigationStarting;
 
-        core.NavigateToString(WrapInDocument(Reading.SanitizedHtml));
+        core.NavigateToString(WrapInDocument(Reading.SanitizedHtml, Reading.RemoteContentAllowed));
+    }
+
+    /// <summary>Autoriza o conteúdo remoto e <b>reapresenta</b> o corpo.</summary>
+    /// <remarks>
+    /// <para>
+    /// O botão não pode ligar direto no comando do ViewModel. O comando reescreve
+    /// <c>SanitizedHtml</c>, mas quem entrega o HTML ao WebView2 é <see cref="RenderBodyAsync"/>,
+    /// e nada o chamava depois — "Exibir imagens" trocava o conteúdo no ViewModel e deixava na
+    /// tela o documento antigo, sem imagem nenhuma. O clique não fazia nada visível.
+    /// </para>
+    /// <para>
+    /// E reapresentar sozinho também não bastava: a CSP do documento traz o
+    /// <c>img-src</c> montado a partir da autorização, então o mesmo clique precisa alcançar
+    /// as duas camadas. Uma sem a outra é autorização decorativa.
+    /// </para>
+    /// </remarks>
+    private async void OnAllowRemoteContentClick(object sender, RoutedEventArgs e)
+    {
+        await Reading.AllowRemoteContentAsync().ConfigureAwait(true);
+        await RenderBodyAsync().ConfigureAwait(true);
     }
 
     private void OnNavigationStarting(
@@ -319,19 +339,33 @@ public sealed partial class MainWindow : Window
     /// recusa executar script e carregar recurso externo.
     /// </remarks>
     /// <remarks>
+    /// O <c>img-src</c> é a única diretiva que varia, e acompanha o que o sanitizador
+    /// produziu. Fixá-lo em <c>cid: data:</c> deixava a CSP mais restritiva que o HTML: com
+    /// as imagens autorizadas, o <c>MessageHtmlSanitizer</c> preserva os <c>src</c> remotos e
+    /// o navegador recusava todos, calado. Uma barreira que contraria a decisão do usuário em
+    /// vez de a proteger não é defesa em profundidade, é defeito — e do tipo que não deixa
+    /// rastro, porque o bloqueio da CSP só aparece no console das DevTools, que estão
+    /// desligadas aqui. Sem autorização a diretiva volta a ser a mais estreita possível.
+    /// </remarks>
+    /// <remarks>
     /// O literal usa <c>$$</c> porque o corpo é CSS, cheio de chaves. Em uma raw string
     /// interpolada, a quantidade de <c>$</c> define quantas chaves abrem uma interpolação —
     /// não existe escape por duplicação. Com <c>$$</c>, a chave simples do CSS é literal e a
     /// interpolação passa a exigir <c>{{ }}</c>.
     /// </remarks>
-    private static string WrapInDocument(string sanitizedHtml) =>
-        $$"""
+    private static string WrapInDocument(string sanitizedHtml, bool allowRemoteContent)
+    {
+        // Os esquemas remotos são os mesmos que o MessageHtmlSanitizer passa a aceitar em
+        // CreateSanitizer — as duas listas descrevem a mesma decisão e precisam concordar.
+        var imgSrc = allowRemoteContent ? "cid: data: https: http:" : "cid: data:";
+
+        return $$"""
         <!DOCTYPE html>
         <html lang="pt-BR">
         <head>
         <meta charset="utf-8">
         <meta http-equiv="Content-Security-Policy"
-              content="default-src 'none'; img-src cid: data:; style-src 'unsafe-inline'; font-src 'none'; script-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+              content="default-src 'none'; img-src {{imgSrc}}; style-src 'unsafe-inline'; font-src 'none'; script-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
         <style>
           body { font-family: 'Segoe UI Variable', 'Segoe UI', sans-serif; font-size: 14px; margin: 16px; }
           img { max-width: 100%; height: auto; }
@@ -341,6 +375,7 @@ public sealed partial class MainWindow : Window
         <body>{{sanitizedHtml}}</body>
         </html>
         """;
+    }
 
     private void OnMessageDragStarting(object sender, DragItemsStartingEventArgs e)
     {
@@ -745,8 +780,12 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        var actions = App.Services.GetRequiredService<FolderActionsViewModel>();
-        await actions.ToggleFavoriteAsync(node.EntityId, !node.IsFavorite).ConfigureAwait(true);
+        await using (var scope = App.CreateScope())
+        {
+            var actions = scope.ServiceProvider.GetRequiredService<FolderActionsViewModel>();
+            await actions.ToggleFavoriteAsync(node.EntityId, !node.IsFavorite).ConfigureAwait(true);
+        }
+
         await Shell.LoadNavigationAsync().ConfigureAwait(true);
     }
 
@@ -770,7 +809,10 @@ public sealed partial class MainWindow : Window
 
         subItem.Items.Clear();
 
-        var handler = App.Services
+        // O escopo cobre só a leitura da lista. O que sai dele é nome e identificador —
+        // dado, não entidade rastreada —, e é isso que os itens de menu carregam.
+        await using var scope = App.CreateScope();
+        var handler = scope.ServiceProvider
             .GetRequiredService<Sintek.Mail.Application.UseCases.Organization.ManageCategoriesHandler>();
 
         foreach (var category in await handler.ListAsync(null).ConfigureAwait(true))
