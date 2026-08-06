@@ -5,6 +5,7 @@ using Sintek.Mail.Application.Abstractions.Mail;
 using Sintek.Mail.Application.Abstractions.Persistence;
 using Sintek.Mail.Application.Abstractions.Security;
 using Sintek.Mail.Application.Services;
+using Sintek.Mail.Application.Sync;
 using Sintek.Mail.Application.UseCases.Accounts;
 using Sintek.Mail.Domain.Entities;
 using Sintek.Mail.Domain.Enums;
@@ -599,6 +600,44 @@ public class AccountHandlersTests
         account.DisplayName.Should().Be("Nome Novo");
         account.ImapHost.Should().Be("imap.novo.com.br");
         (await _credentials.GetSecretAsync(account.CredentialKey)).Should().Be(FakeSecret.For("nova"));
+    }
+
+    /// <summary>
+    /// Corrigir a conta a devolve ao ciclo de sincronização.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// O agendador pula indefinidamente a conta com credencial recusada, e por bom motivo:
+    /// insistir a cada minuto rende bloqueio temporário no provedor. A saída prevista era
+    /// "a conta volta ao ciclo quando o usuário reautenticar" — e <b>nada executava essa
+    /// volta</b>. Este caso de uso trocava senha, servidor e porta, e deixava o
+    /// <c>SyncStatus</c> exatamente onde estava.
+    /// </para>
+    /// <para>
+    /// O sintoma é o de uma conta que não carrega nada e não explica: o usuário corrige a
+    /// senha, o teste de conexão passa, a tela diz que salvou — e a caixa continua vazia
+    /// para sempre (D-040).
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task AlterarConta_ContaComCredencialRecusada_ADevolveAoCiclo()
+    {
+        var account = ArrangeStoredAccount();
+        account.MarkSyncFailed("A senha foi recusada pelo servidor.", isAuthenticationFailure: true, Now);
+
+        var result = await UpdateHandler().HandleAsync(new UpdateAccountCommand
+        {
+            AccountId = account.Id,
+            DisplayName = "Contato",
+            ImapHost = "imap.sintek.com.br",
+            SmtpHost = "smtp.sintek.com.br",
+            NewPassword = FakeSecret.For("corrigida"),
+        });
+
+        result.Succeeded.Should().BeTrue();
+        account.SyncStatus.Should().NotBe(AccountSyncStatus.AuthenticationFailed);
+        account.LastSyncError.Should().BeNull();
+        SyncSchedule.Decide(account, Now).Action.Should().Be(SyncAction.SyncNow);
     }
 
     [Fact]

@@ -293,6 +293,31 @@ public sealed class Account : Entity
         Touch(now);
     }
 
+    /// <summary>
+    /// Devolve a conta ao ciclo de sincronização depois de a configuração mudar.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>AuthenticationFailed</c> é <b>terminal</b> para o agendador: ele pula a conta
+    /// indefinidamente, porque credencial recusada não melhora com insistência e tentar a
+    /// cada minuto é a forma mais rápida de ganhar bloqueio temporário no provedor. A saída
+    /// prevista era "a conta volta ao ciclo quando o usuário reautenticar" — e **nada
+    /// executava essa volta**. Corrigir a senha, o servidor ou a porta deixava a conta
+    /// exatamente tão morta quanto antes, agora com a credencial certa (D-040).
+    /// </para>
+    /// <para>
+    /// Volta como <c>NeverSynced</c>, e não <c>Online</c>: quem reconfigurou não provou que o
+    /// servidor aceita, apenas pediu nova tentativa. <c>NeverSynced</c> faz o agendador tentar
+    /// na primeira volta, e é o próprio resultado dessa tentativa que define o estado.
+    /// </para>
+    /// </remarks>
+    public void ResumeSync(DateTimeOffset now)
+    {
+        SyncStatus = AccountSyncStatus.NeverSynced;
+        LastSyncError = null;
+        Touch(now);
+    }
+
     /// <summary>Atualiza o estado de sincronização sem alterar o histórico de erro.</summary>
     public void SetSyncStatus(AccountSyncStatus status, DateTimeOffset now)
     {

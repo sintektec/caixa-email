@@ -1018,3 +1018,43 @@ servidor; o Gmail corta em quinze.
 
 A armadilha estava escrita no `CLAUDE.md` desde a correção de escopo, e mesmo assim passou:
 está documentada para os escopos da interface, e este é o do laço.
+
+---
+
+## D-040 — A volta ao ciclo de sincronização precisa existir, não só ser prometida
+
+**Data:** 2026-08-06
+**Contexto:** contas de um domínio criadas e nunca carregadas. Investigação do que D-038
+passou a tornar visível.
+
+`SyncSchedule.Decide` pula **indefinidamente** a conta com `AuthenticationFailed`, e o motivo
+é bom: credencial recusada não melhora com insistência, e tentar a cada minuto é a forma mais
+rápida de ganhar bloqueio temporário no provedor. O comentário dizia:
+
+> A conta volta ao ciclo quando o usuário reautenticar, o que muda o estado dela.
+
+**Nada executava essa volta.** `UpdateAccountHandler` trocava servidor, porta, usuário e
+senha — e não tocava em `SyncStatus`. Nenhum outro caso de uso tocava. Fora do
+`SyncAccountHandler`, o estado nunca saía de `AuthenticationFailed`.
+
+O sintoma é de uma conta que não carrega nada e não explica: o usuário corrige a senha, o
+teste de conexão passa, a tela confirma que salvou — e a caixa continua vazia para sempre. A
+única saída era o botão de sincronizar agora, que não passa pelo agendador; quem não o
+descobrisse ficava sem conta.
+
+**Decisão:** `Account.ResumeSync` devolve a conta ao ciclo, e `UpdateAccountHandler` o chama
+ao gravar.
+
+**Volta como `NeverSynced`, não `Online`.** Quem reconfigurou não provou que o servidor
+aceita — apenas pediu nova tentativa. Declarar a conta em dia mentiria na barra de status até
+a primeira sincronização, e é o resultado dela que define o estado.
+
+**A ordem contra `SetActive` importa.** Desativar define `Disabled`, e é essa a palavra final;
+retomar depois disso devolveria à fila uma conta que o usuário acabou de desligar. O teste
+`AlterarConta_DesativandoConta_DispensaOTesteDeConexao`, que já existia, pegou a inversão na
+primeira execução.
+
+**O que o defeito ensina sobre a suíte:** havia teste para a saída do ciclo
+(`Agendar_CredencialRecusada_SaiDoCicloAteReautenticar`) e nenhum para a volta. Meia regra
+verificada passa por regra inteira — o nome do teste até citava a reautenticação que não
+acontecia.

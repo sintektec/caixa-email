@@ -49,6 +49,55 @@ public class SyncScheduleAndComposeTests
         decision.Reason.Should().Contain("autenticação");
     }
 
+    /// <summary>
+    /// A volta ao ciclo precisa existir de verdade, não só na justificativa da saída.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// O agendador pula a conta com credencial recusada <b>indefinidamente</b>, e o motivo é
+    /// bom: insistir a cada minuto rende bloqueio temporário no provedor. A saída prevista
+    /// era "a conta volta ao ciclo quando o usuário reautenticar" — e nada executava essa
+    /// volta. Corrigir a senha deixava a conta exatamente tão parada quanto antes, agora com
+    /// a credencial certa, e sem nada na tela dizendo por quê.
+    /// </para>
+    /// <para>
+    /// Este teste e <c>Agendar_CredencialRecusada_SaiDoCicloAteReautenticar</c> são as duas
+    /// metades da mesma regra. Só a primeira deixava o defeito passar por comportamento
+    /// correto (D-040).
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void Agendar_DepoisDeReconfigurada_VoltaAoCiclo()
+    {
+        var account = NewAccount();
+        account.MarkSyncFailed("Senha recusada.", isAuthenticationFailure: true, Now);
+
+        account.ResumeSync(Now.AddMinutes(5));
+
+        SyncSchedule.Decide(account, Now.AddMinutes(5)).Action.Should().Be(SyncAction.SyncNow);
+        account.LastSyncError.Should().BeNull("o motivo antigo não vale para a configuração nova");
+    }
+
+    /// <summary>
+    /// Voltar como <c>NeverSynced</c>, e não como <c>Online</c>.
+    /// </summary>
+    /// <remarks>
+    /// Quem reconfigurou não provou que o servidor aceita — apenas pediu nova tentativa.
+    /// Declarar a conta em dia mentiria na barra de status até a primeira sincronização, e é
+    /// o resultado dela que define o estado.
+    /// </remarks>
+    [Fact]
+    public void Retomar_ContaComFalha_NaoADeclaraEmDia()
+    {
+        var account = NewAccount();
+        account.MarkSyncFailed("Senha recusada.", isAuthenticationFailure: true, Now);
+
+        account.ResumeSync(Now);
+
+        account.SyncStatus.Should().Be(AccountSyncStatus.NeverSynced);
+        account.SyncStatus.Should().NotBe(AccountSyncStatus.Online);
+    }
+
     [Fact]
     public void Agendar_IntervaloAindaNaoVenceu_Espera()
     {

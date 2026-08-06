@@ -188,6 +188,17 @@ public sealed class UpdateAccountHandler
         }
 
         account.ConfigureSync(command.SyncIntervalMinutes, command.BodyDownloadPolicy, now);
+
+        // Reconfigurar é o pedido de nova tentativa, e sem isto ele não chegava a lugar
+        // nenhum. O agendador pula indefinidamente a conta com credencial recusada — por bom
+        // motivo, insistir só rende bloqueio no provedor —, e contava com a reautenticação
+        // para trazê-la de volta. Ninguém executava essa volta: corrigir a senha deixava a
+        // conta tão parada quanto antes, agora com a credencial certa (D-040).
+        account.ResumeSync(now);
+
+        // Depois de retomar, nunca antes: desativar a conta define o estado como Disabled, e
+        // é essa a palavra final. Na ordem inversa, salvar uma conta desativada a marcaria
+        // como "nunca sincronizada" e ela voltaria à fila do agendador.
         account.SetActive(command.IsActive, now);
 
         await _unitOfWork.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
