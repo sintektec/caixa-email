@@ -232,6 +232,15 @@ public sealed class MessageRepository : IMessageRepository
             .FirstOrDefaultAsync(m => m.AccountId == accountId && m.MessageId == messageId, cancellationToken);
     }
 
+    public Task<Message?> GetByMessageIdInFolderAsync(
+        Guid folderId, string messageId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(messageId);
+
+        return _context.Messages
+            .FirstOrDefaultAsync(m => m.FolderId == folderId && m.MessageId == messageId, cancellationToken);
+    }
+
     /// <inheritdoc />
     public async Task<IReadOnlyList<long>> ListUidsByFolderAsync(
         Guid folderId, CancellationToken cancellationToken = default)

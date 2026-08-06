@@ -278,8 +278,16 @@ public sealed class MessageSyncService
     {
         var now = _timeProvider.GetUtcNow();
 
-        var existing = await _messages.GetByUidAsync(folder.Id, header.Uid, cancellationToken).ConfigureAwait(false)
-            ?? await _messages.GetByMessageIdAsync(folder.AccountId, header.MessageId, cancellationToken)
+        // As duas buscas são recortadas pela pasta, e isso é a correção de um defeito, não
+        // uma otimização. UID é identidade por pasta; o mesmo Message-ID vive em várias
+        // pastas ao mesmo tempo, e no Gmail isso é a regra — cada rótulo é uma pasta, e a
+        // mensagem da Caixa de Entrada aparece em todas com UID próprio. Procurando na conta
+        // inteira, sincronizar o rótulo devolvia a linha da Caixa de Entrada e ApplyRemoteFlags
+        // carimbava nela o UID do rótulo. A linha ficava em INBOX com um UID que só existe em
+        // outra pasta, e o corpo nunca mais baixava (D-037).
+        var existing =
+            await _messages.GetByUidAsync(folder.Id, header.Uid, cancellationToken).ConfigureAwait(false)
+            ?? await _messages.GetByMessageIdInFolderAsync(folder.Id, header.MessageId, cancellationToken)
                 .ConfigureAwait(false);
 
         if (existing is not null)

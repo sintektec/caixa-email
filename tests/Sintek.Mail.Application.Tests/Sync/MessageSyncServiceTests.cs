@@ -285,7 +285,7 @@ public class MessageSyncServiceTests
         existente.MarkSynced(Now);
 
         _messages.GetByUidAsync(inbox.Id, 77, Arg.Any<CancellationToken>()).Returns((Message?)null);
-        _messages.GetByMessageIdAsync(AccountId, "<77@servidor>", Arg.Any<CancellationToken>())
+        _messages.GetByMessageIdInFolderAsync(inbox.Id, "<77@servidor>", Arg.Any<CancellationToken>())
             .Returns(existente);
 
         ArrangeServer(new FolderSyncState(1, null, 78, 1, 0), Header(77));
@@ -295,6 +295,51 @@ public class MessageSyncServiceTests
         result.Added.Should().Be(0);
         existente.Uid.Should().Be(77);
         await _messages.DidNotReceive().AddAsync(Arg.Any<Message>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// A mesma mensagem em duas pastas não pode ter o UID de uma carimbado na outra.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>UID é identidade por pasta.</b> No Gmail a mesma mensagem aparece na Caixa de
+    /// Entrada e em cada rótulo aplicado a ela, cada cópia com o seu UID. Reconciliando pelo
+    /// Message-ID na conta inteira, sincronizar o rótulo achava a linha da Caixa de Entrada e
+    /// gravava nela o UID do rótulo — a linha continuava em INBOX apontando para um UID que
+    /// só existe noutra pasta.
+    /// </para>
+    /// <para>
+    /// O efeito não aparecia na lista, que já tinha os cabeçalhos: aparecia no clique, quando
+    /// o servidor respondia que não conhecia aquele UID naquela pasta. Todas as mensagens do
+    /// Gmail, de todas as contas (D-037).
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task Sincronizar_MesmaMensagemEmOutraPasta_NaoCarimbaOUidNaLinhaAlheia()
+    {
+        var inbox = Inbox();
+        var rotulo = Folder.Create(AccountId, "PARTICULAR", FolderType.Custom, Now, remotePath: "PARTICULAR");
+
+        // A linha vive na Caixa de Entrada, com o UID de lá.
+        var naInbox = Message.Create(AccountId, inbox.Id, "<77@servidor>", Now, Now, Now);
+        naInbox.SetRemoteIdentity(4242, null, Now);
+        naInbox.MarkSynced(Now);
+
+        // A busca por pasta não a encontra — ela não é do rótulo. A busca por conta encontrava,
+        // e era esse o defeito; o dublê responde às duas para provar qual delas o motor usa.
+        _messages.GetByUidAsync(rotulo.Id, 77, Arg.Any<CancellationToken>()).Returns((Message?)null);
+        _messages.GetByMessageIdInFolderAsync(rotulo.Id, "<77@servidor>", Arg.Any<CancellationToken>())
+            .Returns((Message?)null);
+        _messages.GetByMessageIdAsync(AccountId, "<77@servidor>", Arg.Any<CancellationToken>())
+            .Returns(naInbox);
+
+        ArrangeServer(new FolderSyncState(1, null, 78, 1, 0), Header(77));
+
+        await CreateService().SyncFolderAsync(rotulo);
+
+        naInbox.Uid.Should().Be(
+            4242, "o UID da Caixa de Entrada não pode ser trocado pelo do rótulo");
+        naInbox.FolderId.Should().Be(inbox.Id);
     }
 
     [Fact]

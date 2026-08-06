@@ -108,12 +108,35 @@ public interface IMessageRepository
     /// Busca uma mensagem da conta pelo <c>Message-ID</c> da RFC 5322.
     /// </summary>
     /// <remarks>
-    /// É o caminho de reconciliação quando o UID não serve: depois de um MOVE em servidor
-    /// sem UIDPLUS, a mensagem reaparece na pasta de destino com UID novo e desconhecido, e
-    /// o <c>Message-ID</c> é o único identificador que atravessou a operação.
+    /// Busca em toda a conta, sem distinguir pasta. Serve para deduplicar e para relacionar
+    /// cópias; <b>não</b> serve para decidir a identidade de rede de uma linha — para isso é
+    /// <see cref="GetByMessageIdInFolderAsync"/>, e a diferença já custou um defeito.
     /// </remarks>
     Task<Message?> GetByMessageIdAsync(
         Guid accountId, string messageId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Busca a mensagem de <b>uma pasta</b> pelo <c>Message-ID</c> da RFC 5322.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// É o caminho de reconciliação quando o UID não serve: depois de um MOVE em servidor
+    /// sem UIDPLUS, a mensagem reaparece na pasta com UID novo e desconhecido, e o
+    /// <c>Message-ID</c> é o único identificador que atravessou a operação.
+    /// </para>
+    /// <para>
+    /// O recorte por pasta é o que torna a reconciliação correta, e não um detalhe de
+    /// desempenho. <b>UID é identidade por pasta</b>, e o mesmo <c>Message-ID</c> existe em
+    /// várias pastas ao mesmo tempo — no Gmail isso é a regra, não a exceção, porque cada
+    /// rótulo é uma pasta e a mensagem da Caixa de Entrada aparece em todas elas com UID
+    /// próprio. Buscar na conta inteira devolvia a linha de <i>outra</i> pasta e carimbava
+    /// nela o UID desta, deixando a linha apontando para um UID que não existe onde ela mora.
+    /// O corpo então nunca baixava, e o servidor respondia, com razão, que não conhecia
+    /// aquele UID (D-037).
+    /// </para>
+    /// </remarks>
+    Task<Message?> GetByMessageIdInFolderAsync(
+        Guid folderId, string messageId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Lista os UIDs conhecidos de uma pasta, do menor para o maior.

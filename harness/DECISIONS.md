@@ -921,3 +921,46 @@ sabe que precisa da rede e conhece a conta é quem conecta.
 **Detalhe que importa:** `ApplyArrivalRulesHandler` também baixa corpo, para avaliar condição
 sobre o texto completo — mas roda a partir do `SyncAccountHandler`, no escopo em que o cliente
 já está conectado. `IsConnected` curto-circuita, e nenhuma ida e volta é acrescentada ao laço.
+
+---
+
+## D-037 — UID é identidade por pasta, e a reconciliação precisa respeitar isso
+
+**Data:** 2026-08-06
+**Contexto:** primeira execução real. Nenhuma mensagem de nenhuma conta Gmail exibia o corpo;
+o servidor respondia que não conhecia aquele UID na pasta.
+
+`MessageSyncService.UpsertAsync` reconciliava assim:
+
+```
+GetByUidAsync(folder.Id, header.Uid) ?? GetByMessageIdAsync(folder.AccountId, header.MessageId)
+```
+
+A segunda busca varre a **conta inteira**. E `ApplyRemoteFlags`, ao receber a linha
+encontrada, grava nela o UID do cabeçalho — o da pasta que está sendo sincronizada.
+
+No Gmail cada rótulo é uma pasta, e a mensagem da Caixa de Entrada aparece em todas elas,
+cada cópia com o **seu** UID. Sincronizar o rótulo achava a linha da Caixa de Entrada e
+carimbava nela o UID do rótulo. A linha continuava com `FolderId` da Caixa de Entrada e um
+UID que só existe noutra pasta.
+
+Nada disso aparecia na lista, que já tinha os cabeçalhos gravados na criação. Aparecia no
+clique: `FetchBodyAsync("INBOX", uidDoRotulo)` e `MessageNotFoundException`. Como praticamente
+toda mensagem do Gmail carrega ao menos um rótulo, falhava em todas.
+
+**Decisão:** a reconciliação por `Message-ID` passa a ser recortada pela pasta
+(`GetByMessageIdInFolderAsync`). A busca por conta continua existindo, para deduplicação e
+para relacionar cópias, mas **não** decide identidade de rede.
+
+**Por quê:** UID é identidade por pasta — está na RFC 3501, e o Gmail apenas torna isso
+visível todo dia. O caso que a busca ampla existia para atender, o MOVE em servidor sem
+UIDPLUS, continua atendido: a mensagem reaparece **na pasta de destino**, e a busca recortada
+por essa pasta a encontra.
+
+**Autocorreção:** bancos já corrompidos se curam na sincronização seguinte. `GetByUidAsync`
+falha (a linha tem UID errado), a busca por pasta encontra pelo `Message-ID`, e
+`ApplyRemoteFlags` grava o UID certo — o da pasta onde a linha mora.
+
+**O que o defeito ensina sobre a suíte:** 928 testes não o pegaram porque todos os dublês
+respondiam por uma pasta só. O cenário que faltava não era exótico — era o provedor de e-mail
+mais usado do mundo, no comportamento mais característico dele.
