@@ -38,6 +38,7 @@ public class OAuthClientOptionsTests
         => new(
             Options.Create(new OAuthOptions { Microsoft = microsoft }),
             Substitute.For<ICredentialStore>(),
+            TimeProvider.System,
             NullLogger<MicrosoftOAuthProvider>.Instance);
 
     [Fact]

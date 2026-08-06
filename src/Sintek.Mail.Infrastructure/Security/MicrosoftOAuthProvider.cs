@@ -45,20 +45,31 @@ public sealed class MicrosoftOAuthProvider : IOAuthProvider
         "offline_access",
     ];
 
+    /// <summary>Teto para a segunda janela de consentimento, a da agenda.</summary>
+    /// <remarks>
+    /// Mais curto que o teto do consentimento principal porque a situação é outra: aqui o
+    /// usuário já autorizou uma vez e não espera ser perguntado de novo, então a janela
+    /// abandonada é o caso comum, não a exceção.
+    /// </remarks>
+    private static readonly TimeSpan CalendarConsentTimeout = TimeSpan.FromMinutes(2);
+
     private readonly OAuthClientOptions _options;
     private readonly ICredentialStore _credentials;
+    private readonly TimeProvider _timeProvider;
     private readonly ILogger<MicrosoftOAuthProvider> _logger;
     private IPublicClientApplication? _application;
 
     public MicrosoftOAuthProvider(
         IOptions<OAuthOptions> options,
         ICredentialStore credentials,
+        TimeProvider timeProvider,
         ILogger<MicrosoftOAuthProvider> logger)
     {
         ArgumentNullException.ThrowIfNull(options);
 
         _options = options.Value.Microsoft;
         _credentials = credentials;
+        _timeProvider = timeProvider;
         _logger = logger;
     }
 
@@ -80,37 +91,72 @@ public sealed class MicrosoftOAuthProvider : IOAuthProvider
             .ExecuteAsync(cancellationToken)
             .ConfigureAwait(false);
 
-        // O consentimento da agenda vai na mesma sessão interativa, e falhar nele não
-        // invalida o do e-mail: a conta é cadastrada e a agenda fica sem espelho remoto até
-        // o usuário consentir. Pedir os dois de uma vez seria recusado — públicos diferentes.
+        // O e-mail é gravado aqui, antes de qualquer coisa que possa dar errado. A ordem é o
+        // ponto: a gravação ficava só no fim, depois da etapa de agenda, e a agenda abre uma
+        // **segunda** janela de navegador. Quando ela não se completava, nada era gravado — e
+        // o consentimento de e-mail, que já tinha dado certo, era jogado fora junto. O
+        // sintoma é cruel: o provedor avisa por e-mail que o aplicativo foi conectado, e o
+        // cofre local está vazio.
+        await PersistCacheAsync(application, emailAddress, cancellationToken).ConfigureAwait(false);
+
+        await TryGrantCalendarAsync(application, result, emailAddress, cancellationToken)
+            .ConfigureAwait(false);
+
+        _logger.LogInformation("Autenticação Microsoft concluída para uma conta de e-mail.");
+        return new OAuthAccessToken(result.AccessToken, result.ExpiresOn);
+    }
+
+    /// <summary>
+    /// Pede o consentimento da agenda, que é opcional e não pode custar o do e-mail.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// O Entra emite token <b>por recurso</b>: pedir os escopos de `outlook.office.com` e os
+    /// de `graph.microsoft.com` na mesma chamada é recusado com <c>AADSTS28000</c>. Por isso
+    /// são duas idas, e por isso a segunda pode abrir outra janela de navegador.
+    /// </para>
+    /// <para>
+    /// Teto próprio porque essa segunda janela é a que o usuário tende a fechar: ele já
+    /// autorizou uma vez e não espera ser perguntado de novo. Sem teto, a espera não termina
+    /// e leva o cadastro junto. Recusar a agenda é resultado aceitável — a conta é cadastrada
+    /// e o espelho remoto fica para quando o usuário consentir.
+    /// </para>
+    /// </remarks>
+    private async Task TryGrantCalendarAsync(
+        IPublicClientApplication application,
+        Microsoft.Identity.Client.AuthenticationResult mail,
+        string emailAddress,
+        CancellationToken cancellationToken)
+    {
+        using var timeout = new CancellationTokenSource(CalendarConsentTimeout, _timeProvider);
+        using var linked = CancellationTokenSource
+            .CreateLinkedTokenSource(cancellationToken, timeout.Token);
+
         try
-        {
-            await application
-                .AcquireTokenSilent(CalendarScopes, result.Account)
-                .ExecuteAsync(cancellationToken)
-                .ConfigureAwait(false);
-        }
-        catch (MsalUiRequiredException)
         {
             try
             {
                 await application
-                    .AcquireTokenInteractive(CalendarScopes)
-                    .WithLoginHint(emailAddress)
-                    .ExecuteAsync(cancellationToken)
+                    .AcquireTokenSilent(CalendarScopes, mail.Account)
+                    .ExecuteAsync(linked.Token)
                     .ConfigureAwait(false);
             }
-            catch (MsalException ex)
+            catch (MsalUiRequiredException)
             {
-                _logger.LogInformation(
-                    ex, "O consentimento de agenda não foi concedido; o e-mail segue autorizado.");
+                await application
+                    .AcquireTokenInteractive(CalendarScopes)
+                    .WithLoginHint(emailAddress)
+                    .ExecuteAsync(linked.Token)
+                    .ConfigureAwait(false);
             }
+
+            await PersistCacheAsync(application, emailAddress, cancellationToken).ConfigureAwait(false);
         }
-
-        await PersistCacheAsync(application, emailAddress, cancellationToken).ConfigureAwait(false);
-
-        _logger.LogInformation("Autenticação Microsoft concluída para uma conta de e-mail.");
-        return new OAuthAccessToken(result.AccessToken, result.ExpiresOn);
+        catch (Exception ex) when (ex is MsalException or OperationCanceledException)
+        {
+            _logger.LogInformation(
+                ex, "O consentimento de agenda não foi concedido; o e-mail segue autorizado.");
+        }
     }
 
     /// <inheritdoc />

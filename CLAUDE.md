@@ -123,6 +123,14 @@ até o manipulador `async void` do `ContentDialog` e **derruba a aplicação**. 
 não pode fechar o programa, e por isso o teste de conexão também tem uma captura geral: ele
 conversa com um servidor que o usuário digitou.
 
+**Token conquistado se grava antes de arriscar o próximo.** No Entra o consentimento são duas
+idas — e-mail em `outlook.office.com`, agenda em `graph.microsoft.com` —, e a segunda abre
+outra janela de navegador, que é a que o usuário fecha porque já autorizou uma vez.
+`MicrosoftOAuthProvider` persiste o cache **logo após o token de e-mail**, não no fim. Gravar só
+no fim fazia a janela abandonada da agenda descartar o consentimento de e-mail que já tinha dado
+certo, e o sintoma é cruel: o provedor avisa por e-mail que o aplicativo foi conectado, e o
+cofre local está vazio.
+
 **Consentimento OAuth interativo sempre com teto de espera.** A biblioteca da Google abre um
 ouvinte local e aguarda o redirecionamento para `http://localhost`; quando o provedor recusa —
 `403 org_internal`, conta de fora da organização em aplicativo interno — ele exibe a página de
