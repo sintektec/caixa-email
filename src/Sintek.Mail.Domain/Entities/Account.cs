@@ -300,6 +300,21 @@ public sealed class Account : Entity
         Touch(now);
     }
 
+    /// <summary>Define a posição manual dentro do Diretório de Domínio.</summary>
+    /// <remarks>
+    /// A ordem é <b>relativa ao diretório</b>, não global: duas contas de diretórios
+    /// diferentes podem ter a mesma posição sem ambiguidade, porque nunca aparecem na mesma
+    /// lista. Mudar de diretório é outra operação — passa pela regra de pertinência, e não
+    /// por aqui.
+    /// </remarks>
+    public void SetSortOrder(int sortOrder, DateTimeOffset now)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(sortOrder);
+
+        SortOrder = sortOrder;
+        Touch(now);
+    }
+
     /// <summary>Ativa ou desativa a conta. Desativar preserva os dados locais.</summary>
     public void SetActive(bool isActive, DateTimeOffset now)
     {

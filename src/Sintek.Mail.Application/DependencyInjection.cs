@@ -77,6 +77,7 @@ public static class DependencyInjection
 
         services.AddScoped<CreateDomainDirectoryHandler>();
         services.AddScoped<UpdateDomainDirectoryHandler>();
+        services.AddScoped<ReorderNavigationHandler>();
         services.AddScoped<RemoveDomainDirectoryHandler>();
         services.AddScoped<ChangeDomainNameHandler>();
 

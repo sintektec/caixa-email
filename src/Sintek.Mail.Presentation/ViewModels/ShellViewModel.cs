@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Sintek.Mail.Application.Abstractions.Persistence;
 using Sintek.Mail.Application.Sync;
 using Sintek.Mail.Application.UseCases.Messages;
+using Sintek.Mail.Application.UseCases.Organization;
 using Sintek.Mail.Domain.Entities;
 using Sintek.Mail.Domain.Enums;
 using Sintek.Mail.Domain.Exceptions;
@@ -41,6 +42,7 @@ public sealed partial class ShellViewModel : ObservableObject
     private readonly MarkAsSpamHandler _markAsSpam;
     private readonly MessageFlagsHandler _messageFlags;
     private readonly SyncAccountHandler _syncAccount;
+    private readonly ReorderNavigationHandler _reorder;
     private readonly ILogger<ShellViewModel> _logger;
 
     public ShellViewModel(
@@ -53,6 +55,7 @@ public sealed partial class ShellViewModel : ObservableObject
         MarkAsSpamHandler markAsSpam,
         MessageFlagsHandler messageFlags,
         SyncAccountHandler syncAccount,
+        ReorderNavigationHandler reorder,
         ILogger<ShellViewModel> logger)
     {
         _directories = directories;
@@ -64,6 +67,7 @@ public sealed partial class ShellViewModel : ObservableObject
         _markAsSpam = markAsSpam;
         _messageFlags = messageFlags;
         _syncAccount = syncAccount;
+        _reorder = reorder;
         _logger = logger;
     }
 
@@ -108,9 +112,14 @@ public sealed partial class ShellViewModel : ObservableObject
 
             foreach (var directory in await _directories.ListAsync(cancellationToken).ConfigureAwait(true))
             {
+                // A descrição é o nome que a pessoa deu; o domínio é o que a regra usa. Quem
+                // olha a árvore quer o primeiro — mas um diretório sem descrição viraria linha
+                // em branco, então o domínio continua sendo o rótulo de reserva.
                 var domainNode = new NavigationNode(
                     NavigationNodeKind.DomainDirectory,
-                    directory.DomainName.Value,
+                    string.IsNullOrWhiteSpace(directory.Description)
+                        ? directory.DomainName.Value
+                        : directory.Description,
                     NavigationNode.DomainIcon)
                 {
                     EntityId = directory.Id,
@@ -242,6 +251,95 @@ public sealed partial class ShellViewModel : ObservableObject
     /// para as duas versões divergirem e a interface acabar permitindo o que o domínio
     /// proíbe.
     /// </remarks>
+    /// <summary>
+    /// Reposiciona um Diretório de Domínio ou uma conta na árvore.
+    /// </summary>
+    /// <param name="movedId">Identificador do item arrastado.</param>
+    /// <param name="targetIndex">Posição de destino, entre os irmãos.</param>
+    /// <returns>Se a nova ordem foi gravada.</returns>
+    /// <remarks>
+    /// <para>
+    /// A árvore é reordenada <b>na memória primeiro</b> e só então gravada. É o que faz o
+    /// item ficar onde foi solto em vez de saltar de volta e reaparecer no lugar certo um
+    /// instante depois — e, se a gravação falhar, a árvore é recarregada do banco, que
+    /// desfaz o movimento na tela sem inventar um estado intermediário.
+    /// </para>
+    /// <para>
+    /// Um item só se move <b>entre os próprios irmãos</b>. Arrastar uma conta para outro
+    /// diretório seria mudança de diretório, não reordenação: passa pela regra de
+    /// pertinência, e o gesto de arrastar não é lugar para decidir isso em silêncio.
+    /// </para>
+    /// </remarks>
+    public async Task<bool> ReorderNodeAsync(
+        Guid movedId, int targetIndex, CancellationToken cancellationToken = default)
+    {
+        var siblings = FindSiblings(movedId);
+
+        if (siblings is null)
+        {
+            return false;
+        }
+
+        var (parent, collection) = siblings.Value;
+        var moved = collection.First(n => n.EntityId == movedId);
+        var from = collection.IndexOf(moved);
+        var to = Math.Clamp(targetIndex, 0, collection.Count - 1);
+
+        if (from == to)
+        {
+            return true;
+        }
+
+        collection.Move(from, to);
+
+        var orderedIds = collection.Select(n => n.EntityId).ToList();
+
+        var result = moved.Kind == NavigationNodeKind.DomainDirectory
+            ? await _reorder.ReorderDirectoriesAsync(orderedIds, cancellationToken).ConfigureAwait(true)
+            : await _reorder
+                .ReorderAccountsAsync(parent!.EntityId, orderedIds, cancellationToken)
+                .ConfigureAwait(true);
+
+        if (result.Succeeded)
+        {
+            return true;
+        }
+
+        StatusMessage = result.ErrorMessage;
+
+        // Recarregar é mais honesto que desfazer o Move à mão: a recusa quase sempre
+        // significa que a árvore na tela não corresponde mais ao banco.
+        await LoadNavigationAsync(cancellationToken).ConfigureAwait(true);
+        return false;
+    }
+
+    /// <summary>
+    /// Encontra a coleção de irmãos de um item reordenável, e o nó que a contém.
+    /// </summary>
+    /// <remarks>
+    /// Devolve nada para qualquer outro tipo de nó — pasta, pesquisa salva, seção. Só
+    /// diretório e conta têm posição manual; as pastas seguem a ordem do servidor.
+    /// </remarks>
+    private (NavigationNode? Parent, ObservableCollection<NavigationNode> Siblings)? FindSiblings(Guid movedId)
+    {
+        foreach (var root in NavigationRoots)
+        {
+            if (root.Children.Any(c => c.EntityId == movedId && c.Kind == NavigationNodeKind.DomainDirectory))
+            {
+                return (root, root.Children);
+            }
+
+            foreach (var directory in root.Children.Where(c => c.Kind == NavigationNodeKind.DomainDirectory))
+            {
+                if (directory.Children.Any(c => c.EntityId == movedId && c.Kind == NavigationNodeKind.Account))
+                {
+                    return (directory, directory.Children);
+                }
+            }
+        }
+
+        return null;
+    }
     /// <remarks>
     /// Sem <c>[RelayCommand]</c>: o gerador do MVVM Toolkit aceita no máximo um parâmetro,
     /// e este método precisa de três. O arrastar e soltar chama o método diretamente do

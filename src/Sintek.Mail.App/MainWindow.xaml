@@ -301,7 +301,9 @@
                                x:Name="NavigationTree"
                                ItemsSource="{x:Bind Shell.NavigationRoots, Mode=OneWay}"
                                SelectionMode="Single"
-                               CanDragItems="False"
+                               CanDragItems="True"
+                               CanReorderItems="False"
+                               DragItemsStarting="OnNavigationDragStarting"
                                AutomationProperties.Name="Contas, diretórios e pastas"
                                SelectionChanged="OnNavigationSelectionChanged">
                 <controls:TreeView.ItemTemplate>

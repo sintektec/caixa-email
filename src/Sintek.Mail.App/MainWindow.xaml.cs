@@ -21,6 +21,16 @@ public sealed partial class MainWindow : Window
     /// </remarks>
     private const string MessageDragFormat = "Sintek.Mail/message-ids";
 
+    /// <summary>
+    /// Formato do arrasto de reordenação, deliberadamente distinto do de mensagem.
+    /// </summary>
+    /// <remarks>
+    /// É o que impede os dois gestos de se confundirem na mesma árvore: uma pasta aceita
+    /// mensagem e recusa diretório, e um diretório faz o inverso. Um formato só, com o tipo
+    /// decidido no destino, deixaria "soltar mensagem sobre diretório" virar reordenação.
+    /// </remarks>
+    private const string NavigationDragFormat = "Sintek.Mail/navigation-node";
+
     public MainWindow(
         ShellViewModel shell,
         MessageListViewModel messageList,
@@ -345,11 +355,61 @@ public sealed partial class MainWindow : Window
         e.Data.RequestedOperation = DataPackageOperation.Move;
     }
 
+    /// <summary>
+    /// Inicia o arrasto de um Diretório de Domínio ou de uma conta, para reordenar.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A reordenação é feita à mão, e não pelo <c>CanReorderItems</c> da árvore: aquele
+    /// mecanismo move o nó na coleção sem avisar ninguém, o que gravaria a nova ordem só na
+    /// tela e a perderia no próximo carregamento. Com ele desligado, o gesto vira um arrasto
+    /// comum, com formato próprio, e quem grava é o caso de uso.
+    /// </para>
+    /// <para>
+    /// O formato é <b>outro</b>, diferente do de mensagem, e é isso que impede os dois gestos
+    /// de se confundirem: uma pasta continua aceitando mensagem e recusando diretório, e a
+    /// recíproca vale.
+    /// </para>
+    /// </remarks>
+    private void OnNavigationDragStarting(object sender, TreeViewDragItemsStartingEventArgs e)
+    {
+        var node = e.Items.OfType<NavigationNode>().FirstOrDefault();
+
+        if (node is null
+            || node.Kind is not (NavigationNodeKind.DomainDirectory or NavigationNodeKind.Account))
+        {
+            // Pasta, seção e pesquisa salva não têm posição manual: as pastas seguem a ordem
+            // do servidor, e as demais não são itens do usuário.
+            e.Cancel = true;
+            return;
+        }
+
+        e.Data.SetData(NavigationDragFormat, node.EntityId.ToString());
+        e.Data.RequestedOperation = DataPackageOperation.Move;
+    }
+
     private void OnFolderDragOver(object sender, DragEventArgs e)
     {
-        e.AcceptedOperation = e.DataView.Contains(MessageDragFormat)
-            ? DataPackageOperation.Move
-            : DataPackageOperation.None;
+        if (e.DataView.Contains(MessageDragFormat))
+        {
+            e.AcceptedOperation = DataPackageOperation.Move;
+            return;
+        }
+
+        // Um item só se reordena entre os próprios irmãos: diretório sobre diretório, conta
+        // sobre conta. Aceitar o resto sugeriria uma movimentação que o caso de uso recusaria
+        // depois, com o item já solto no lugar errado.
+        if (e.DataView.Contains(NavigationDragFormat)
+            && (sender as FrameworkElement)?.DataContext is NavigationNode
+            {
+                Kind: NavigationNodeKind.DomainDirectory or NavigationNodeKind.Account
+            })
+        {
+            e.AcceptedOperation = DataPackageOperation.Move;
+            return;
+        }
+
+        e.AcceptedOperation = DataPackageOperation.None;
     }
 
     /// <summary>
@@ -362,6 +422,12 @@ public sealed partial class MainWindow : Window
     /// </remarks>
     private async void OnFolderDrop(object sender, DragEventArgs e)
     {
+        if (e.DataView.Contains(NavigationDragFormat))
+        {
+            await ReorderNavigationAsync(sender, e).ConfigureAwait(true);
+            return;
+        }
+
         if (!e.DataView.Contains(MessageDragFormat))
         {
             return;
@@ -399,6 +465,78 @@ public sealed partial class MainWindow : Window
         {
             deferral.Complete();
         }
+    }
+
+    /// <summary>
+    /// Conclui a reordenação: o item arrastado assume a posição daquele sobre o qual foi
+    /// solto.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// O <c>deferral</c> é obtido antes de qualquer <c>await</c> e concluído no
+    /// <c>finally</c>. Sem ele, o WinUI encerra a operação de arrasto no primeiro ponto de
+    /// suspensão e o cursor fica preso — que é o travamento que se vê na tela.
+    /// </para>
+    /// <para>
+    /// A posição de destino sai do índice do alvo <b>entre os irmãos dele</b>, não de uma
+    /// coordenada de tela: é o mesmo número que o ViewModel usa para reordenar a coleção, e
+    /// tirá-lo daqui evita que a interface e o caso de uso contem posições de jeitos
+    /// diferentes.
+    /// </para>
+    /// </remarks>
+    private async Task ReorderNavigationAsync(object sender, DragEventArgs e)
+    {
+        var deferral = e.GetDeferral();
+
+        try
+        {
+            if ((sender as FrameworkElement)?.DataContext is not NavigationNode target)
+            {
+                return;
+            }
+
+            var raw = await e.DataView.GetDataAsync(NavigationDragFormat) as string;
+
+            if (!Guid.TryParse(raw, out var movedId) || movedId == target.EntityId)
+            {
+                return;
+            }
+
+            var siblings = FindSiblingCollection(target);
+
+            if (siblings is null)
+            {
+                return;
+            }
+
+            await Shell.ReorderNodeAsync(movedId, siblings.IndexOf(target)).ConfigureAwait(true);
+        }
+        finally
+        {
+            deferral.Complete();
+        }
+    }
+
+    /// <summary>Devolve a coleção que contém o nó alvo, ou nada se ele não for reordenável.</summary>
+    private IList<NavigationNode>? FindSiblingCollection(NavigationNode target)
+    {
+        foreach (var root in Shell.NavigationRoots)
+        {
+            if (root.Children.Contains(target))
+            {
+                return root.Children;
+            }
+
+            foreach (var directory in root.Children)
+            {
+                if (directory.Children.Contains(target))
+                {
+                    return directory.Children;
+                }
+            }
+        }
+
+        return null;
     }
 
     /// <summary>

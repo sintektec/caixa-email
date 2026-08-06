@@ -249,6 +249,21 @@ public sealed class DomainDirectory : Entity
         Touch(now);
     }
 
+    /// <summary>Define a posição manual na árvore.</summary>
+    /// <remarks>
+    /// Separado de <see cref="UpdateDisplay"/> de propósito: reordenar arrastando não é
+    /// editar o diretório, e passar pelo outro método obrigaria a interface a reenviar
+    /// descrição e favorito — que ela não tem à mão no meio de um arrasto, e que sobrescreveria
+    /// o que outra tela tivesse acabado de gravar.
+    /// </remarks>
+    public void SetSortOrder(int sortOrder, DateTimeOffset now)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(sortOrder);
+
+        SortOrder = sortOrder;
+        Touch(now);
+    }
+
     /// <summary>Ativa ou desativa o diretório.</summary>
     public void SetActive(bool isActive, DateTimeOffset now)
     {
