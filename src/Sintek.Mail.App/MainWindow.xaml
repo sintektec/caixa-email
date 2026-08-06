@@ -631,6 +631,10 @@
                     Barra de imagens remotas: só aparece quando a mensagem as contém e o
                     usuário ainda não autorizou. Carregá-las confirma ao remetente que a
                     mensagem foi aberta.
+
+                    O botão usa Click, e não Command: autorizar troca o SanitizedHtml no
+                    ViewModel, mas quem entrega o HTML ao WebView2 é a janela. Ligado só no
+                    comando, ele mudava o estado e deixava o documento antigo na tela.
                 -->
                 <InfoBar Grid.Row="2"
                          IsOpen="{x:Bind Reading.ShowRemoteContentBar, Mode=OneWay}"
@@ -638,11 +642,6 @@
                          Message="Esta mensagem contém imagens externas que foram bloqueadas para proteger sua privacidade."
                          IsClosable="False">
                     <InfoBar.ActionButton>
-                        <!--
-                            Click, e não Command: autorizar troca o SanitizedHtml no ViewModel,
-                            mas quem entrega o HTML ao WebView2 é a janela. Ligado só no comando,
-                            o botão mudava o estado e deixava o documento antigo na tela.
-                        -->
                         <Button Content="Exibir imagens"
                                 Click="OnAllowRemoteContentClick" />
                     </InfoBar.ActionButton>
