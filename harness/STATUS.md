@@ -224,6 +224,27 @@ verificado" no consentimento. Passa a ser bloqueio real se o MSIX for distribuí
 organizações, porque locatário que bloqueia aplicativo não verificado por política recusa a
 entrada dos próprios usuários.
 
+**Bloqueio novo, e este é humano: o GitHub Actions parou de executar.** A partir de
+2026-08-06 19:40 UTC, dois sintomas ao mesmo tempo no repositório:
+
+1. Push para a branch do PR **não cria execução nenhuma**. Dois pushes seguidos (`28cf4d2` e
+   `acad507`), zero runs — e o gatilho é `pull_request` sem filtro de caminho, sem
+   `concurrency`, o mesmo que funcionou no `5b3c239` às 17:32.
+2. Execução disparada à mão por `workflow_dispatch` é **aceita e fica na fila**. Os dois jobs
+   ficaram em `queued` por mais de dezessete minutos sem nunca passar a `in_progress` —
+   inclusive o de Linux, que costuma ser recolhido em segundos.
+
+O GitGuardian continua rodando e passando, então os webhooks estão vivos e o problema não é de
+entrega de evento. Fila aceita mais runner que não recolhe, nos dois sistemas operacionais ao
+mesmo tempo, é o quadro de **limite de gasto ou minutos incluídos esgotados** na conta — em
+repositório privado, o runner Windows consome 2× e este workflow tem job Windows mais
+empacotamento MSIX. Não é verificável pela API com as permissões da sessão: quem confirma é o
+dono da conta, em Settings → Billing → Actions.
+
+**Enquanto isso, a verificação do job `windows` está suspensa** — e é a única que alcança
+XAML, `x:Bind` e o compilador de marcação. O núcleo multiplataforma segue verificado
+localmente (1008 testes, Debug e Release).
+
 ## Notas
 
 - O núcleo é desenvolvido e testado em Linux de propósito: é o que verifica mecanicamente
