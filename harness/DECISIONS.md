@@ -964,3 +964,57 @@ falha (a linha tem UID errado), a busca por pasta encontra pelo `Message-ID`, e
 **O que o defeito ensina sobre a suíte:** 928 testes não o pegaram porque todos os dublês
 respondiam por uma pasta só. O cenário que faltava não era exótico — era o provedor de e-mail
 mais usado do mundo, no comportamento mais característico dele.
+
+---
+
+## D-038 — Falha de sincronização aparece na tela, não só no log
+
+**Data:** 2026-08-06
+**Contexto:** contas de um domínio foram criadas e nenhuma carregou conteúdo, sem que a
+aplicação dissesse por quê.
+
+`Account.SyncStatus` e `Account.LastSyncError` existem desde a fase 3 e `SyncAccountHandler`
+os grava corretamente. **Ninguém os lia.** Uma conta parada por senha expirada ficava idêntica
+a uma conta sem mensagem nova, e o motivo vivia no log de depuração — que o usuário não tem
+como abrir. Ele descobria dias depois, procurando um e-mail que nunca chegou.
+
+O laço também não falava com a interface: gravava e seguia, para não morrer.
+
+**Decisão:** três ligações, e nenhuma delas inventa dado novo.
+
+1. `NavigationNode` carrega `SyncStatus` e `SyncError`; o nó da conta ganha alerta com o
+   motivo na dica.
+2. `ShellViewModel.ReportSyncProblems` leva o primeiro motivo à barra de status, **nomeando a
+   conta** — com várias cadastradas, "falha de sincronização" não diz onde mexer.
+3. `ISyncActivityNotifier` liga o laço à janela. O laço avisa ao fim de uma volta que mudou
+   algo; a janela relê. Sem isso, a falha registrada às 3 da manhã só apareceria quando o
+   usuário clicasse em sincronizar.
+
+**`Offline` não acende alerta**, de propósito: é o modo offline funcionando como projetado.
+Alerta que aparece a cada oscilação de rede deixa de ser lido, e aí o que importa passa junto.
+
+**O aviso não sobrescreve mensagem já posta.** Uma recusa da regra de domínio acabou de ser
+explicada; trocá-la apagaria a resposta à ação que o usuário acabou de fazer.
+
+**O evento chega em thread de segundo plano**, e quem assina leva ao despachante — a `MainWindow`
+usa o `DispatcherQueue`. Pôr isso na porta obrigaria a Aplicação a conhecer o WinUI.
+
+---
+
+## D-039 — O laço de sincronização descarta o escopo com `await using`
+
+**Data:** 2026-08-06
+**Contexto:** achado ao investigar D-038.
+
+`AccountSyncWorker.RunOnceAsync` abria o escopo do ciclo com `using` comum. Esse escopo resolve
+`SyncAccountHandler`, que traz um `MailKitImapClient` junto — e ele implementa **só**
+`IAsyncDisposable`. O descarte síncrono lança `"type only implements IAsyncDisposable"`.
+
+O sintoma é o pior tipo: **tudo funciona**. A exceção acontece no fim do bloco, depois de todo
+o trabalho feito, e é capturada pelo `catch` que existe para o laço não morrer. As mensagens
+aparecem, a sincronização parece boa, e cada volta termina em erro logado — com a conexão IMAP
+**nunca encerrada**. Conexão vazada por ciclo esbarra no limite de sessões simultâneas do
+servidor; o Gmail corta em quinze.
+
+A armadilha estava escrita no `CLAUDE.md` desde a correção de escopo, e mesmo assim passou:
+está documentada para os escopos da interface, e este é o do laço.

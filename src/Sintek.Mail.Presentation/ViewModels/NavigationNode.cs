@@ -86,6 +86,25 @@ public sealed partial class NavigationNode : ObservableObject
     [ObservableProperty]
     private bool _isRestrictionInherited;
 
+    /// <summary>
+    /// Estado da última sincronização, nos nós de conta.
+    /// </summary>
+    /// <remarks>
+    /// A falha já era gravada em <c>Account.SyncStatus</c> desde a fase 3, e ninguém a lia.
+    /// Uma conta parada por senha expirada ficava idêntica a uma conta sem mensagem nova, e a
+    /// única pista vivia no log de depuração — que o usuário não tem como abrir.
+    /// </remarks>
+    [ObservableProperty]
+    private AccountSyncStatus _syncStatus = AccountSyncStatus.Online;
+
+    /// <summary>Motivo exibível da última falha, quando houve uma.</summary>
+    /// <remarks>
+    /// Vazio, nunca nulo: alimenta <c>ToolTipService.ToolTip</c>, e o WinUI lança ao receber
+    /// nulo em propriedade de texto.
+    /// </remarks>
+    [ObservableProperty]
+    private string _syncError = string.Empty;
+
     /// <summary>Nós filhos.</summary>
     public ObservableCollection<NavigationNode> Children { get; } = [];
 
@@ -93,6 +112,43 @@ public sealed partial class NavigationNode : ObservableObject
     public bool ShowUnreadBadge => UnreadCount > 0;
 
     partial void OnUnreadCountChanged(int value) => OnPropertyChanged(nameof(ShowUnreadBadge));
+
+    /// <summary>
+    /// Se a conta precisa de atenção do usuário.
+    /// </summary>
+    /// <remarks>
+    /// <c>Offline</c> fica de fora de propósito: é o modo offline funcionando como projetado,
+    /// não defeito. Alerta que aparece toda vez que a rede oscila deixa de ser lido, e aí o
+    /// alerta que importa passa junto.
+    /// </remarks>
+    public bool HasSyncProblem
+        => Kind == NavigationNodeKind.Account
+            && SyncStatus is AccountSyncStatus.Error or AccountSyncStatus.AuthenticationFailed;
+
+    /// <summary>
+    /// Glifo do estado, ao lado do nome da conta.
+    /// </summary>
+    /// <remarks>
+    /// Escritos como escape, e não como o caractere literal: são da área de uso privado do
+    /// Unicode, e um editor ou uma ferramenta que reescreva o arquivo os perde em silêncio —
+    /// o ícone some sem nada quebrar, e o teste passa a ser a única forma de notar.
+    /// </remarks>
+    public string SyncStatusIcon => SyncStatus switch
+    {
+        // Contact (pessoa): a credencial é que precisa de atenção, não o servidor.
+        AccountSyncStatus.AuthenticationFailed => "\uE77B",
+
+        // Warning (triângulo).
+        AccountSyncStatus.Error => "\uE7BA",
+
+        _ => string.Empty,
+    };
+
+    partial void OnSyncStatusChanged(AccountSyncStatus value)
+    {
+        OnPropertyChanged(nameof(HasSyncProblem));
+        OnPropertyChanged(nameof(SyncStatusIcon));
+    }
 
     /// <summary>
     /// Glifos do Segoe Fluent Icons para cada tipo de pasta.

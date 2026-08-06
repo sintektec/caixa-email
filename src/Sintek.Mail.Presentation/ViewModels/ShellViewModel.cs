@@ -153,11 +153,67 @@ public sealed partial class ShellViewModel : ScopedViewModel
                         sp.GetRequiredService<IOutboxRepository>(), cancellationToken).ConfigureAwait(true);
                 },
                 cancellationToken).ConfigureAwait(true);
+
+            ReportSyncProblems();
         }
         finally
         {
             IsBusy = false;
         }
+    }
+
+    /// <summary>
+    /// Leva à barra de status o que as contas registraram na última sincronização.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// O laço de sincronização roda sozinho e não fala com a interface: quando ele falha,
+    /// grava o motivo na conta e segue, para não morrer. Sem esta leitura o motivo ficava só
+    /// no log de depuração, e a conta parada era indistinguível de uma conta sem mensagem
+    /// nova — o usuário só descobria dias depois, procurando um e-mail que nunca chegou.
+    /// </para>
+    /// <para>
+    /// Nomeia a conta porque com várias cadastradas "falha de sincronização" não diz onde
+    /// mexer. Com mais de uma parada, mostra a primeira e conta as demais: a barra tem uma
+    /// linha, e a árvore já marca cada uma delas.
+    /// </para>
+    /// <para>
+    /// Não sobrescreve mensagem já posta. Uma recusa da regra de domínio acabou de ser
+    /// explicada ao usuário, e trocá-la por um aviso de sincronização apagaria a resposta à
+    /// ação que ele acabou de fazer.
+    /// </para>
+    /// </remarks>
+    private void ReportSyncProblems()
+    {
+        if (!string.IsNullOrEmpty(StatusMessage))
+        {
+            return;
+        }
+
+        var problems = NavigationRoots
+            .SelectMany(root => root.Children)
+            .SelectMany(directory => directory.Children)
+            .Where(node => node.HasSyncProblem)
+            .ToList();
+
+        if (problems.Count == 0)
+        {
+            Connectivity = ConnectivityState.Online;
+            return;
+        }
+
+        var first = problems[0];
+        var reason = string.IsNullOrWhiteSpace(first.SyncError)
+            ? "a última sincronização falhou"
+            : first.SyncError;
+
+        StatusMessage = problems.Count == 1
+            ? $"{first.Title}: {reason}"
+            : $"{first.Title}: {reason} (e mais {problems.Count - 1} conta(s) com problema)";
+
+        Connectivity = problems.Any(p => p.SyncStatus == AccountSyncStatus.AuthenticationFailed)
+            ? ConnectivityState.Error
+            : ConnectivityState.Offline;
     }
 
     /// <remarks>
@@ -183,6 +239,12 @@ public sealed partial class ShellViewModel : ScopedViewModel
         {
             EntityId = account.Id,
             AccountId = account.Id,
+
+            // O estado da última sincronização vem junto com o nó. Sem isto, conta parada
+            // por senha expirada ficava idêntica a conta sem mensagem nova, e o motivo só
+            // existia no log de depuração.
+            SyncStatus = account.SyncStatus,
+            SyncError = account.LastSyncError ?? string.Empty,
         };
 
         var folders = await folderRepository

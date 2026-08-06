@@ -36,7 +36,8 @@ public sealed partial class MainWindow : Window
         MessageListViewModel messageList,
         ReadingPaneViewModel reading,
         SearchViewModel search,
-        AssistantViewModel assistant)
+        AssistantViewModel assistant,
+        Sintek.Mail.Application.Abstractions.Sync.ISyncActivityNotifier syncNotifier)
     {
         Shell = shell;
         MessageList = messageList;
@@ -54,10 +55,32 @@ public sealed partial class MainWindow : Window
             }
         };
 
+        syncNotifier.CycleCompleted += OnSyncCycleCompleted;
+
         RegisterKeyboardShortcuts();
 
         _ = Shell.LoadNavigationAsync();
     }
+
+    /// <summary>
+    /// Releva a árvore quando o laço de sincronização termina uma volta.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>O evento chega em thread de segundo plano</b>, e a árvore é uma
+    /// <c>ObservableCollection</c> ligada à interface: alterá-la fora da thread da janela
+    /// lança <c>COMException</c> (<c>RPC_E_WRONG_THREAD</c>), longe de onde o evento nasceu.
+    /// Daí o <c>DispatcherQueue</c>.
+    /// </para>
+    /// <para>
+    /// É esta ligação que faz falha de conta aparecer sozinha. Antes o motivo era gravado em
+    /// <c>Account.LastSyncError</c> e ninguém relia o banco: a conta parada por senha
+    /// expirada ficava idêntica a uma conta sem mensagem nova, e o usuário descobria dias
+    /// depois, procurando um e-mail que nunca chegou.
+    /// </para>
+    /// </remarks>
+    private void OnSyncCycleCompleted(object? sender, EventArgs e)
+        => DispatcherQueue.TryEnqueue(() => _ = Shell.LoadNavigationAsync());
 
     /// <summary>ViewModel da janela.</summary>
     public ShellViewModel Shell { get; }

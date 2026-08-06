@@ -333,6 +333,7 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
 
                                 <FontIcon Grid.Column="0"
@@ -345,8 +346,25 @@
                                            TextTrimming="CharacterEllipsis"
                                            VerticalAlignment="Center" />
 
-                                <!-- Cadeado indica pasta restrita por Diretório de Domínio -->
+                                <!--
+                                    Conta cuja última sincronização falhou. O motivo vem na dica
+                                    porque a barra lateral é estreita, e sem ele o alerta diria
+                                    apenas que algo está errado — o usuário precisa saber o quê
+                                    para saber onde mexer. Offline não acende: é o modo offline
+                                    funcionando, e alerta que aparece a cada oscilação de rede
+                                    deixa de ser lido.
+                                -->
                                 <FontIcon Grid.Column="2"
+                                          Glyph="{x:Bind SyncStatusIcon, Mode=OneWay}"
+                                          FontSize="12"
+                                          Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                                          VerticalAlignment="Center"
+                                          Visibility="{x:Bind HasSyncProblem, Mode=OneWay}"
+                                          ToolTipService.ToolTip="{x:Bind SyncError, Mode=OneWay}"
+                                          AutomationProperties.Name="Falha de sincronização nesta conta" />
+
+                                <!-- Cadeado indica pasta restrita por Diretório de Domínio -->
+                                <FontIcon Grid.Column="3"
                                           Glyph="&#xE72E;"
                                           FontSize="12"
                                           VerticalAlignment="Center"
@@ -354,7 +372,7 @@
                                           ToolTipService.ToolTip="Pasta restrita por Diretório de Domínio"
                                           AutomationProperties.Name="Pasta restrita por domínio" />
 
-                                <InfoBadge Grid.Column="3"
+                                <InfoBadge Grid.Column="4"
                                            Value="{x:Bind UnreadCount, Mode=OneWay}"
                                            Visibility="{x:Bind ShowUnreadBadge, Mode=OneWay}"
                                            VerticalAlignment="Center"

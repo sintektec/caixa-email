@@ -119,7 +119,10 @@ public static class DependencyInjection
         services.AddScoped<OutboxProcessor>();
         services.AddScoped<IOutboxDrainer>(sp => sp.GetRequiredService<OutboxProcessor>());
 
-        // Singleton: é um laço de vida longa que cria o próprio escopo a cada ciclo.
+        // Singleton os dois: o laço tem vida longa e cria o próprio escopo a cada ciclo,
+        // e o notificador liga esse laço à janela — duas pontas de vida longa. Com escopo,
+        // cada uma veria uma instância e o aviso nunca chegaria, sem erro nenhum.
+        services.AddSingleton<Application.Abstractions.Sync.ISyncActivityNotifier, SyncActivityNotifier>();
         services.AddSingleton<AccountSyncWorker>();
 
         // Os dois provedores de IA são sempre registrados, como os de OAuth: quem decide

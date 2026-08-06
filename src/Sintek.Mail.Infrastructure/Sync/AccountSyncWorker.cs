@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Sintek.Mail.Application.Abstractions.Mail;
 using Sintek.Mail.Application.Abstractions.Persistence;
+using Sintek.Mail.Application.Abstractions.Sync;
 using Sintek.Mail.Application.Sync;
 using Sintek.Mail.Domain.Enums;
 
@@ -33,15 +34,18 @@ public sealed class AccountSyncWorker
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly TimeProvider _timeProvider;
+    private readonly ISyncActivityNotifier _notifier;
     private readonly ILogger<AccountSyncWorker> _logger;
 
     public AccountSyncWorker(
         IServiceScopeFactory scopeFactory,
         TimeProvider timeProvider,
+        ISyncActivityNotifier notifier,
         ILogger<AccountSyncWorker> logger)
     {
         _scopeFactory = scopeFactory;
         _timeProvider = timeProvider;
+        _notifier = notifier;
         _logger = logger;
     }
 
@@ -83,7 +87,15 @@ public sealed class AccountSyncWorker
     /// </returns>
     private async Task<bool> RunOnceAsync(CancellationToken cancellationToken)
     {
-        using var scope = _scopeFactory.CreateScope();
+        // `await using` e escopo assíncrono, não `using` comum: este escopo resolve o
+        // SyncAccountHandler, que traz um MailKitImapClient junto, e ele implementa só
+        // IAsyncDisposable. Descartar o escopo de forma síncrona lança
+        // "type only implements IAsyncDisposable" — no fim do bloco, depois de todo o
+        // trabalho já ter sido feito. O sintoma é cruel: a sincronização funciona, as
+        // mensagens aparecem, e cada volta do laço termina em exceção capturada lá em cima,
+        // com a conexão IMAP nunca encerrada. Conexão vazada por ciclo esbarra no limite de
+        // sessões simultâneas do servidor — o Gmail corta em quinze.
+        await using var scope = _scopeFactory.CreateAsyncScope();
 
         var accounts = scope.ServiceProvider.GetRequiredService<IAccountRepository>();
         var handler = scope.ServiceProvider.GetRequiredService<SyncAccountHandler>();
@@ -112,6 +124,14 @@ public sealed class AccountSyncWorker
                     "Sincronização da conta {AccountId} não concluiu: {Reason}",
                     account.Id, result.ErrorMessage);
             }
+        }
+
+        if (didWork)
+        {
+            // O aviso vai depois de o escopo ter gravado tudo. A interface relê o banco ao
+            // recebê-lo, e anunciar antes faria a releitura pegar o estado anterior — a falha
+            // que acabou de ser registrada só apareceria na volta seguinte.
+            _notifier.NotifyCycleCompleted();
         }
 
         return didWork || await TryIdleAsync(scope.ServiceProvider, cancellationToken).ConfigureAwait(false);
