@@ -1211,3 +1211,45 @@ por isso não é reabrir decisão sem motivo.
 
 **O que não mudou:** a fila continua sequencial. Paralelizar resolveria o bloqueio e quebraria
 a semântica que a ordem garante — o remédio seria pior.
+
+---
+
+## D-047 — Filho novo em agregado rastreado precisa de inserção explícita
+
+**Data:** 2026-08-06
+**Contexto:** investigação a fundo pedida pelo usuário depois de a execução real mostrar corpo
+que não aparece, fila travada e erro de concorrência a cada clique. Cinco frentes, 34 agentes,
+11 achados confirmados e 17 refutados.
+
+**Reproduzido contra o banco real antes de qualquer correção** (`TrackedGraphTests`): três
+falhas, `MessageBody`, `Attachment` e `MessageAddress`. Não é corrida — é determinístico, com
+uma conexão, sem sincronização, sem remoção de linha nenhuma.
+
+`Entity` sempre atribui a chave no construtor. É convenção deliberada do projeto:
+`Guid.CreateVersion7()` é ordenado no tempo e preserva a localidade dos índices do SQLite em
+caixas com centenas de milhares de mensagens. O efeito colateral não é óbvio — o EF Core
+decide `Added` × `Modified` por **`IsKeySet`**. Chave preenchida ⇒ ele assume linha existente
+⇒ `UPDATE ... WHERE Id = @p` ⇒ zero linhas ⇒ `DbUpdateConcurrencyException`.
+
+Isso só acontece quando o filho é descoberto pela **navegação de um pai já rastreado**. Quando
+o grafo inteiro é novo, o pai é `Added` e o filho vai junto — que é exatamente como todos os
+testes montavam o cenário, e por isso nenhum dos 1029 o alcançava.
+
+**Decisão:** `AddBody`, `AddAttachment` e `AddAddress` no `IMessageRepository`, chamados
+**além** da navegação. A navegação é o que a tela lê logo em seguida; a inserção é o que grava.
+
+**O que eu diagnostiquei errado, e fica registrado:** eu havia concluído que a linha era
+*removida* pela sincronização (D-041), e escrevi na tela "alterada pela sincronização enquanto
+era aberta". A linha nunca existiu. A mensagem descrevia uma corrida que não houve e mandava
+o usuário repetir uma ação que nunca funcionaria. D-041 continua correto como **tratamento** —
+um clique não pode derrubar a aplicação —, mas o texto precisa deixar de acusar a
+sincronização.
+
+**Duas correções que parecem resolver e não resolvem**, verificadas em matriz 2×2 durante a
+investigação: `ValueGeneratedNever()` no mapeamento, e `Entry(filho).State = Added` antes do
+`DetectChanges` — o estado é repintado depois. O discriminador é `IsKeySet`, e nada mais.
+
+**O alcance é maior que o corpo da mensagem.** Sem persistir, `MessageBody.DownloadedAt` fica
+nulo para sempre: o curto-circuito de idempotência nunca passa a valer, todo clique refaz o
+`FETCH` pela rede, e ao reabrir o aplicativo não há corpo nenhum. O índice FTS também nunca é
+alimentado — a busca era a terceira vítima, silenciosa.

@@ -177,7 +177,12 @@ public sealed class DownloadMessageContentHandler
 
         if (message.Body is null)
         {
+            // As duas coisas, e não uma: SetBody liga a navegação em memória, que é o que o
+            // painel de leitura lê logo em seguida; AddBody registra a inserção, que é o que
+            // faz a gravação funcionar. Sem a segunda, o EF vê a chave preenchida, decide
+            // Modified e emite UPDATE para uma linha que nunca existiu (D-047).
             message.SetBody(body, now);
+            _messages.AddBody(body);
         }
 
         foreach (var meta in fetched.Attachments)
@@ -190,7 +195,7 @@ public sealed class DownloadMessageContentHandler
                 continue;
             }
 
-            message.AddAttachment(Attachment.Create(
+            var attachment = Attachment.Create(
                 message.Id,
                 meta.FileName,
                 meta.ContentType,
@@ -198,7 +203,10 @@ public sealed class DownloadMessageContentHandler
                 meta.PartSpecifier,
                 now,
                 meta.ContentId,
-                meta.IsInline));
+                meta.IsInline);
+
+            message.AddAttachment(attachment);
+            _messages.AddAttachment(attachment);
         }
 
         try

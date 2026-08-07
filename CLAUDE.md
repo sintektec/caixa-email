@@ -111,6 +111,20 @@ que não soubemos ler. O custo dos dois erros não é simétrico.
 
 ## Armadilhas conhecidas
 
+**Filho novo pendurado em pai já rastreado nasce `Modified`, não `Added`.** Toda entidade
+recebe a chave no construtor — `Guid.CreateVersion7()`, nunca `Guid.Empty` —, e o EF Core
+decide entre inserir e atualizar por `IsKeySet`. Chave preenchida faz ele assumir que a linha
+existe: sai `UPDATE ... WHERE Id = @p` para uma linha que nunca foi inserida, zero linhas
+afetadas, `DbUpdateConcurrencyException`. Por isso `MessageBody`, `Attachment` e
+`MessageAddress` novos passam por `IMessageRepository.AddBody`/`AddAttachment`/`AddAddress`
+**além** de `Message.SetBody`/`AddAttachment`/`AddAddress` — a navegação é o que a tela lê, a
+inserção é o que grava. Uma sem a outra deixa metade do trabalho feito.
+
+O sintoma engana: a exceção fala em concorrência, e não há concorrente nenhum. `TrackedGraphTests`
+prende os dois lados, inclusive um teste que **espera a falha** do caminho ingênuo — é o que
+impede alguém de "simplificar" removendo a chamada ao repositório. E `ValueGeneratedNever()`
+**não resolve**: com a chave preenchida o filho continua `Modified` (D-047).
+
 **O provedor raiz é um escopo.** Serviço registrado como `Scoped` e resolvido dele não falha
 nem avisa: vive para sempre e é **o mesmo para todo mundo**. Foi assim que um `DbContext`
 acabou valendo para a execução inteira, compartilhado entre a interface e o laço de

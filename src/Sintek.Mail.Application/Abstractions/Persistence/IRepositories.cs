@@ -181,6 +181,37 @@ public interface IMessageRepository
     /// <summary>Registra uma nova mensagem.</summary>
     Task AddAsync(Message message, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Registra um corpo novo pendurado numa mensagem <b>já rastreada</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Pendurar pela navegação não basta, e é o defeito mais caro que este projeto teve.
+    /// Toda entidade recebe a chave no construtor — convenção do projeto, porque
+    /// <c>Guid.CreateVersion7()</c> preserva a localidade dos índices do SQLite. Mas o EF Core
+    /// decide entre <c>Added</c> e <c>Modified</c> por <b><c>IsKeySet</c></b>: chave
+    /// preenchida faz ele assumir que a linha existe e emitir
+    /// <c>UPDATE ... WHERE Id = @p</c> para uma linha que nunca foi inserida. Zero linhas
+    /// afetadas, <c>DbUpdateConcurrencyException</c> — que a fronteira traduz para
+    /// <c>ConcurrentModificationException</c> e a tela exibe como "alterada pela
+    /// sincronização", corrida que nunca houve.
+    /// </para>
+    /// <para>
+    /// Chamar isto <b>além</b> de <c>Message.SetBody</c>: a navegação em memória é o que o
+    /// painel de leitura lê logo em seguida, e a inserção é o que faz a gravação funcionar.
+    /// Uma sem a outra deixa metade do trabalho feito (D-047).
+    /// </para>
+    /// </remarks>
+    void AddBody(MessageBody body);
+
+    /// <summary>Registra um anexo novo pendurado numa mensagem já rastreada.</summary>
+    /// <inheritdoc cref="AddBody" />
+    void AddAttachment(Attachment attachment);
+
+    /// <summary>Registra um participante novo pendurado numa mensagem já rastreada.</summary>
+    /// <inheritdoc cref="AddBody" />
+    void AddAddress(MessageAddress address);
+
     /// <summary>Remove definitivamente uma mensagem.</summary>
     void Remove(Message message);
 }

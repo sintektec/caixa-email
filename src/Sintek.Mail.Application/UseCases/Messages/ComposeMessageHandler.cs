@@ -240,7 +240,10 @@ public sealed class ComposeMessageHandler
 
             if (message.Body is null)
             {
+                // Navegação e inserção, as duas. Ver D-047: a chave preenchida no construtor
+                // faz o EF decidir Modified para um filho que nunca foi inserido.
                 message.SetBody(body, now);
+                _messages.AddBody(body);
             }
 
             if (sending)
@@ -304,18 +307,21 @@ public sealed class ComposeMessageHandler
     /// Substituição completa: o rascunho reeditado reflete a lista atual, não a soma das
     /// listas de todas as edições.
     /// </remarks>
-    private static void SyncAddresses(Message message, ComposeMessageCommand command, DateTimeOffset now)
+    private void SyncAddresses(Message message, ComposeMessageCommand command, DateTimeOffset now)
     {
         message.ClearAddresses();
 
         foreach (var recipient in command.Recipients)
         {
-            message.AddAddress(MessageAddress.Create(
-                message.Id, recipient.Kind, recipient.Address, now, recipient.DisplayName));
+            var address = MessageAddress.Create(
+                message.Id, recipient.Kind, recipient.Address, now, recipient.DisplayName);
+
+            message.AddAddress(address);
+            _messages.AddAddress(address);
         }
     }
 
-    private static void SyncAttachments(Message message, ComposeMessageCommand command, DateTimeOffset now)
+    private void SyncAttachments(Message message, ComposeMessageCommand command, DateTimeOffset now)
     {
         message.ClearAttachments();
 
@@ -332,7 +338,9 @@ public sealed class ComposeMessageHandler
             // O arquivo já está no disco local — foi o usuário quem o escolheu. Marcar como
             // baixado é o que permite ao montador de envio anexá-lo.
             entity.MarkDownloaded(attachment.FilePath, now);
+
             message.AddAttachment(entity);
+            _messages.AddAttachment(entity);
         }
     }
 

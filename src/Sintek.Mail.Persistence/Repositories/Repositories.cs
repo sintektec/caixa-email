@@ -232,6 +232,15 @@ public sealed class MessageRepository : IMessageRepository
             .FirstOrDefaultAsync(m => m.AccountId == accountId && m.MessageId == messageId, cancellationToken);
     }
 
+    /// <inheritdoc />
+    public void AddBody(MessageBody body) => _context.MessageBodies.Add(body);
+
+    /// <inheritdoc />
+    public void AddAttachment(Attachment attachment) => _context.Attachments.Add(attachment);
+
+    /// <inheritdoc />
+    public void AddAddress(MessageAddress address) => _context.MessageAddresses.Add(address);
+
     public Task<Message?> GetByMessageIdInFolderAsync(
         Guid folderId, string messageId, CancellationToken cancellationToken = default)
     {
