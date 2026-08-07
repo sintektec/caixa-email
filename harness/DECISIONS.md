@@ -1182,3 +1182,32 @@ curtos rendem bloqueio temporário no provedor.
 **Lição mais geral:** comando com padrão em toda propriedade parece conveniente e transforma
 omissão em sobrescrita. Onde ele existir, quem monta precisa trazer o estado inteiro — ou o
 padrão vira a decisão.
+
+---
+
+## D-046 — A fila mostra por que a operação falhou, e qual delas trava as demais
+
+**Data:** 2026-08-06
+**Contexto:** dezoito "Mover mensagem" presas na fila, duas com "Falhou 2 vez(es)" e nenhuma
+pista do motivo.
+
+`OutboxOperation.LastError` é gravado desde a fase 5 e **não chegava à tela**. Terceira vez
+neste projeto que o dado existe e ninguém o lê — depois de `Account.LastSyncError` (D-038) e
+`Account.LastSyncAt` (D-043).
+
+Aqui o custo é maior que o normal, por causa de uma decisão anterior: **a fila é estritamente
+sequencial por conta e interrompe o lote na primeira falha** (`OutboxProcessor.DrainAsync`),
+porque as operações seguintes dependem do estado que a anterior deixaria. A consequência é
+bloqueio de cabeça de fila: uma operação que falha sempre segura todas as outras
+indefinidamente, e o motivo dela é o **único** dado que explica por que nada mais sai.
+
+**Decisão:** o motivo entra na descrição da situação, e a operação que falhou passa a exibir o
+alerta que antes era só das mortas.
+
+**A regra de "não pedir atenção a cada falha temporária" foi revista, com evidência nova.** O
+raciocínio original — alerta a cada oscilação de rede vira ruído — supunha que uma falha
+atrasa apenas a si mesma. Com interrupção do lote, ela atrasa tudo. Não é a mesma situação, e
+por isso não é reabrir decisão sem motivo.
+
+**O que não mudou:** a fila continua sequencial. Paralelizar resolveria o bloqueio e quebraria
+a semântica que a ordem garante — o remédio seria pior.

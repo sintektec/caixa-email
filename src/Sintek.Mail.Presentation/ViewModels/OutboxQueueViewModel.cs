@@ -56,16 +56,45 @@ public sealed partial class OutboxItemViewModel : ObservableObject
         _ => "Operação de sincronização",
     };
 
-    /// <summary>Situação em texto, para exibição e para leitores de tela.</summary>
+    /// <summary>
+    /// Situação em texto, para exibição e para leitores de tela.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A falha vem <b>com o motivo</b>. Ele já era gravado em <c>OutboxOperation.LastError</c>
+    /// e não chegava à tela: o usuário via "Falhou 2 vez(es)" e não tinha como saber se era
+    /// senha, rede, pasta que sumiu ou defeito do programa — nem, portanto, o que fazer.
+    /// </para>
+    /// <para>
+    /// E aqui o motivo vale mais do que o normal: <b>a fila é estritamente sequencial por
+    /// conta</b> e interrompe o lote na primeira falha. Uma operação que falha sempre trava
+    /// todas as seguintes indefinidamente, e o motivo dela é o único dado que explica por que
+    /// nada mais sai (D-046).
+    /// </para>
+    /// </remarks>
     public string StatusDescription => Status switch
     {
         OutboxOperationStatus.Pending => "Aguardando conexão.",
         OutboxOperationStatus.InProgress => "Em andamento.",
-        OutboxOperationStatus.Failed => $"Falhou {AttemptCount} vez(es). Será tentada de novo.",
-        OutboxOperationStatus.Dead => "Falhou definitivamente. É preciso decidir o que fazer.",
+        OutboxOperationStatus.Failed => WithReason($"Falhou {AttemptCount} vez(es). Será tentada de novo."),
+        OutboxOperationStatus.Dead => WithReason("Falhou definitivamente. É preciso decidir o que fazer."),
         OutboxOperationStatus.Cancelled => "Cancelada.",
         _ => "Concluída.",
     };
+
+    private string WithReason(string prefixo)
+        => string.IsNullOrWhiteSpace(LastError) ? prefixo : $"{prefixo} Motivo: {LastError}";
+
+    /// <summary>
+    /// Se esta operação está travando as demais.
+    /// </summary>
+    /// <remarks>
+    /// A fila é sequencial por conta e para na primeira falha, então a operação que falhou
+    /// não atrasa só a si mesma — ela segura tudo que vem atrás. Sem dizer isso, a tela mostra
+    /// dezoito linhas com o mesmo peso aparente, e a que importa é uma só.
+    /// </remarks>
+    public bool IsBlockingQueue
+        => Status is OutboxOperationStatus.Failed or OutboxOperationStatus.Dead;
 
     /// <summary>
     /// Se a operação exige decisão do usuário.

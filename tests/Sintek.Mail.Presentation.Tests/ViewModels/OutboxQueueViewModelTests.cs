@@ -95,6 +95,62 @@ public class OutboxQueueViewModelTests
         viewModel.Operations[0].StatusDescription.Should().Contain("tentada de novo");
     }
 
+    /// <summary>
+    /// A falha traz o motivo, e não só a contagem de tentativas.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>OutboxOperation.LastError</c> já era gravado e não chegava à tela. O usuário via
+    /// "Falhou 2 vez(es)" sem saber se era senha, rede, pasta que sumiu ou defeito do
+    /// programa — nem, portanto, o que fazer.
+    /// </para>
+    /// <para>
+    /// Aqui o motivo vale mais que o normal: a fila é sequencial por conta e para na primeira
+    /// falha, então uma operação que falha sempre trava todas as seguintes. O motivo dela é o
+    /// único dado que explica por que nada mais sai (D-046).
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task Carregar_OperacaoQueFalhou_MostraOMotivo()
+    {
+        var failing = Operation();
+        failing.MarkFailed("O servidor recusou: pasta de destino inexistente.", Now.AddMinutes(1), Now);
+
+        _outbox.ListPendingAsync(Arg.Any<Guid?>(), Arg.Any<CancellationToken>()).Returns(new[] { failing });
+
+        var viewModel = CreateViewModel();
+        await viewModel.LoadAsync();
+
+        viewModel.Operations[0].StatusDescription
+            .Should().Contain("pasta de destino inexistente");
+    }
+
+    /// <summary>
+    /// A operação que falhou é apontada como a que segura a fila.
+    /// </summary>
+    /// <remarks>
+    /// Sem isso, dezoito linhas aparecem com o mesmo peso e a que importa é uma só — as
+    /// demais estão apenas esperando atrás dela.
+    /// </remarks>
+    [Fact]
+    public async Task Carregar_OperacaoQueFalhou_EMarcadaComoBloqueadoraDaFila()
+    {
+        var failing = Operation(sequence: 1);
+        failing.MarkFailed("sem rede", Now.AddMinutes(1), Now);
+
+        var waiting = Operation(sequence: 2);
+
+        _outbox.ListPendingAsync(Arg.Any<Guid?>(), Arg.Any<CancellationToken>())
+            .Returns(new[] { failing, waiting });
+
+        var viewModel = CreateViewModel();
+        await viewModel.LoadAsync();
+
+        viewModel.Operations[0].IsBlockingQueue.Should().BeTrue();
+        viewModel.Operations[1].IsBlockingQueue.Should().BeFalse(
+            "quem só espera atrás não é o problema");
+    }
+
     [Fact]
     public async Task Descartar_SemSelecao_NaoFazNada()
     {

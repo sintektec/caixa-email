@@ -54,12 +54,19 @@
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
 
+                        <!--
+                            O alerta passou a marcar também a operação que apenas falhou, e
+                            não só a morta. A fila é sequencial por conta e para na primeira
+                            falha: quem falhou não atrasa só a si mesma, segura tudo que vem
+                            atrás. Numa lista de dezoito linhas, é essa a única que importa —
+                            e sem a marca todas aparecem com o mesmo peso.
+                        -->
                         <FontIcon Grid.Row="0" Grid.Column="0"
                                   Glyph="&#xE7BA;"
                                   FontSize="14"
                                   Foreground="{ThemeResource SystemFillColorCriticalBrush}"
-                                  Visibility="{x:Bind NeedsAttention}"
-                                  AutomationProperties.Name="Exige decisão do usuário" />
+                                  Visibility="{x:Bind IsBlockingQueue}"
+                                  AutomationProperties.Name="Esta operação está segurando a fila" />
 
                         <TextBlock Grid.Row="0" Grid.Column="1"
                                    Text="{x:Bind Description}"
