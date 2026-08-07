@@ -1,0 +1,102 @@
+<Project>
+
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+
+  <ItemGroup Label="Persistência">
+    <!--
+      Microsoft.Data.Sqlite.Core 10.0.10 depende de SQLitePCLRaw.core 2.1.11, que é
+      exatamente a versão que bundle_e_sqlcipher 2.1.11 traz. O alinhamento é o que
+      permite usar SQLCipher sem conflito de provider — não atualizar uma sem a outra.
+      Usamos .Core (sem bundle próprio) justamente para que o bundle SQLCipher seja o
+      único provider registrado.
+    -->
+    <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite.Core" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Data.Sqlite.Core" Version="10.0.10" />
+    <PackageVersion Include="SQLitePCLRaw.bundle_e_sqlcipher" Version="2.1.11" />
+  </ItemGroup>
+
+  <ItemGroup Label="E-mail">
+    <PackageVersion Include="MailKit" Version="4.17.0" />
+    <PackageVersion Include="MimeKit" Version="4.17.0" />
+    <!--
+      O .NET não consulta registros SRV: Dns.GetHostEntry resolve apenas A e AAAA. Sem uma
+      biblioteca que fale o protocolo, a descoberta pela RFC 6186 é impossível.
+    -->
+    <PackageVersion Include="DnsClient" Version="1.8.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Agenda">
+    <!--
+      Analisador de iCalendar (RFC 5545). Escrever um à mão é a armadilha clássica deste
+      recurso: o formato tem dobra de linha, escapes, fusos embutidos e recorrência com
+      exceções.
+
+      Traz o NodaTime junto, e isso resolve de graça o risco de fuso que a fase temia: o
+      NodaTime carrega a própria base IANA, então converter "America/Sao_Paulo" em instante
+      funciona mesmo com InvariantGlobalization ligado, que remove a tabela do ICU.
+    -->
+    <PackageVersion Include="Ical.Net" Version="5.2.3" />
+  </ItemGroup>
+
+  <ItemGroup Label="Segurança">
+    <!-- Id do pacote é HtmlSanitizer; o namespace, desde a v8, é Ganss.Xss. -->
+    <PackageVersion Include="HtmlSanitizer" Version="9.1.974" />
+    <PackageVersion Include="Microsoft.Identity.Client" Version="4.87.0" />
+    <PackageVersion Include="Microsoft.Identity.Client.Broker" Version="4.87.0" />
+    <PackageVersion Include="Google.Apis.Auth" Version="1.75.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Infraestrutura">
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Options" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.10" />
+    <PackageVersion Include="Polly" Version="8.7.0" />
+    <PackageVersion Include="Serilog.Extensions.Logging" Version="9.0.2" />
+    <PackageVersion Include="Serilog.Sinks.File" Version="7.0.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Windows">
+    <PackageVersion Include="Microsoft.Windows.CsWin32" Version="0.3.298" />
+    <PackageVersion Include="Microsoft.WindowsAppSDK" Version="2.3.1" />
+    <!--
+      Linha 26100 (Windows 11 24H2), a mesma do MaxVersionTested no Package.appxmanifest.
+      Traz makeappx e signtool, usados no empacotamento MSIX.
+    -->
+    <PackageVersion Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.8249" />
+    <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageVersion Include="WinUIEx" Version="2.9.2" />
+  </ItemGroup>
+
+  <ItemGroup Label="Analisadores">
+    <!--
+      Analisador de API proibida. A lista vive em BannedSymbols.txt, na raiz, e o
+      diagnóstico RS0030 vira erro por causa do TreatWarningsAsErrors.
+    -->
+    <PackageVersion Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.6.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Testes">
+    <!--
+      AwesomeAssertions, não FluentAssertions: a v8 do FluentAssertions passou a exigir
+      licença paga para uso comercial. AwesomeAssertions é o fork livre com a mesma API.
+    -->
+    <PackageVersion Include="AwesomeAssertions" Version="9.5.0" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
+    <PackageVersion Include="coverlet.collector" Version="6.0.4" />
+    <PackageVersion Include="NSubstitute" Version="5.3.0" />
+  </ItemGroup>
+
+</Project>

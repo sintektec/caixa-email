@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ContentDialog
+    x:Class="Sintek.Mail.App.Dialogs.ContactsDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:Sintek.Mail.Presentation.ViewModels"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Title="Contatos"
+    CloseButtonText="Fechar"
+    DefaultButton="Close">
+
+    <StackPanel Spacing="12" Width="720">
+
+        <ProgressBar IsIndeterminate="True"
+                     Visibility="{x:Bind ViewModel.IsBusy, Mode=OneWay}"
+                     AutomationProperties.Name="Operação em andamento" />
+
+        <InfoBar IsOpen="{x:Bind ViewModel.HasStatusMessage, Mode=OneWay}"
+                 Severity="Informational"
+                 Message="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
+                 IsClosable="False" />
+
+        <!--
+            O Pivot precisa de altura explícita: dentro de um container que se
+            autodimensiona ele colapsa para zero, e as abas somem sem erro nenhum. Cada aba
+            rola por dentro, para o formulário não ser cortado.
+        -->
+        <Pivot Height="520">
+
+            <PivotItem Header="Catálogo">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <Grid ColumnSpacing="16" RowSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="280" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <ListView Grid.Row="0" Grid.Column="0"
+                                  Height="380"
+                                  SelectionMode="Single"
+                                  ItemsSource="{x:Bind ViewModel.Contacts, Mode=OneWay}"
+                                  SelectedItem="{x:Bind ViewModel.SelectedContact, Mode=TwoWay}"
+                                  SelectionChanged="OnContactSelectionChanged"
+                                  AutomationProperties.Name="Lista de contatos">
+                            <ListView.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ContactListItem">
+                                    <StackPanel Padding="0,4">
+                                        <TextBlock Text="{x:Bind DisplayName}"
+                                                   TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{x:Bind PrimaryAddress}"
+                                                   FontSize="12"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                   TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+
+                        <StackPanel Grid.Row="0" Grid.Column="1" Spacing="8">
+                            <TextBox Header="Nome exibido"
+                                     Text="{x:Bind ViewModel.DisplayName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.Name="Nome exibido do contato" />
+
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+
+                                <TextBox Grid.Column="0"
+                                         Header="Nome"
+                                         Text="{x:Bind ViewModel.GivenName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         AutomationProperties.Name="Primeiro nome" />
+
+                                <TextBox Grid.Column="1"
+                                         Header="Sobrenome"
+                                         Text="{x:Bind ViewModel.FamilyName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         AutomationProperties.Name="Sobrenome" />
+                            </Grid>
+
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+
+                                <TextBox Grid.Column="0"
+                                         Header="Empresa"
+                                         Text="{x:Bind ViewModel.Organization, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         AutomationProperties.Name="Empresa" />
+
+                                <TextBox Grid.Column="1"
+                                         Header="Cargo"
+                                         Text="{x:Bind ViewModel.JobTitle, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         AutomationProperties.Name="Cargo" />
+                            </Grid>
+
+                            <TextBox Header="Telefone"
+                                     Text="{x:Bind ViewModel.PhoneNumber, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.Name="Telefone" />
+
+                            <TextBox Header="Endereços de e-mail"
+                                     PlaceholderText="principal@dominio.com.br; outro@dominio.com.br"
+                                     Text="{x:Bind ViewModel.Emails, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.Name="Endereços de e-mail do contato" />
+
+                            <TextBlock Text="O primeiro endereço da lista é o principal."
+                                       FontSize="12"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+
+                            <TextBox Header="Anotações"
+                                     AcceptsReturn="True"
+                                     Height="72"
+                                     Text="{x:Bind ViewModel.Notes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.Name="Anotações" />
+                        </StackPanel>
+
+                        <StackPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
+                                    Orientation="Horizontal" Spacing="8">
+                            <Button Content="Novo"
+                                    Command="{x:Bind ViewModel.StartNewContactCommand}"
+                                    AutomationProperties.Name="Novo contato" />
+
+                            <Button Content="Gravar"
+                                    Style="{ThemeResource AccentButtonStyle}"
+                                    Command="{x:Bind ViewModel.SaveCommand}"
+                                    AutomationProperties.Name="Gravar contato" />
+
+                            <Button Content="Remover"
+                                    Command="{x:Bind ViewModel.RemoveSelectedCommand}"
+                                    AutomationProperties.Name="Remover contato selecionado" />
+
+                            <Button Content="Importar vCard"
+                                    Click="OnImportClick"
+                                    AutomationProperties.Name="Importar contatos de um arquivo vCard" />
+
+                            <Button Content="Exportar vCard"
+                                    Click="OnExportClick"
+                                    AutomationProperties.Name="Exportar os contatos para um arquivo vCard" />
+                        </StackPanel>
+                    </Grid>
+                </ScrollViewer>
+            </PivotItem>
+
+            <PivotItem Header="Histórico de destinatários">
+                <StackPanel Spacing="8">
+                    <TextBlock TextWrapping="Wrap"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               Text="Endereços para quem esta conta já escreveu. Aparecem ao digitar em Para, CC e CCO. Remover uma entrada faz o endereço deixar de ser sugerido." />
+
+                    <ListView Height="360"
+                              SelectionMode="None"
+                              ItemsSource="{x:Bind ViewModel.History, Mode=OneWay}"
+                              AutomationProperties.Name="Histórico de destinatários">
+                        <ListView.ItemTemplate>
+                            <DataTemplate x:DataType="vm:RecipientHistoryItem">
+                                <Grid ColumnSpacing="8" Padding="0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Text="{x:Bind DisplayText}"
+                                                   TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{x:Bind Summary}"
+                                                   FontSize="12"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    </StackPanel>
+
+                                    <Button Grid.Column="1"
+                                            Content="Remover"
+                                            Click="OnRemoveHistoryClick"
+                                            Tag="{x:Bind}"
+                                            AutomationProperties.Name="Remover do histórico" />
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+
+                    <Button Content="Limpar todo o histórico"
+                            Command="{x:Bind ViewModel.ClearHistoryCommand}"
+                            AutomationProperties.Name="Limpar todo o histórico de destinatários" />
+                </StackPanel>
+            </PivotItem>
+
+        </Pivot>
+    </StackPanel>
+</ContentDialog>

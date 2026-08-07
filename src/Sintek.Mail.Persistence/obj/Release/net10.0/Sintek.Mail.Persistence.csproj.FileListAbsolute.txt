@@ -1,6 +1,0 @@
-C:\DESENVOLVIMENTO\projetos-sintek\caixa-email\src\Sintek.Mail.Persistence\obj\Release\net10.0\Sintek.Mail.Persistence.csproj.AssemblyReference.cache
-C:\DESENVOLVIMENTO\projetos-sintek\caixa-email\src\Sintek.Mail.Persistence\obj\Release\net10.0\Sintek.Mail.Persistence.GeneratedMSBuildEditorConfig.editorconfig
-C:\DESENVOLVIMENTO\projetos-sintek\caixa-email\src\Sintek.Mail.Persistence\obj\Release\net10.0\Sintek.Mail.Persistence.AssemblyInfoInputs.cache
-C:\DESENVOLVIMENTO\projetos-sintek\caixa-email\src\Sintek.Mail.Persistence\obj\Release\net10.0\Sintek.Mail.Persistence.AssemblyInfo.cs
-C:\DESENVOLVIMENTO\projetos-sintek\caixa-email\src\Sintek.Mail.Persistence\obj\Release\net10.0\Sintek.Mail.Persistence.csproj.CoreCompileInputs.cache
-C:\DESENVOLVIMENTO\projetos-sintek\caixa-email\src\Sintek.Mail.Persistence\obj\Release\net10.0\Sintek.Mail.Persistence.sourcelink.json

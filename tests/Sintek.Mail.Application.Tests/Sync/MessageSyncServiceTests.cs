@@ -1,0 +1,469 @@
+using Microsoft.Extensions.Logging.Abstractions;
+using NSubstitute;
+using Sintek.Mail.Application.Abstractions.Mail;
+using Sintek.Mail.Application.Abstractions.Persistence;
+using Sintek.Mail.Application.Services;
+using Sintek.Mail.Application.Sync;
+using Sintek.Mail.Application.UseCases.Messages;
+using Sintek.Mail.Domain.Entities;
+using Sintek.Mail.Domain.Enums;
+using Sintek.Mail.Domain.Services;
+using Sintek.Mail.Domain.ValueObjects;
+
+namespace Sintek.Mail.Application.Tests.Sync;
+
+/// <summary>
+/// Cobre a sincronização incremental de uma pasta: o caminho por onde toda mensagem entra
+/// no banco local.
+/// </summary>
+public class MessageSyncServiceTests
+{
+    private static readonly DateTimeOffset Now = new(2026, 8, 4, 12, 0, 0, TimeSpan.Zero);
+    private static readonly Guid AccountId = Guid.CreateVersion7();
+
+    private readonly IMessageRepository _messages = Substitute.For<IMessageRepository>();
+    private readonly IFolderRepository _folders = Substitute.For<IFolderRepository>();
+    private readonly IDomainDirectoryRepository _directories = Substitute.For<IDomainDirectoryRepository>();
+    private readonly IAuditLogRepository _audit = Substitute.For<IAuditLogRepository>();
+    private readonly IOutboxRepository _outbox = Substitute.For<IOutboxRepository>();
+    private readonly IUnitOfWork _unitOfWork = Substitute.For<IUnitOfWork>();
+    private readonly IImapClient _imap = Substitute.For<IImapClient>();
+    private readonly FakeTimeProvider _clock = new(Now);
+
+    public MessageSyncServiceTests()
+    {
+        _unitOfWork
+            .ExecuteInTransactionAsync(Arg.Any<Func<CancellationToken, Task>>(), Arg.Any<CancellationToken>())
+            .Returns(call => call.Arg<Func<CancellationToken, Task>>()(CancellationToken.None));
+
+        _messages.ListUidsByFolderAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns(Array.Empty<long>());
+        _messages.GetParticipantsAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns(Array.Empty<MessageParticipant>());
+        _imap.FetchFlagChangesAsync(Arg.Any<string>(), Arg.Any<long>(), Arg.Any<CancellationToken>())
+            .Returns(Array.Empty<FetchedFlags>());
+    }
+
+    private MessageSyncService CreateService()
+    {
+        var enqueuer = new OutboxEnqueuer(_outbox, _clock);
+        var moveMessage = new MoveMessageHandler(
+            _messages, _folders, _directories, _audit, _unitOfWork,
+            enqueuer, _clock, NullLogger<MoveMessageHandler>.Instance);
+
+        return new MessageSyncService(
+            _messages,
+            _folders,
+            _unitOfWork,
+            _imap,
+            moveMessage,
+            TestFactories.NeutralArrivalRules(
+                _messages, _folders, _unitOfWork, moveMessage, enqueuer, _clock),
+            _clock,
+            NullLogger<MessageSyncService>.Instance);
+    }
+
+    private static Folder Inbox() => Folder.Create(AccountId, "INBOX", FolderType.Inbox, Now, remotePath: "INBOX");
+
+    private void ArrangeServer(FolderSyncState state, params FetchedMessage[] headers)
+    {
+        _imap.OpenFolderAsync("INBOX", Arg.Any<CancellationToken>()).Returns(state);
+        _imap.FetchHeadersAsync("INBOX", Arg.Any<long>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(headers);
+    }
+
+    private static FetchedMessage Header(long uid, string from = "cliente@externo.com", bool isRead = false) => new()
+    {
+        Uid = uid,
+        MessageId = $"<{uid}@servidor>",
+        Subject = "Assunto",
+        FromAddress = from,
+        SentAt = Now,
+        ReceivedAt = Now,
+        IsRead = isRead,
+        Addresses = [new FetchedAddress(AddressKind.From, from, null)],
+    };
+
+    [Fact]
+    public async Task Sincronizar_PastaLocal_NaoTocaNoServidor()
+    {
+        var pending = Folder.Create(AccountId, "Pendências", FolderType.Pending, Now, isLocalOnly: true);
+
+        await CreateService().SyncFolderAsync(pending);
+
+        await _imap.DidNotReceive().OpenFolderAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Sincronizar_MensagemNova_EGravadaComOsCabecalhos()
+    {
+        var inbox = Inbox();
+        ArrangeServer(new FolderSyncState(1, null, 2, 1, 1), Header(1));
+
+        var result = await CreateService().SyncFolderAsync(inbox);
+
+        result.Added.Should().Be(1);
+
+        await _messages.Received(1).AddAsync(
+            Arg.Is<Message>(m => m.Uid == 1 && m.MessageId == "<1@servidor>" && m.FolderId == inbox.Id),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Sincronizar_UidValidityMudou_LeAPastaDoZero()
+    {
+        // UIDs reatribuídos apontam para mensagens diferentes das originais. Seguir
+        // incremental faria marcadores e exclusões caírem sobre mensagens erradas.
+        var inbox = Inbox();
+        inbox.UpdateSyncState(uidValidity: 100, highestModSeq: null, lastSeenUid: 50, Now);
+
+        var antiga = Message.Create(AccountId, inbox.Id, "<antiga@servidor>", Now, Now, Now);
+        antiga.SetRemoteIdentity(50, null, Now);
+
+        _messages.ListUidsByFolderAsync(inbox.Id, Arg.Any<CancellationToken>()).Returns(new long[] { 50 });
+        _messages.GetByUidAsync(inbox.Id, 50, Arg.Any<CancellationToken>()).Returns(antiga);
+
+        ArrangeServer(new FolderSyncState(200, null, 2, 1, 0), Header(1));
+
+        var result = await CreateService().SyncFolderAsync(inbox);
+
+        result.FullResync.Should().BeTrue();
+        antiga.Uid.Should().Be(0, "o UID local não corresponde mais a nada no servidor");
+        inbox.LastSeenUid.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Sincronizar_MensagemJaConhecida_AtualizaMarcadoresDoServidor()
+    {
+        var inbox = Inbox();
+
+        var existente = Message.Create(AccountId, inbox.Id, "<1@servidor>", Now, Now, Now);
+        existente.SetRemoteIdentity(1, null, Now);
+        existente.MarkSynced(Now);
+
+        _messages.GetByUidAsync(inbox.Id, 1, Arg.Any<CancellationToken>()).Returns(existente);
+        ArrangeServer(new FolderSyncState(1, null, 2, 1, 0), Header(1, isRead: true));
+
+        var result = await CreateService().SyncFolderAsync(inbox);
+
+        result.Updated.Should().Be(1);
+        existente.IsRead.Should().BeTrue();
+        existente.SyncState.Should().Be(MessageSyncState.Synced);
+    }
+
+    [Fact]
+    public async Task Sincronizar_AlteracaoLocalPendente_NaoEDesfeitaPeloServidor()
+    {
+        // O usuário marcou como lida offline e a fila ainda não empurrou. Deixar o servidor
+        // vencer desfaria a ação diante dos olhos dele, e a fila em seguida a refaria.
+        var inbox = Inbox();
+
+        var pendente = Message.Create(AccountId, inbox.Id, "<1@servidor>", Now, Now, Now);
+        pendente.SetRemoteIdentity(1, null, Now);
+        pendente.SetRead(true, Now);
+
+        _messages.GetByUidAsync(inbox.Id, 1, Arg.Any<CancellationToken>()).Returns(pendente);
+        ArrangeServer(new FolderSyncState(1, null, 2, 1, 1), Header(1, isRead: false));
+
+        await CreateService().SyncFolderAsync(inbox);
+
+        pendente.IsRead.Should().BeTrue("a intenção local ainda não chegou ao servidor");
+    }
+
+    [Fact]
+    public async Task Sincronizar_MensagemIncompativelEmPastaRestrita_VaiParaPendencias()
+    {
+        var directory = DomainDirectory.Create(
+            EmailDomain.Parse("sintek.com.br"), Now, invalidEmailAction: InvalidEmailAction.Block);
+
+        var inbox = Inbox();
+        inbox.SetExplicitRestriction(directory.Id, Now);
+        inbox.ApplyEffectiveRestriction(null, Now);
+
+        var pending = Folder.Create(AccountId, "Pendências", FolderType.Pending, Now, isLocalOnly: true);
+
+        _directories.GetByIdAsync(directory.Id, Arg.Any<CancellationToken>()).Returns(directory);
+        _folders.GetByTypeAsync(AccountId, FolderType.Pending, Arg.Any<CancellationToken>()).Returns(pending);
+
+        _messages.GetParticipantsAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns(new[]
+            {
+                new MessageParticipant(AddressKind.From, EmailDomain.Parse("externo.com")),
+            });
+
+        Message? gravada = null;
+        await _messages.AddAsync(Arg.Do<Message>(m => gravada = m), Arg.Any<CancellationToken>());
+
+        ArrangeServer(new FolderSyncState(1, null, 2, 1, 1), Header(1));
+
+        var result = await CreateService().SyncFolderAsync(inbox);
+
+        result.RedirectedToPending.Should().Be(1);
+        gravada!.FolderId.Should().Be(pending.Id);
+    }
+
+    [Fact]
+    public async Task Sincronizar_MensagemCompativelEmPastaRestrita_Permanece()
+    {
+        var directory = DomainDirectory.Create(EmailDomain.Parse("sintek.com.br"), Now);
+
+        var inbox = Inbox();
+        inbox.SetExplicitRestriction(directory.Id, Now);
+        inbox.ApplyEffectiveRestriction(null, Now);
+
+        _directories.GetByIdAsync(directory.Id, Arg.Any<CancellationToken>()).Returns(directory);
+
+        _messages.GetParticipantsAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns(new[]
+            {
+                new MessageParticipant(AddressKind.From, EmailDomain.Parse("sintek.com.br")),
+            });
+
+        Message? gravada = null;
+        await _messages.AddAsync(Arg.Do<Message>(m => gravada = m), Arg.Any<CancellationToken>());
+
+        ArrangeServer(new FolderSyncState(1, null, 2, 1, 1), Header(1, from: "contato@sintek.com.br"));
+
+        var result = await CreateService().SyncFolderAsync(inbox);
+
+        result.RedirectedToPending.Should().Be(0);
+        gravada!.FolderId.Should().Be(inbox.Id);
+    }
+
+    [Fact]
+    public async Task Sincronizar_MensagemApagadaForaDoCliente_ERemovidaLocalmente()
+    {
+        var inbox = Inbox();
+
+        var removida = Message.Create(AccountId, inbox.Id, "<9@servidor>", Now, Now, Now);
+        removida.SetRemoteIdentity(9, null, Now);
+        removida.MarkSynced(Now);
+
+        _messages.ListUidsByFolderAsync(inbox.Id, Arg.Any<CancellationToken>()).Returns(new long[] { 9 });
+        _messages.GetByUidAsync(inbox.Id, 9, Arg.Any<CancellationToken>()).Returns(removida);
+
+        // O servidor diz ter zero mensagens; localmente há uma.
+        ArrangeServer(new FolderSyncState(1, null, 10, 0, 0));
+
+        var result = await CreateService().SyncFolderAsync(inbox);
+
+        result.RemovedRemotely.Should().Be(1);
+        _messages.Received(1).Remove(removida);
+    }
+
+    /// <summary>
+    /// UID local errado não autoriza exclusão: a mensagem está no servidor, com outro número.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A reconciliação perguntava só "este UID está no servidor?", e essa pergunta confunde
+    /// duas coisas muito diferentes: <b>a mensagem saiu</b> e <b>o nosso número está errado</b>.
+    /// O custo dos dois enganos não é simétrico — deixar uma linha velha incomoda, apagar
+    /// correspondência que existe é perda.
+    /// </para>
+    /// <para>
+    /// E era um risco concreto, não teórico: as linhas que receberam UID carimbado de outra
+    /// pasta (D-037) são exatamente as que a pergunta antiga condenaria. A segunda pergunta,
+    /// pelo <c>Message-ID</c>, corrige o UID em vez de apagar — e é o único caminho de cura
+    /// dessas linhas, porque a leitura incremental nunca as revisita (D-042).
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task Sincronizar_UidLocalErrado_CorrigeEmVezDeApagar()
+    {
+        var inbox = Inbox();
+
+        // A linha carrega o UID de outra pasta; a mensagem está na INBOX com o UID 7.
+        var comUidErrado = Message.Create(AccountId, inbox.Id, "<7@servidor>", Now, Now, Now);
+        comUidErrado.SetRemoteIdentity(4242, null, Now);
+        comUidErrado.MarkSynced(Now);
+
+        _messages.ListUidsByFolderAsync(inbox.Id, Arg.Any<CancellationToken>()).Returns(new long[] { 4242 });
+        _messages.GetByUidAsync(inbox.Id, 4242, Arg.Any<CancellationToken>()).Returns(comUidErrado);
+
+        // Uma local, zero no servidor com aquele UID — mas o Message-ID está lá, no UID 7.
+        ArrangeServer(new FolderSyncState(1, null, 8, 0, 0), Header(7));
+
+        var result = await CreateService().SyncFolderAsync(inbox);
+
+        _messages.DidNotReceive().Remove(Arg.Any<Message>());
+        result.RemovedRemotely.Should().Be(0);
+        comUidErrado.Uid.Should().Be(7, "o UID do servidor é o que vale");
+    }
+
+    [Fact]
+    public async Task Sincronizar_MensagemComAlteracaoPendente_NaoERemovidaPelaReconciliacao()
+    {
+        // Ela pode ter sido movida localmente e ainda não sincronizada; apagá-la aqui
+        // descartaria a ação do usuário.
+        var inbox = Inbox();
+
+        var pendente = Message.Create(AccountId, inbox.Id, "<9@servidor>", Now, Now, Now);
+        pendente.SetRemoteIdentity(9, null, Now);
+        pendente.SetRead(true, Now);
+
+        _messages.ListUidsByFolderAsync(inbox.Id, Arg.Any<CancellationToken>()).Returns(new long[] { 9 });
+        _messages.GetByUidAsync(inbox.Id, 9, Arg.Any<CancellationToken>()).Returns(pendente);
+
+        ArrangeServer(new FolderSyncState(1, null, 10, 0, 0));
+
+        var result = await CreateService().SyncFolderAsync(inbox);
+
+        result.RemovedRemotely.Should().Be(0);
+        _messages.DidNotReceive().Remove(Arg.Any<Message>());
+    }
+
+    [Fact]
+    public async Task Sincronizar_MensagemMovidaSemUidplus_EReconciliadaPeloMessageId()
+    {
+        // Depois de um MOVE em servidor sem UIDPLUS, a mensagem reaparece com UID novo. Sem
+        // reconciliar pelo Message-ID, ela seria gravada de novo como se fosse outra.
+        var inbox = Inbox();
+
+        var existente = Message.Create(AccountId, inbox.Id, "<1@servidor>", Now, Now, Now);
+        existente.SetRemoteIdentity(0, null, Now);
+        existente.MarkSynced(Now);
+
+        _messages.GetByUidAsync(inbox.Id, 77, Arg.Any<CancellationToken>()).Returns((Message?)null);
+        _messages.GetByMessageIdInFolderAsync(inbox.Id, "<77@servidor>", Arg.Any<CancellationToken>())
+            .Returns(existente);
+
+        ArrangeServer(new FolderSyncState(1, null, 78, 1, 0), Header(77));
+
+        var result = await CreateService().SyncFolderAsync(inbox);
+
+        result.Added.Should().Be(0);
+        existente.Uid.Should().Be(77);
+        await _messages.DidNotReceive().AddAsync(Arg.Any<Message>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// A mesma mensagem em duas pastas não pode ter o UID de uma carimbado na outra.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>UID é identidade por pasta.</b> No Gmail a mesma mensagem aparece na Caixa de
+    /// Entrada e em cada rótulo aplicado a ela, cada cópia com o seu UID. Reconciliando pelo
+    /// Message-ID na conta inteira, sincronizar o rótulo achava a linha da Caixa de Entrada e
+    /// gravava nela o UID do rótulo — a linha continuava em INBOX apontando para um UID que
+    /// só existe noutra pasta.
+    /// </para>
+    /// <para>
+    /// O efeito não aparecia na lista, que já tinha os cabeçalhos: aparecia no clique, quando
+    /// o servidor respondia que não conhecia aquele UID naquela pasta. Todas as mensagens do
+    /// Gmail, de todas as contas (D-037).
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task Sincronizar_MesmaMensagemEmOutraPasta_NaoCarimbaOUidNaLinhaAlheia()
+    {
+        var inbox = Inbox();
+        var rotulo = Folder.Create(AccountId, "PARTICULAR", FolderType.Custom, Now, remotePath: "PARTICULAR");
+
+        // A linha vive na Caixa de Entrada, com o UID de lá.
+        var naInbox = Message.Create(AccountId, inbox.Id, "<77@servidor>", Now, Now, Now);
+        naInbox.SetRemoteIdentity(4242, null, Now);
+        naInbox.MarkSynced(Now);
+
+        // A busca por pasta não a encontra — ela não é do rótulo. A busca por conta encontrava,
+        // e era esse o defeito; o dublê responde às duas para provar qual delas o motor usa.
+        _messages.GetByUidAsync(rotulo.Id, 77, Arg.Any<CancellationToken>()).Returns((Message?)null);
+        _messages.GetByMessageIdInFolderAsync(rotulo.Id, "<77@servidor>", Arg.Any<CancellationToken>())
+            .Returns((Message?)null);
+        _messages.GetByMessageIdAsync(AccountId, "<77@servidor>", Arg.Any<CancellationToken>())
+            .Returns(naInbox);
+
+        ArrangeServer(new FolderSyncState(1, null, 78, 1, 0), Header(77));
+
+        await CreateService().SyncFolderAsync(rotulo);
+
+        naInbox.Uid.Should().Be(
+            4242, "o UID da Caixa de Entrada não pode ser trocado pelo do rótulo");
+        naInbox.FolderId.Should().Be(inbox.Id);
+    }
+
+    [Fact]
+    public async Task Sincronizar_AoFim_AtualizaOsContadoresDaPasta()
+    {
+        var inbox = Inbox();
+
+        _folders.CountMessagesAsync(inbox.Id, Arg.Any<CancellationToken>()).Returns(12);
+        _messages.CountUnreadAsync(inbox.Id, Arg.Any<CancellationToken>()).Returns(3);
+
+        ArrangeServer(new FolderSyncState(1, null, 2, 12, 3));
+
+        await CreateService().SyncFolderAsync(inbox);
+
+        inbox.TotalCount.Should().Be(12);
+        inbox.UnreadCount.Should().Be(3);
+    }
+
+    // ----- CONDSTORE: marcadores alterados por outra sessão ----------------------------
+
+    [Fact]
+    public async Task Sincronizar_ComModSeqConhecido_AplicaMarcadoresAlteradosNoServidor()
+    {
+        var inbox = Inbox();
+        // Um ciclo anterior já registrou o MODSEQ; é dele que parte o CHANGEDSINCE.
+        inbox.UpdateSyncState(uidValidity: 1, highestModSeq: 100, lastSeenUid: 10, Now);
+
+        ArrangeServer(new FolderSyncState(1, 250, 11, 1, 0));
+
+        var message = Message.Create(AccountId, inbox.Id, "<antiga@ext>", Now, Now, Now);
+        message.SetRemoteIdentity(5, 100, Now);
+        message.MarkSynced(Now);
+
+        _messages.GetByUidAsync(inbox.Id, 5, Arg.Any<CancellationToken>()).Returns(message);
+        _imap.FetchFlagChangesAsync("INBOX", 100, Arg.Any<CancellationToken>())
+            .Returns(new[] { new FetchedFlags(5, IsRead: true, IsFlagged: true, IsAnswered: false, ModSeq: 250) });
+
+        var result = await CreateService().SyncFolderAsync(inbox);
+
+        // Sem CONDSTORE seria preciso reler a pasta inteira para descobrir isto.
+        message.IsRead.Should().BeTrue();
+        message.IsFlagged.Should().BeTrue();
+        message.SyncState.Should().Be(MessageSyncState.Synced, "veio do servidor, não vai de volta pela fila");
+        result.Updated.Should().BeGreaterThan(0);
+    }
+
+    [Fact]
+    public async Task Sincronizar_ModSeqComAlteracaoLocalPendente_NaoDesfazOQueOUsuarioFez()
+    {
+        var inbox = Inbox();
+        inbox.UpdateSyncState(uidValidity: 1, highestModSeq: 100, lastSeenUid: 10, Now);
+
+        ArrangeServer(new FolderSyncState(1, 250, 11, 1, 0));
+
+        var message = Message.Create(AccountId, inbox.Id, "<pendente@ext>", Now, Now, Now);
+        message.SetRemoteIdentity(5, 100, Now);
+        message.MarkSynced(Now);
+
+        // O usuário marcou como lida offline; a fila ainda não empurrou.
+        message.SetRead(true, Now);
+
+        _messages.GetByUidAsync(inbox.Id, 5, Arg.Any<CancellationToken>()).Returns(message);
+        _imap.FetchFlagChangesAsync("INBOX", 100, Arg.Any<CancellationToken>())
+            .Returns(new[] { new FetchedFlags(5, IsRead: false, IsFlagged: false, IsAnswered: false, ModSeq: 250) });
+
+        await CreateService().SyncFolderAsync(inbox);
+
+        // Deixar o servidor vencer desfaria diante dos olhos do usuário o que ele fez, e a
+        // fila refaria em seguida — o pisca-pisca que parece defeito e é.
+        message.IsRead.Should().BeTrue();
+        message.SyncState.Should().Be(MessageSyncState.PendingUpdate);
+    }
+
+    [Fact]
+    public async Task Sincronizar_SemModSeqAnterior_NaoPedeAlteracoes()
+    {
+        var inbox = Inbox();
+        ArrangeServer(new FolderSyncState(1, 250, 1, 0, 0));
+
+        await CreateService().SyncFolderAsync(inbox);
+
+        // Primeira sincronização da pasta: não há ponto de partida, e pedir tudo desde
+        // zero traria a pasta inteira — exatamente o custo que o CONDSTORE evita.
+        await _imap.DidNotReceive().FetchFlagChangesAsync(
+            Arg.Any<string>(), Arg.Any<long>(), Arg.Any<CancellationToken>());
+    }
+}

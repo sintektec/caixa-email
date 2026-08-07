@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Manifesto do App Installer: é o que dá atualização automática ao MSIX distribuído fora
+  da Microsoft Store. O Windows consulta esta URI conforme a política abaixo e instala a
+  versão nova sozinho.
+
+  Os marcadores {{VERSION}} e {{BASE_URI}} são substituídos pelo pipeline de release
+  (.github/workflows/release.yml). A URI base vem da variável APPINSTALLER_BASE_URI do
+  repositório e precisa apontar para um servidor HTTPS que sirva este arquivo e o .msix
+  lado a lado.
+-->
+<AppInstaller
+    xmlns="http://schemas.microsoft.com/appx/appinstaller/2018"
+    Uri="{{BASE_URI}}/Sintek.Mail.appinstaller"
+    Version="{{VERSION}}">
+
+  <MainPackage
+      Name="SintekTecnologia.SintekMail"
+      Publisher="CN=SINTECH Tecnologia e Seguranca da Informacao LTDA"
+      Version="{{VERSION}}"
+      ProcessorArchitecture="x64"
+      Uri="{{BASE_URI}}/Sintek.Mail_{{VERSION}}_x64.msix" />
+
+  <UpdateSettings>
+    <!--
+      HoursBetweenUpdateChecks="8" e não zero: verificar a cada abertura em uma frota
+      grande transforma o servidor de distribuição em gargalo, e um cliente de e-mail é
+      aberto dezenas de vezes por dia.
+    -->
+    <OnLaunch
+        HoursBetweenUpdateChecks="8"
+        ShowPrompt="true"
+        UpdateBlocksActivation="false" />
+
+    <!--
+      A atualização não bloqueia o uso: o e-mail continua funcionando enquanto o pacote
+      novo baixa, e entra na próxima abertura. Bloquear ativação por atualização é o tipo
+      de decisão que faz o usuário adiar a atualização para sempre.
+    -->
+    <AutomaticBackgroundTask />
+
+    <ForceUpdateFromAnyVersion>false</ForceUpdateFromAnyVersion>
+  </UpdateSettings>
+</AppInstaller>

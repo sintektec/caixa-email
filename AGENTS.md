@@ -40,3 +40,24 @@ Depois, conforme a tarefa: `spec/01-especificacao-unificada.md` (o que construir
 - Commite o harness junto com o código
 
 O detalhamento do formato de cada arquivo está em `harness/README.md`.
+
+## 4. Ao concluir uma etapa: apresentar e perguntar
+
+**Não emende uma fase do roadmap na seguinte por conta própria.** Ao terminar um bloco de
+trabalho, apresente o que ficou pendente e qual é o próximo item do `docs/roadmap.md`, e
+pergunte se o usuário quer seguir ou parar para validar o que existe.
+
+O motivo é concreto: boa parte da validação deste projeto exige uma máquina Windows 11 real
+— MSIX instalado, interface exercida, servidores IMAP de verdade — e nenhuma sessão
+automatizada consegue fazê-la. Acumular fases sem essa verificação empilha código que
+ninguém confirmou funcionar, e o erro descoberto na fase 5 pode ter nascido na 2.
+
+## 5. Pendência que a sessão pode resolver não fica para trás
+
+**Nunca deixe pendente o que você mesmo pode fazer; sempre finalize.** "Ainda não
+suportado" só é aceitável quando a limitação é externa — falta de credencial, de máquina
+Windows, de decisão do usuário. Pendência humana desse tipo é avisada ao usuário e
+registrada em `harness/STATUS.md`; todo o resto se implementa antes de avançar de fase.
+
+(Diretriz do usuário em 2026-08-05, ao encontrar ações de regra entregues como
+"registradas na auditoria como ignoradas" quando podiam ser implementadas.)

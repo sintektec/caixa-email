@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ContentDialog
+    x:Class="Sintek.Mail.App.Dialogs.DomainDirectoryDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Title="Diretório de Domínio"
+    PrimaryButtonText="Salvar"
+    CloseButtonText="Cancelar"
+    DefaultButton="Primary"
+    PrimaryButtonClick="OnPrimaryButtonClick">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="520">
+        <StackPanel Spacing="12" Width="480">
+
+            <InfoBar IsOpen="{x:Bind ViewModel.HasStatusMessage, Mode=OneWay}"
+                     Severity="Warning"
+                     Message="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
+                     IsClosable="False" />
+
+            <!--
+                O domínio identifica o diretório e determina quais contas podem entrar nele.
+                Trocá-lo depois exige revalidar contas e mensagens, com relatório de impacto
+                e confirmação — por isso o campo trava na edição.
+            -->
+            <TextBox Header="Domínio"
+                     PlaceholderText="sintek.com.br"
+                     Text="{x:Bind ViewModel.DomainName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                     IsReadOnly="{x:Bind ViewModel.IsEditing, Mode=OneWay}"
+                     AutomationProperties.Name="Domínio representado pelo diretório" />
+
+            <TextBlock Text="{x:Bind ViewModel.DomainNameError, Mode=OneWay}"
+                       Style="{ThemeResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                       TextWrapping="Wrap" />
+
+            <TextBox Header="Descrição"
+                     Text="{x:Bind ViewModel.Description, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                     AutomationProperties.Name="Descrição do diretório" />
+
+            <ComboBox Header="Quais participantes precisam pertencer ao domínio"
+                      HorizontalAlignment="Stretch"
+                      ItemsSource="{x:Bind ViewModel.ValidationModes}"
+                      DisplayMemberPath="Label"
+                      SelectedItem="{x:Bind ViewModel.SelectedValidationMode, Mode=TwoWay}"
+                      AutomationProperties.Name="Modo de validação de pertencimento" />
+
+            <ComboBox Header="Mensagem incompatível em pasta restrita"
+                      HorizontalAlignment="Stretch"
+                      ItemsSource="{x:Bind ViewModel.InvalidEmailActions}"
+                      DisplayMemberPath="Label"
+                      SelectedItem="{x:Bind ViewModel.SelectedInvalidEmailAction, Mode=TwoWay}"
+                      AutomationProperties.Name="Ação para mensagem incompatível" />
+
+            <CheckBox Content="Aceitar contas e mensagens de subdomínios"
+                      IsChecked="{x:Bind ViewModel.AllowSubdomains, Mode=TwoWay}" />
+
+            <CheckBox Content="Exibir entre os favoritos"
+                      IsChecked="{x:Bind ViewModel.IsFavorite, Mode=TwoWay}" />
+
+            <CheckBox Content="Diretório ativo"
+                      IsChecked="{x:Bind ViewModel.IsActive, Mode=TwoWay}" />
+
+            <!--
+                O consentimento de IA em nuvem vive aqui porque o Diretório de Domínio é a
+                unidade de política do produto: a confidencialidade varia de cliente para
+                cliente, e é neste lugar que o usuário já pensa sobre isso.
+            -->
+            <CheckBox Content="Permitir enviar conteúdo deste domínio a serviços de IA em nuvem"
+                      IsChecked="{x:Bind ViewModel.AllowsCloudAssistant, Mode=TwoWay}" />
+
+            <TextBlock Text="Desligado, os recursos de IA usam apenas o modelo instalado nesta máquina e nada trafega. Cada envio a um serviço externo fica registrado na auditoria."
+                       Style="{ThemeResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       TextWrapping="Wrap" />
+
+            <TextBlock Text="Domínios adicionais aceitos"
+                       Style="{ThemeResource BodyStrongTextBlockStyle}" />
+
+            <Grid ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBox Grid.Column="0"
+                         x:Name="AliasBox"
+                         PlaceholderText="sintek.net.br"
+                         AutomationProperties.Name="Novo domínio adicional" />
+
+                <Button Grid.Column="1"
+                        Content="Adicionar"
+                        Click="OnAddAliasClick"
+                        VerticalAlignment="Bottom" />
+            </Grid>
+
+            <ListView ItemsSource="{x:Bind ViewModel.Aliases, Mode=OneWay}"
+                      SelectionMode="Single"
+                      MaxHeight="120"
+                      x:Name="AliasList"
+                      AutomationProperties.Name="Domínios adicionais" />
+
+            <Button Content="Remover domínio adicional selecionado" Click="OnRemoveAliasClick" />
+
+            <!--
+                Troca de domínio: o roteiro da especificação — analisar impacto, exibir o
+                relatório e só aplicar mediante confirmação.
+            -->
+            <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.IsEditing, Mode=OneWay}">
+                <TextBlock Text="Trocar o domínio do diretório"
+                           Style="{ThemeResource BodyStrongTextBlockStyle}" />
+
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <TextBox Grid.Column="0"
+                             PlaceholderText="novo-dominio.com.br"
+                             Text="{x:Bind ViewModel.NewDomainName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             AutomationProperties.Name="Novo domínio" />
+
+                    <Button Grid.Column="1"
+                            Content="Analisar impacto"
+                            Command="{x:Bind ViewModel.AnalyzeDomainChangeCommand}"
+                            VerticalAlignment="Bottom" />
+                </Grid>
+
+                <InfoBar IsOpen="{x:Bind ViewModel.HasDomainChangeImpact, Mode=OneWay}"
+                         Severity="Warning"
+                         Title="Confirmar troca de domínio"
+                         Message="{x:Bind ViewModel.DomainChangeSummary, Mode=OneWay}"
+                         IsClosable="False">
+                    <InfoBar.Content>
+                        <CheckBox Content="Desviar as mensagens incompatíveis para a pasta de pendências"
+                                  IsChecked="{x:Bind ViewModel.MoveIncompatibleToPending, Mode=TwoWay}" />
+                    </InfoBar.Content>
+                    <InfoBar.ActionButton>
+                        <Button Content="Aplicar a troca" Click="OnConfirmDomainChangeClick" />
+                    </InfoBar.ActionButton>
+                </InfoBar>
+            </StackPanel>
+
+            <!-- Remoção: sempre em duas etapas, com o impacto medido antes da confirmação -->
+            <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.IsEditing, Mode=OneWay}">
+                <Button Content="Remover este Diretório de Domínio"
+                        Click="OnPrepareRemovalClick" />
+
+                <InfoBar IsOpen="{x:Bind ViewModel.HasPendingRemoval, Mode=OneWay}"
+                         Severity="Error"
+                         Title="Confirmar remoção"
+                         Message="{x:Bind ViewModel.RemovalSummary, Mode=OneWay}"
+                         IsClosable="False">
+                    <InfoBar.ActionButton>
+                        <Button Content="Remover definitivamente" Click="OnConfirmRemovalClick" />
+                    </InfoBar.ActionButton>
+                </InfoBar>
+            </StackPanel>
+
+        </StackPanel>
+    </ScrollViewer>
+</ContentDialog>

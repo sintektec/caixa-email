@@ -1,0 +1,224 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ContentDialog
+    x:Class="Sintek.Mail.App.Dialogs.CalendarDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:Sintek.Mail.Presentation.ViewModels"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Title="Agenda"
+    CloseButtonText="Fechar"
+    DefaultButton="Close">
+
+    <StackPanel Spacing="12" Width="760">
+
+        <ProgressBar IsIndeterminate="True"
+                     Visibility="{x:Bind ViewModel.IsBusy, Mode=OneWay}"
+                     AutomationProperties.Name="Operação em andamento" />
+
+        <InfoBar IsOpen="{x:Bind ViewModel.HasStatusMessage, Mode=OneWay}"
+                 Severity="Informational"
+                 Message="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
+                 IsClosable="False">
+            <!--
+                A alternativa à movimentação recusada vai no conteúdo da faixa: o
+                InfoBar.ActionButton aceita um ButtonBase, não um painel — WMC0015.
+            -->
+            <InfoBar.Content>
+                <Button Margin="0,0,0,12"
+                        Content="Propor este horário ao organizador"
+                        Visibility="{x:Bind ViewModel.CanProposeNewTime, Mode=OneWay}"
+                        Command="{x:Bind ViewModel.ProposeRefusedTimeCommand}"
+                        AutomationProperties.Name="Propor o novo horário ao organizador" />
+            </InfoBar.Content>
+        </InfoBar>
+
+        <!--
+            Conflito de sincronização. Fica no topo e fora da grade de propósito: ele pode
+            estar em qualquer data, e escondê-lo atrás da janela exibida seria escondê-lo de
+            quem precisa decidir.
+        -->
+        <InfoBar IsOpen="{x:Bind ViewModel.HasConflicts, Mode=OneWay}"
+                 Severity="Warning"
+                 Title="Alterado aqui e no servidor"
+                 Message="{x:Bind ViewModel.ConflictSummary, Mode=OneWay}"
+                 IsClosable="False">
+            <InfoBar.Content>
+                <ItemsControl Margin="0,8,0,12"
+                              ItemsSource="{x:Bind ViewModel.Conflicts, Mode=OneWay}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:CalendarConflictItem">
+                            <Grid ColumnSpacing="8" Padding="0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="{x:Bind Summary}"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{x:Bind StartLabel}"
+                                               FontSize="12"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                </StackPanel>
+
+                                <Button Grid.Column="1"
+                                        Content="Manter a minha"
+                                        Click="OnKeepLocalClick"
+                                        Tag="{x:Bind}"
+                                        AutomationProperties.Name="Manter a versão local do compromisso" />
+
+                                <Button Grid.Column="2"
+                                        Content="Usar a do servidor"
+                                        Click="OnKeepServerClick"
+                                        Tag="{x:Bind}"
+                                        AutomationProperties.Name="Usar a versão do servidor" />
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </InfoBar.Content>
+        </InfoBar>
+
+        <Grid ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <Button Grid.Column="0"
+                    Command="{x:Bind ViewModel.PreviousRangeCommand}"
+                    AutomationProperties.Name="Período anterior">
+                <FontIcon Glyph="&#xE76B;" FontSize="12" />
+            </Button>
+
+            <Button Grid.Column="1"
+                    Content="Hoje"
+                    Command="{x:Bind ViewModel.GoToTodayCommand}"
+                    AutomationProperties.Name="Voltar para hoje" />
+
+            <Button Grid.Column="2"
+                    Command="{x:Bind ViewModel.NextRangeCommand}"
+                    AutomationProperties.Name="Próximo período">
+                <FontIcon Glyph="&#xE76C;" FontSize="12" />
+            </Button>
+
+            <TextBlock Grid.Column="3"
+                       Text="{x:Bind ViewModel.RangeLabel, Mode=OneWay}"
+                       Style="{ThemeResource SubtitleTextBlockStyle}"
+                       VerticalAlignment="Center"
+                       Margin="8,0,0,0" />
+
+            <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="4">
+                <Button Content="Dia" Click="OnDayViewClick" AutomationProperties.Name="Visão de dia" />
+                <Button Content="Semana" Click="OnWeekViewClick" AutomationProperties.Name="Visão de semana" />
+                <Button Content="Mês" Click="OnMonthViewClick" AutomationProperties.Name="Visão de mês" />
+            </StackPanel>
+        </Grid>
+
+        <ListView Height="420"
+                  SelectionMode="Single"
+                  ItemsSource="{x:Bind ViewModel.Occurrences, Mode=OneWay}"
+                  SelectedItem="{x:Bind ViewModel.SelectedOccurrence, Mode=TwoWay}"
+                  AutomationProperties.Name="Compromissos do período">
+            <ListView.ItemTemplate>
+                <DataTemplate x:DataType="vm:CalendarOccurrenceItem">
+                    <Grid ColumnSpacing="12" Padding="0,6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="120" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="{x:Bind TimeRange}" />
+                            <TextBlock Text="{x:Bind ResponseLabel}"
+                                       FontSize="12"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1">
+                            <TextBlock Text="{x:Bind Summary}"
+                                       TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="{x:Bind OrganizerName}"
+                                       FontSize="12"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="Cancelado"
+                                       Visibility="{x:Bind IsCancelled}"
+                                       FontSize="12"
+                                       Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
+
+                            <TextBlock Text="Alterado aqui e no servidor"
+                                       Visibility="{x:Bind IsConflicted}"
+                                       FontSize="12"
+                                       Foreground="{ThemeResource SystemFillColorCautionBrush}" />
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4">
+                            <Button Content="Entrar"
+                                    Visibility="{x:Bind HasMeetingUrl}"
+                                    Click="OnJoinMeetingClick"
+                                    Tag="{x:Bind}"
+                                    AutomationProperties.Name="Entrar na reunião" />
+
+                            <Button Content="Aceitar"
+                                    Visibility="{x:Bind NeedsResponse}"
+                                    Click="OnAcceptClick"
+                                    Tag="{x:Bind}"
+                                    AutomationProperties.Name="Aceitar o convite" />
+
+                            <Button Content="Recusar"
+                                    Visibility="{x:Bind NeedsResponse}"
+                                    Click="OnDeclineClick"
+                                    Tag="{x:Bind}"
+                                    AutomationProperties.Name="Recusar o convite" />
+                        </StackPanel>
+                    </Grid>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+
+        <Grid ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <TextBlock Grid.Column="0"
+                       TextWrapping="Wrap"
+                       FontSize="12"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       Text="Remarcar move o compromisso e avisa os participantes quando você é quem organiza. Em reunião de outra pessoa, a agenda oferece propor um novo horário." />
+
+            <CalendarDatePicker Grid.Column="1"
+                                x:Name="RescheduleDate"
+                                PlaceholderText="Nova data"
+                                MinWidth="150"
+                                AutomationProperties.Name="Nova data do compromisso" />
+
+            <TimePicker Grid.Column="2"
+                        x:Name="RescheduleTime"
+                        MinWidth="120"
+                        AutomationProperties.Name="Novo horário do compromisso" />
+
+            <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="8">
+                <Button Content="Remarcar"
+                        Style="{ThemeResource AccentButtonStyle}"
+                        Click="OnRescheduleClick"
+                        AutomationProperties.Name="Remarcar o compromisso selecionado" />
+
+                <Button Content="Excluir"
+                        Command="{x:Bind ViewModel.RemoveSelectedCommand}"
+                        AutomationProperties.Name="Excluir o compromisso selecionado" />
+            </StackPanel>
+        </Grid>
+    </StackPanel>
+</ContentDialog>

@@ -1,0 +1,185 @@
+name: Release
+
+# Publicação assinada. Separada do CI de propósito: o CI roda a cada push e não pode
+# depender de segredos de assinatura; este roda quando existe uma tag de versão, e é o
+# único lugar que toca no certificado.
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Versão a publicar (ex.: 1.0.0)'
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+
+jobs:
+  msix:
+    name: MSIX assinado
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Instalar .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Adicionar MSBuild ao PATH
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Resolver a versão
+        id: version
+        shell: pwsh
+        run: |
+          $version = if ($env:GITHUB_REF -like 'refs/tags/v*') {
+            $env:GITHUB_REF -replace '^refs/tags/v', ''
+          } else {
+            '${{ github.event.inputs.version }}'
+          }
+
+          if (-not $version) { throw 'Versão não informada.' }
+
+          # O manifesto MSIX exige quatro componentes; a tag traz três.
+          "version=$version"       | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "appx=$version.0"        | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Carimbar a versão no manifesto
+        shell: pwsh
+        run: |
+          $path = 'src/Sintek.Mail.App/Package.appxmanifest'
+          $xml = [xml](Get-Content $path)
+          $xml.Package.Identity.Version = '${{ steps.version.outputs.appx }}'
+          $xml.Save((Resolve-Path $path))
+
+      # O certificado vem dos segredos como PFX em base64. Fica no runner apenas durante
+      # este job e é apagado ao final — nunca no repositório, nunca no artefato.
+      - name: Preparar o certificado
+        id: cert
+        shell: pwsh
+        env:
+          CERTIFICATE_BASE64: ${{ secrets.SIGNING_CERTIFICATE_BASE64 }}
+        run: |
+          if (-not $env:CERTIFICATE_BASE64) {
+            Write-Host '::warning::SIGNING_CERTIFICATE_BASE64 ausente; o pacote sairá sem assinatura.'
+            "signed=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+            exit 0
+          }
+
+          $path = Join-Path $env:RUNNER_TEMP 'signing.pfx'
+          [IO.File]::WriteAllBytes($path, [Convert]::FromBase64String($env:CERTIFICATE_BASE64))
+
+          "path=$path"   | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "signed=true"  | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Restaurar
+        run: dotnet restore src/Sintek.Mail.App/Sintek.Mail.App.csproj -r win-x64
+
+      - name: Gerar MSIX
+        shell: pwsh
+        run: |
+          $args = @(
+            'src/Sintek.Mail.App/Sintek.Mail.App.csproj',
+            '/p:Configuration=Release',
+            '/p:Platform=x64',
+            '/p:RuntimeIdentifier=win-x64',
+            '/p:Packaged=true',
+            '/p:UapAppxPackageBuildMode=SideloadOnly',
+            '/p:AppxBundle=Never'
+          )
+
+          if ('${{ steps.cert.outputs.signed }}' -eq 'true') {
+            $args += '/p:AppxPackageSigningEnabled=true'
+            $args += '/p:PackageCertificateKeyFile=${{ steps.cert.outputs.path }}'
+            $args += '/p:PackageCertificatePassword=${{ secrets.SIGNING_CERTIFICATE_PASSWORD }}'
+          } else {
+            $args += '/p:AppxPackageSigningEnabled=false'
+          }
+
+          msbuild @args
+
+      # O .appinstaller é o que dá atualização automática ao modo sideload: o Windows
+      # consulta a URI a cada abertura e instala a versão nova sozinho.
+      - name: Gerar o manifesto do App Installer
+        shell: pwsh
+        run: |
+          $template = Get-Content 'build/Sintek.Mail.appinstaller.template' -Raw
+          $uri = '${{ vars.APPINSTALLER_BASE_URI }}'
+
+          if (-not $uri) {
+            $uri = 'https://exemplo.invalido/sintek-mail'
+            Write-Host '::warning::APPINSTALLER_BASE_URI não configurada; usando URI de exemplo.'
+          }
+
+          $content = $template `
+            -replace '\{\{VERSION\}\}', '${{ steps.version.outputs.appx }}' `
+            -replace '\{\{BASE_URI\}\}', $uri
+
+          New-Item -ItemType Directory -Force -Path 'artifacts' | Out-Null
+          $content | Out-File -FilePath 'artifacts/Sintek.Mail.appinstaller' -Encoding utf8
+
+      - name: Remover o certificado
+        if: always()
+        shell: pwsh
+        run: |
+          if (Test-Path '${{ steps.cert.outputs.path }}') {
+            Remove-Item '${{ steps.cert.outputs.path }}' -Force
+          }
+
+      - name: Publicar artefatos
+        uses: actions/upload-artifact@v4
+        with:
+          name: sintek-mail-msix-${{ steps.version.outputs.version }}
+          path: |
+            src/Sintek.Mail.App/AppPackages/**
+            artifacts/Sintek.Mail.appinstaller
+          retention-days: 90
+          if-no-files-found: error
+
+  unpackaged:
+    name: Instalador sem pacote
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Instalar .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      # Autocontido: a máquina de destino não precisa ter o .NET instalado, o que em
+      # ambiente corporativo com atualização controlada costuma ser a diferença entre
+      # instalar hoje e abrir um chamado.
+      - name: Publicar autocontido
+        run: >
+          dotnet publish src/Sintek.Mail.App/Sintek.Mail.App.csproj
+          -c Release
+          -r win-x64
+          --self-contained true
+          -p:Packaged=false
+          -p:PublishSingleFile=false
+          -o artifacts/unpackaged
+
+      - name: Empacotar com o instalador
+        shell: pwsh
+        run: |
+          Copy-Item 'build/install-unpackaged.ps1' 'artifacts/unpackaged/'
+          Copy-Item 'docs/implantacao.md' 'artifacts/unpackaged/'
+          Compress-Archive -Path 'artifacts/unpackaged/*' -DestinationPath 'artifacts/sintek-mail-unpackaged.zip'
+
+      - name: Publicar artefato
+        uses: actions/upload-artifact@v4
+        with:
+          name: sintek-mail-unpackaged
+          path: artifacts/sintek-mail-unpackaged.zip
+          retention-days: 90
+          if-no-files-found: error

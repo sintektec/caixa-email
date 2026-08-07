@@ -1,0 +1,8 @@
+CredReadW
+CredWriteW
+CredDeleteW
+CredFree
+CREDENTIALW
+CRED_TYPE
+CRED_PERSIST
+WIN32_ERROR

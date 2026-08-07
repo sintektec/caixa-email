@@ -3,11 +3,19 @@
     x:Class="Sintek.Mail.App.App"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
+                <!--
+                    XamlControlsResources traz o tema Fluent do WinUI 3, que já responde
+                    automaticamente ao modo claro/escuro e ao alto contraste do Windows.
+                    É o que atende a exigência de acessibilidade sem folha de estilo própria.
+                -->
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+                <ResourceDictionary Source="ms-appx:///Themes/Styles.xaml" />
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </Application.Resources>
+
 </Application>

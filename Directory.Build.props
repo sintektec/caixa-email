@@ -1,0 +1,41 @@
+<Project>
+
+  <PropertyGroup>
+    <LangVersion>13.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <AccelerateBuildsInVisualStudio>true</AccelerateBuildsInVisualStudio>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <Product>Sintek.Mail</Product>
+    <Company>SINTECH Tecnologia e Segurança da Informação LTDA</Company>
+    <Authors>SINTEK</Authors>
+    <Version>0.1.0</Version>
+    <NeutralLanguage>pt-BR</NeutralLanguage>
+  </PropertyGroup>
+
+  <!--
+    O cliente é offline-first e roda inteiramente na máquina do usuário: não há
+    telemetria nem coleta de dados de uso em nenhuma camada.
+  -->
+  <PropertyGroup>
+    <DotNetCliToolTelemetryOptOut>true</DotNetCliToolTelemetryOptOut>
+  </PropertyGroup>
+
+  <!--
+    Lista de API proibida, em BannedSymbols.txt na raiz. O Domínio fica de fora porque a
+    regra arquitetural dele é não ter pacote NuGet nenhum — e, sem referência à injeção de
+    dependência, não há como chamar o que está banido ali.
+  -->
+  <ItemGroup Condition="'$(MSBuildProjectName)' != 'Sintek.Mail.Domain'">
+    <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
+    <AdditionalFiles Include="$(MSBuildThisFileDirectory)BannedSymbols.txt" />
+  </ItemGroup>
+
+</Project>

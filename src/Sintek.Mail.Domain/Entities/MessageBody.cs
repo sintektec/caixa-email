@@ -1,17 +1,119 @@
+using Sintek.Mail.Domain.Common;
+
 namespace Sintek.Mail.Domain.Entities;
 
 /// <summary>
-/// Message body stored separately to avoid inflating the message list.
+/// Corpo de uma mensagem, em tabela separada para não pesar na listagem.
 /// </summary>
+/// <remarks>
+/// <see cref="SanitizedHtml"/> guarda o resultado da higienização e é o <b>único</b>
+/// conteúdo que pode chegar ao WebView2. <see cref="HtmlBody"/> preserva o original
+/// apenas para reprocessar caso as regras de sanitização mudem — nunca para exibir.
+/// </remarks>
 public sealed class MessageBody : Entity
 {
-    public Guid MessageId { get; set; }
-    public string? HtmlBody { get; set; }
-    public string? TextBody { get; set; }
-    public string? SanitizedHtml { get; set; }
-    public bool HasRemoteContent { get; set; }
-    public DateTime? DownloadedAt { get; set; }
+    private MessageBody(Guid id, Guid messageId, DateTimeOffset createdAt)
+        : base(id, createdAt)
+    {
+        MessageId = messageId;
+    }
 
-    // Navigation
-    public Message Message { get; set; } = null!;
+    private MessageBody()
+    {
+    }
+
+    /// <summary>Mensagem dona deste corpo.</summary>
+    public Guid MessageId { get; private set; }
+
+    /// <summary>Mensagem dona deste corpo.</summary>
+    public Message? Message { get; private set; }
+
+    /// <summary>HTML original, como veio do servidor. Nunca renderizar diretamente.</summary>
+    public string? HtmlBody { get; private set; }
+
+    /// <summary>Corpo em texto puro.</summary>
+    public string? TextBody { get; private set; }
+
+    /// <summary>HTML já higienizado — o único apto a ser renderizado.</summary>
+    public string? SanitizedHtml { get; private set; }
+
+    /// <summary>
+    /// Se o HTML referencia recursos externos (imagens, folhas de estilo). Quando
+    /// verdadeiro, a interface exibe a barra "Exibir imagens" e só libera o carregamento
+    /// depois que o usuário concordar.
+    /// </summary>
+    public bool HasRemoteContent { get; private set; }
+
+    /// <summary>Se o usuário autorizou o conteúdo remoto desta mensagem.</summary>
+    public bool RemoteContentAllowed { get; private set; }
+
+    /// <summary>Instante em que o corpo foi baixado.</summary>
+    public DateTimeOffset? DownloadedAt { get; private set; }
+
+    /// <summary>
+    /// Documento iCalendar que acompanha a mensagem, quando houver.
+    /// </summary>
+    /// <remarks>
+    /// Guardado na mensagem, e não em arquivo, porque é ela que a fila de saída carrega ao
+    /// montar o MIME. Uma resposta a convite precisa sair como parte
+    /// <c>text/calendar; method=REPLY</c>, e não como anexo: é o que faz o cliente do
+    /// organizador processá-la sozinho, em vez de mostrar um arquivo para ele abrir.
+    /// </remarks>
+    public string? CalendarPayload { get; private set; }
+
+    /// <summary>Valor do parâmetro <c>method</c> da parte iCalendar.</summary>
+    public string? CalendarMethod { get; private set; }
+
+    /// <summary>Grava o documento iCalendar que a mensagem carrega.</summary>
+    public void SetCalendar(string? payload, string? method, DateTimeOffset now)
+    {
+        CalendarPayload = string.IsNullOrWhiteSpace(payload) ? null : payload;
+        CalendarMethod = string.IsNullOrWhiteSpace(method) ? null : method.Trim().ToUpperInvariant();
+        Touch(now);
+    }
+
+    /// <summary>Cria um corpo vazio, ainda não baixado.</summary>
+    public static MessageBody Create(Guid messageId, DateTimeOffset createdAt, Guid? id = null)
+        => new(id ?? Guid.CreateVersion7(), messageId, createdAt);
+
+    /// <summary>Grava o conteúdo baixado e já higienizado.</summary>
+    public void SetContent(
+        string? htmlBody,
+        string? textBody,
+        string? sanitizedHtml,
+        bool hasRemoteContent,
+        DateTimeOffset now)
+    {
+        HtmlBody = htmlBody;
+        TextBody = textBody;
+        SanitizedHtml = sanitizedHtml;
+        HasRemoteContent = hasRemoteContent;
+        DownloadedAt = now;
+        Touch(now);
+    }
+
+    /// <summary>
+    /// Descarta o conteúdo baixado, devolvendo a mensagem ao estado "só cabeçalhos".
+    /// </summary>
+    /// <remarks>
+    /// A autorização de conteúdo remoto é preservada: ela é uma decisão do usuário sobre
+    /// aquele remetente, não um pedaço do cache, e refazê-la a cada limpeza seria pedir a
+    /// mesma permissão duas vezes.
+    /// </remarks>
+    public void ClearContent(DateTimeOffset now)
+    {
+        HtmlBody = null;
+        TextBody = null;
+        SanitizedHtml = null;
+        HasRemoteContent = false;
+        DownloadedAt = null;
+        Touch(now);
+    }
+
+    /// <summary>Registra a autorização do usuário para carregar o conteúdo remoto.</summary>
+    public void AllowRemoteContent(DateTimeOffset now)
+    {
+        RemoteContentAllowed = true;
+        Touch(now);
+    }
 }

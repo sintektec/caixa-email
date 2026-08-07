@@ -1,0 +1,198 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ContentDialog
+    x:Class="Sintek.Mail.App.Dialogs.RulesDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:Sintek.Mail.Presentation.ViewModels"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Title="Regras automáticas"
+    PrimaryButtonText="Salvar regra"
+    SecondaryButtonText="Nova regra"
+    CloseButtonText="Fechar"
+    DefaultButton="Primary"
+    PrimaryButtonClick="OnSaveRuleClick"
+    SecondaryButtonClick="OnNewRuleClick">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="600">
+        <StackPanel Spacing="12" Width="620">
+
+            <InfoBar IsOpen="{x:Bind ViewModel.HasStatusMessage, Mode=OneWay}"
+                     Severity="Warning"
+                     Message="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
+                     IsClosable="False" />
+
+            <TextBlock Text="Regras existentes"
+                       Style="{ThemeResource BodyStrongTextBlockStyle}" />
+
+            <ItemsControl ItemsSource="{x:Bind ViewModel.Rules, Mode=OneWay}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:RuleListItemViewModel">
+                        <Grid ColumnSpacing="8" Padding="0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0" Spacing="2">
+                                <TextBlock Text="{x:Bind Name}" FontWeight="SemiBold"
+                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{x:Bind Summary}"
+                                           Style="{ThemeResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+
+                            <ToggleSwitch Grid.Column="1"
+                                          IsOn="{x:Bind IsEnabled}"
+                                          Toggled="OnRuleToggled"
+                                          Tag="{x:Bind}"
+                                          OnContent="" OffContent=""
+                                          AutomationProperties.Name="Regra ativa" />
+
+                            <Button Grid.Column="2" Content="Editar"
+                                    Click="OnEditRuleClick" Tag="{x:Bind}" />
+
+                            <Button Grid.Column="3" Content="Excluir"
+                                    Click="OnDeleteRuleClick" Tag="{x:Bind}" />
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <TextBlock Text="Editor de regra"
+                       Style="{ThemeResource BodyStrongTextBlockStyle}" />
+
+            <TextBox Header="Nome da regra"
+                     Text="{x:Bind ViewModel.RuleName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                     AutomationProperties.Name="Nome da regra" />
+
+            <Grid ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <NumberBox Grid.Column="0"
+                           Header="Prioridade"
+                           Minimum="0"
+                           SpinButtonPlacementMode="Compact"
+                           Value="{x:Bind ViewModel.PriorityValue, Mode=TwoWay}"
+                           AutomationProperties.Name="Prioridade da regra" />
+
+                <ComboBox Grid.Column="1"
+                          Header="Quando aplicar"
+                          HorizontalAlignment="Stretch"
+                          ItemsSource="{x:Bind ViewModel.MatchTypes}"
+                          DisplayMemberPath="Label"
+                          SelectedItem="{x:Bind ViewModel.SelectedMatchType, Mode=TwoWay}"
+                          AutomationProperties.Name="Modo de combinação das condições" />
+            </Grid>
+
+            <CheckBox Content="Interromper as regras seguintes quando esta for aplicada"
+                      IsChecked="{x:Bind ViewModel.StopProcessing, Mode=TwoWay}" />
+
+            <TextBlock Text="Condições — vazio aplica a toda mensagem"
+                       Style="{ThemeResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+
+            <ItemsControl ItemsSource="{x:Bind ViewModel.Conditions, Mode=OneWay}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:RuleConditionEditorViewModel">
+                        <Grid ColumnSpacing="8" Padding="0,2">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="170" />
+                                <ColumnDefinition Width="150" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <ComboBox Grid.Column="0"
+                                      HorizontalAlignment="Stretch"
+                                      ItemsSource="{x:Bind Fields}"
+                                      DisplayMemberPath="Label"
+                                      SelectedItem="{x:Bind SelectedField, Mode=TwoWay}"
+                                      AutomationProperties.Name="Campo da condição" />
+
+                            <ComboBox Grid.Column="1"
+                                      HorizontalAlignment="Stretch"
+                                      ItemsSource="{x:Bind Operators}"
+                                      DisplayMemberPath="Label"
+                                      SelectedItem="{x:Bind SelectedOperator, Mode=TwoWay}"
+                                      AutomationProperties.Name="Operador da condição" />
+
+                            <TextBox Grid.Column="2"
+                                     Text="{x:Bind Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.Name="Valor comparado" />
+
+                            <Button Grid.Column="3" Content="&#xE711;"
+                                    FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                    Click="OnRemoveConditionClick" Tag="{x:Bind}"
+                                    AutomationProperties.Name="Remover condição" />
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <Button Content="Adicionar condição"
+                    Command="{x:Bind ViewModel.AddConditionCommand}" />
+
+            <TextBlock Text="Ações" Style="{ThemeResource BodyStrongTextBlockStyle}" />
+
+            <ItemsControl ItemsSource="{x:Bind ViewModel.Actions, Mode=OneWay}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:RuleActionEditorViewModel">
+                        <Grid ColumnSpacing="8" Padding="0,2">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="180" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <ComboBox Grid.Column="0"
+                                      HorizontalAlignment="Stretch"
+                                      ItemsSource="{x:Bind Actions}"
+                                      DisplayMemberPath="Label"
+                                      SelectedItem="{x:Bind SelectedAction, Mode=TwoWay}"
+                                      AutomationProperties.Name="Tipo da ação" />
+
+                            <ComboBox Grid.Column="1"
+                                      HorizontalAlignment="Stretch"
+                                      PlaceholderText="Pasta de destino"
+                                      ItemsSource="{x:Bind FolderOptions, Mode=OneWay}"
+                                      DisplayMemberPath="Label"
+                                      SelectedItem="{x:Bind SelectedFolder, Mode=TwoWay}"
+                                      AutomationProperties.Name="Pasta de destino da ação" />
+
+                            <ComboBox Grid.Column="2"
+                                      HorizontalAlignment="Stretch"
+                                      PlaceholderText="Categoria"
+                                      ItemsSource="{x:Bind CategoryOptions, Mode=OneWay}"
+                                      DisplayMemberPath="Label"
+                                      SelectedItem="{x:Bind SelectedCategory, Mode=TwoWay}"
+                                      AutomationProperties.Name="Categoria da ação" />
+
+                            <TextBox Grid.Column="3"
+                                     PlaceholderText="Endereço (encaminhar)"
+                                     Text="{x:Bind Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.Name="Endereço de encaminhamento" />
+
+                            <Button Grid.Column="4" Content="&#xE711;"
+                                    FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                    Click="OnRemoveActionClick" Tag="{x:Bind}"
+                                    AutomationProperties.Name="Remover ação" />
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <Button Content="Adicionar ação"
+                    Command="{x:Bind ViewModel.AddActionCommand}" />
+
+        </StackPanel>
+    </ScrollViewer>
+</ContentDialog>

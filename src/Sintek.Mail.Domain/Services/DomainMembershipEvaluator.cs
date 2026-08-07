@@ -1,131 +1,198 @@
 using Sintek.Mail.Domain.Entities;
 using Sintek.Mail.Domain.Enums;
-using Sintek.Mail.Domain.Exceptions;
 using Sintek.Mail.Domain.ValueObjects;
 
 namespace Sintek.Mail.Domain.Services;
 
-/// <summary>
-/// Evaluates whether a message belongs to a domain-restricted folder.
-/// This is the single entry point for all domain validation — UI, drag & drop, rules, etc.
-/// </summary>
-public sealed class DomainMembershipEvaluator
-{
-    private readonly DomainDirectory _domain;
-    private readonly IReadOnlyList<DomainAlias> _aliases;
+/// <summary>Um participante de mensagem reduzido ao que a regra de domínio precisa.</summary>
+/// <param name="Kind">Em que campo o participante aparece.</param>
+/// <param name="Domain">Domínio do participante, já normalizado.</param>
+/// <remarks>
+/// A avaliação trabalha sobre esta projeção, e não sobre <see cref="Message"/>, para que
+/// a camada de persistência possa alimentá-la com uma consulta enxuta sobre
+/// <c>MessageAddresses</c> — sem materializar mensagens inteiras só para decidir se uma
+/// movimentação é permitida.
+/// </remarks>
+public readonly record struct MessageParticipant(AddressKind Kind, EmailDomain Domain);
 
-    public DomainMembershipEvaluator(DomainDirectory domain, IReadOnlyList<DomainAlias>? aliases = null)
-    {
-        _domain = domain ?? throw new ArgumentNullException(nameof(domain));
-        _aliases = aliases ?? domain.Aliases.ToList().AsReadOnly();
-    }
+/// <summary>Por que uma mensagem foi aceita ou recusada por um Diretório de Domínio.</summary>
+public enum DomainMembershipReason
+{
+    /// <summary>Nenhum participante pertence ao domínio.</summary>
+    NoMatch = 0,
+
+    /// <summary>O remetente pertence ao domínio.</summary>
+    SenderMatched = 1,
+
+    /// <summary>Ao menos um destinatário pertence ao domínio.</summary>
+    RecipientMatched = 2,
+
+    /// <summary>Remetente e destinatário pertencem ao domínio.</summary>
+    SenderAndRecipientMatched = 3,
+
+    /// <summary>Algum participante — inclusive em cópia — pertence ao domínio.</summary>
+    ParticipantMatched = 4,
+
+    /// <summary>Uma regra explícita criada pelo usuário determinou o pertencimento.</summary>
+    ExplicitRuleMatched = 5,
+
+    /// <summary>O remetente pertence, mas o modo exigia também um destinatário.</summary>
+    RecipientMissing = 6,
+
+    /// <summary>Um destinatário pertence, mas o modo exigia também o remetente.</summary>
+    SenderMissing = 7,
+}
+
+/// <summary>Resultado da avaliação de pertencimento.</summary>
+/// <param name="IsMember">Se a mensagem pertence ao Diretório de Domínio.</param>
+/// <param name="Reason">O critério que decidiu.</param>
+public readonly record struct DomainMembershipResult(bool IsMember, DomainMembershipReason Reason)
+{
+    /// <summary>Mensagem exibível quando o pertencimento é recusado.</summary>
+    public string GetUserMessage()
+        => IsMember
+            ? string.Empty
+            : Exceptions.FolderDomainRestrictionException.RestrictionMessage;
+}
+
+/// <summary>
+/// Decide se uma mensagem pertence a um Diretório de Domínio.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Este avaliador é o <b>único</b> caminho pelo qual uma mensagem pode entrar em uma
+/// pasta restrita. Arrastar e soltar, aplicar uma regra automática, mover pelo menu de
+/// contexto e classificar durante a sincronização passam todos por aqui — é o que impede
+/// que a interface, ou uma regra mal configurada, contorne a restrição.
+/// </para>
+/// <para>
+/// É estático e sem estado de propósito: não toca banco nem relógio, o que o torna
+/// exaustivamente testável e seguro para chamar dentro de um laço de sincronização.
+/// </para>
+/// </remarks>
+public static class DomainMembershipEvaluator
+{
+    /// <summary>Campos que caracterizam o remetente.</summary>
+    private static bool IsSender(AddressKind kind) => kind is AddressKind.From or AddressKind.Sender;
+
+    /// <summary>Campos que caracterizam destinatário direto.</summary>
+    private static bool IsRecipient(AddressKind kind) => kind is AddressKind.To;
 
     /// <summary>
-    /// Validates whether a message can be placed in a folder restricted to this domain.
-    /// Returns true if the message passes validation.
-    /// Throws MessageDomainViolationException if the action is Block and validation fails.
+    /// Avalia se os participantes informados fazem a mensagem pertencer ao diretório.
     /// </summary>
-    public bool ValidateMessage(Message message, Folder folder)
+    /// <param name="directory">Diretório de Domínio cuja regra será aplicada.</param>
+    /// <param name="participants">Participantes da mensagem.</param>
+    /// <param name="matchedExplicitRule">
+    /// Verdadeiro quando uma regra criada pelo usuário já determinou que a mensagem
+    /// pertence a este domínio. A especificação lista esse caso como suficiente por si
+    /// só, então ele curto-circuita a avaliação por participantes.
+    /// </param>
+    public static DomainMembershipResult Evaluate(
+        DomainDirectory directory,
+        IReadOnlyCollection<MessageParticipant> participants,
+        bool matchedExplicitRule = false)
     {
-        if (!folder.IsDomainRestricted || folder.RestrictedToDomainId != _domain.Id)
-            return true; // Not restricted to this domain
+        ArgumentNullException.ThrowIfNull(directory);
+        ArgumentNullException.ThrowIfNull(participants);
 
-        var result = EvaluateMessage(message);
-
-        if (!result && _domain.InvalidEmailAction == InvalidEmailAction.Block)
+        if (matchedExplicitRule)
         {
-            throw new MessageDomainViolationException();
+            return new DomainMembershipResult(true, DomainMembershipReason.ExplicitRuleMatched);
         }
 
-        return result;
-    }
+        // Cópias (CC/CCO) contam apenas para AnyParticipant, através de 'anyMatches':
+        // os modos de destinatário se referem a quem está em Para, como manda a
+        // especificação ao tratar destinatário e cópia como critérios distintos.
+        var senderMatches = false;
+        var recipientMatches = false;
+        var anyMatches = false;
 
-    /// <summary>
-    /// Evaluates whether a message belongs to this domain based on the configured ValidationMode.
-    /// Does not throw — returns true/false.
-    /// </summary>
-    public bool EvaluateMessage(Message message)
-    {
-        var targetDomain = EmailDomain.Parse(_domain.DomainName);
-        var allowSubdomains = _domain.AllowSubdomains;
-
-        // Check explicit user rules first (spec 5.3: "atende a uma regra explícita criada pelo usuário")
-        // This is handled by the caller — the evaluator only checks domain membership.
-
-        return _domain.ValidationMode switch
+        foreach (var participant in participants)
         {
-            ValidationMode.SenderOnly => EvaluateSenderOnly(message, targetDomain, allowSubdomains),
-            ValidationMode.RecipientOnly => EvaluateRecipientOnly(message, targetDomain, allowSubdomains),
-            ValidationMode.SenderOrRecipient => EvaluateSenderOrRecipient(message, targetDomain, allowSubdomains),
-            ValidationMode.SenderAndRecipient => EvaluateSenderAndRecipient(message, targetDomain, allowSubdomains),
-            ValidationMode.AnyParticipant => EvaluateAnyParticipant(message, targetDomain, allowSubdomains),
-            _ => false
+            // AcceptsDomain já cobre o domínio principal, os domínios adicionais e a
+            // permissão de subdomínios — a regra inteira do diretório em uma chamada.
+            if (!directory.AcceptsDomain(participant.Domain))
+            {
+                continue;
+            }
+
+            anyMatches = true;
+
+            if (IsSender(participant.Kind))
+            {
+                senderMatches = true;
+            }
+            else if (IsRecipient(participant.Kind))
+            {
+                recipientMatches = true;
+            }
+        }
+
+        return directory.ValidationMode switch
+        {
+            DomainValidationMode.SenderOnly => senderMatches
+                ? new DomainMembershipResult(true, DomainMembershipReason.SenderMatched)
+                : new DomainMembershipResult(false, DomainMembershipReason.NoMatch),
+
+            DomainValidationMode.RecipientOnly => recipientMatches
+                ? new DomainMembershipResult(true, DomainMembershipReason.RecipientMatched)
+                : new DomainMembershipResult(false, DomainMembershipReason.NoMatch),
+
+            DomainValidationMode.SenderOrRecipient => (senderMatches, recipientMatches) switch
+            {
+                (true, _) => new DomainMembershipResult(true, DomainMembershipReason.SenderMatched),
+                (_, true) => new DomainMembershipResult(true, DomainMembershipReason.RecipientMatched),
+                _ => new DomainMembershipResult(false, DomainMembershipReason.NoMatch),
+            },
+
+            // Quando só metade da exigência é cumprida, devolvemos qual metade faltou:
+            // é o que permite à interface explicar a recusa em vez de apenas negá-la.
+            DomainValidationMode.SenderAndRecipient => (senderMatches, recipientMatches) switch
+            {
+                (true, true) => new DomainMembershipResult(true, DomainMembershipReason.SenderAndRecipientMatched),
+                (true, false) => new DomainMembershipResult(false, DomainMembershipReason.RecipientMissing),
+                (false, true) => new DomainMembershipResult(false, DomainMembershipReason.SenderMissing),
+                _ => new DomainMembershipResult(false, DomainMembershipReason.NoMatch),
+            },
+
+            DomainValidationMode.AnyParticipant => anyMatches
+                ? new DomainMembershipResult(true, DomainMembershipReason.ParticipantMatched)
+                : new DomainMembershipResult(false, DomainMembershipReason.NoMatch),
+
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(directory),
+                directory.ValidationMode,
+                "Modo de validação de domínio desconhecido."),
         };
     }
 
     /// <summary>
-    /// Checks if a specific address matches the domain (exact or subdomain if allowed).
-    /// Also checks domain aliases.
+    /// Avalia uma mensagem já materializada, com seus participantes carregados.
     /// </summary>
-    public bool IsAddressInDomain(string address)
+    /// <remarks>
+    /// Exige que <see cref="Message.Addresses"/> tenha sido carregado; uma mensagem sem
+    /// participantes carregados seria avaliada como não pertencente, o que silenciaria a
+    /// regra em vez de aplicá-la. Por isso a coleção vazia é recusada explicitamente.
+    /// </remarks>
+    public static DomainMembershipResult Evaluate(
+        DomainDirectory directory,
+        Message message,
+        bool matchedExplicitRule = false)
     {
-        if (!EmailAddress.TryParse(address, out var email) || email is null)
-            return false;
+        ArgumentNullException.ThrowIfNull(message);
 
-        var targetDomain = EmailDomain.Parse(_domain.DomainName);
-
-        // Check main domain
-        if (email.Domain.Matches(targetDomain, _domain.AllowSubdomains))
-            return true;
-
-        // Check aliases
-        foreach (var alias in _aliases)
+        if (message.Addresses.Count == 0)
         {
-            var aliasDomain = alias.GetEmailDomain();
-            if (email.Domain.Matches(aliasDomain, _domain.AllowSubdomains))
-                return true;
+            throw new InvalidOperationException(
+                $"A mensagem {message.Id} não teve seus participantes carregados. " +
+                "Avaliar a regra de domínio sem eles produziria uma recusa falsa.");
         }
 
-        return false;
-    }
+        var participants = message.Addresses
+            .Select(a => new MessageParticipant(a.Kind, a.Domain))
+            .ToArray();
 
-    private bool EvaluateSenderOnly(Message message, EmailDomain targetDomain, bool allowSubdomains)
-    {
-        return IsAddressInDomain(message.FromAddress);
-    }
-
-    private bool EvaluateRecipientOnly(Message message, EmailDomain targetDomain, bool allowSubdomains)
-    {
-        return message.Addresses
-            .Where(a => a.Kind is AddressKind.To or AddressKind.Cc or AddressKind.Bcc)
-            .Any(a => IsAddressInDomain(a.Address));
-    }
-
-    private bool EvaluateSenderOrRecipient(Message message, EmailDomain targetDomain, bool allowSubdomains)
-    {
-        return IsAddressInDomain(message.FromAddress)
-            || message.Addresses
-                .Where(a => a.Kind is AddressKind.To or AddressKind.Cc or AddressKind.Bcc)
-                .Any(a => IsAddressInDomain(a.Address));
-    }
-
-    private bool EvaluateSenderAndRecipient(Message message, EmailDomain targetDomain, bool allowSubdomains)
-    {
-        var senderMatches = IsAddressInDomain(message.FromAddress);
-        var recipientMatches = message.Addresses
-            .Where(a => a.Kind is AddressKind.To or AddressKind.Cc or AddressKind.Bcc)
-            .Any(a => IsAddressInDomain(a.Address));
-
-        return senderMatches && recipientMatches;
-    }
-
-    private bool EvaluateAnyParticipant(Message message, EmailDomain targetDomain, bool allowSubdomains)
-    {
-        // Check From
-        if (IsAddressInDomain(message.FromAddress))
-            return true;
-
-        // Check all addresses (To, Cc, Bcc, ReplyTo)
-        return message.Addresses.Any(a => IsAddressInDomain(a.Address));
+        return Evaluate(directory, participants, matchedExplicitRule);
     }
 }

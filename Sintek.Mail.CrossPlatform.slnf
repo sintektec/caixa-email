@@ -1,0 +1,19 @@
+{
+  "solution": {
+    "path": "Sintek.Mail.sln",
+    "projects": [
+      "src\\Sintek.Mail.Application\\Sintek.Mail.Application.csproj",
+      "src\\Sintek.Mail.Composition\\Sintek.Mail.Composition.csproj",
+      "src\\Sintek.Mail.Domain\\Sintek.Mail.Domain.csproj",
+      "src\\Sintek.Mail.Infrastructure\\Sintek.Mail.Infrastructure.csproj",
+      "src\\Sintek.Mail.Persistence\\Sintek.Mail.Persistence.csproj",
+      "src\\Sintek.Mail.Presentation\\Sintek.Mail.Presentation.csproj",
+      "tests\\Sintek.Mail.Application.Tests\\Sintek.Mail.Application.Tests.csproj",
+      "tests\\Sintek.Mail.Composition.Tests\\Sintek.Mail.Composition.Tests.csproj",
+      "tests\\Sintek.Mail.Domain.Tests\\Sintek.Mail.Domain.Tests.csproj",
+      "tests\\Sintek.Mail.Infrastructure.Tests\\Sintek.Mail.Infrastructure.Tests.csproj",
+      "tests\\Sintek.Mail.Persistence.Tests\\Sintek.Mail.Persistence.Tests.csproj",
+      "tests\\Sintek.Mail.Presentation.Tests\\Sintek.Mail.Presentation.Tests.csproj"
+    ]
+  }
+}

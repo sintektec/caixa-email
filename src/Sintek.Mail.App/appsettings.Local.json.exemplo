@@ -1,0 +1,14 @@
+{
+  "//1": "MODELO VERSIONADO. Não escreva a chave neste arquivo — o que for escrito aqui vai para o repositório.",
+  "//2": "Copie-o primeiro:  copy appsettings.Local.json.exemplo appsettings.Local.json",
+  "//3": "Só o nome 'appsettings.Local.json' está no .gitignore. É esse, e nenhum outro, que recebe a chave.",
+  "//4": "Na cópia, troque apenas o valor de ClientSecret. Estas linhas '//' podem ficar: são propriedades sem destino e a configuração as ignora.",
+
+  "OAuth": {
+    "Google": {
+      "//1": "Chave secreta do cliente, a que começa com GOCSPX-. Console do Google Cloud -> APIs e serviços -> Credenciais -> o cliente OAuth do tipo 'Aplicativo para computador'.",
+      "//2": "O ClientId não precisa ser repetido: já está no appsettings.json, e a configuração é sobreposta chave a chave.",
+      "ClientSecret": "COLE-AQUI-A-CHAVE-SECRETA"
+    }
+  }
+}

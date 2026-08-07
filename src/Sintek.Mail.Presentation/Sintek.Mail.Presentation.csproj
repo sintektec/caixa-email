@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Camada de apresentação: ViewModels, estado do assistente e validação de formulário.
+
+    É deliberadamente multiplataforma. Nada aqui referencia WinUI, e o job Linux do CI a
+    compila e testa junto com o núcleo — que é o que permite verificar a lógica da interface
+    mecanicamente, sem uma máquina Windows. O que precisa de WinUI (janelas, XAML, WebView2)
+    fica em Sintek.Mail.App.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Sintek.Mail.Presentation</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Sintek.Mail.Domain\Sintek.Mail.Domain.csproj" />
+    <ProjectReference Include="..\Sintek.Mail.Application\Sintek.Mail.Application.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Sintek.Mail.Presentation.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
+</Project>

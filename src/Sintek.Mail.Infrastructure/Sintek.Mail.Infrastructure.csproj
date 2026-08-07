@@ -1,22 +1,46 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
-  <ItemGroup>
-    <ProjectReference Include="..\Sintek.Mail.Application\Sintek.Mail.Application.csproj" />
-    <ProjectReference Include="..\Sintek.Mail.Domain\Sintek.Mail.Domain.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Include="Google.Apis.Auth" Version="1.71.0" />
-    <PackageReference Include="HtmlSanitizer" Version="9.0.886" />
-    <PackageReference Include="MailKit" Version="4.14.1" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
-    <PackageReference Include="Microsoft.Identity.Client" Version="4.78.0" />
-  </ItemGroup>
+  <!--
+    Infraestrutura multiplataforma: MailKit, provedores OAuth, sanitização de HTML e o
+    motor de sincronização. Nada aqui pode depender de API exclusiva do Windows — o que
+    for Windows-only vive em Sintek.Mail.Infrastructure.Windows, para que esta camada
+    continue compilável e testável em Linux (CI e desenvolvimento).
+  -->
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
+    <RootNamespace>Sintek.Mail.Infrastructure</RootNamespace>
   </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Sintek.Mail.Domain\Sintek.Mail.Domain.csproj" />
+    <ProjectReference Include="..\Sintek.Mail.Application\Sintek.Mail.Application.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      O formato do token de sincronização do Graph é detalhe interno deste adaptador — ele é
+      opaco para o motor de propósito. Os testes precisam construí-lo para verificar quando a
+      passada é completa, e isso não justifica torná-lo API pública.
+    -->
+    <InternalsVisibleTo Include="Sintek.Mail.Infrastructure.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MailKit" />
+    <PackageReference Include="MimeKit" />
+    <PackageReference Include="HtmlSanitizer" />
+    <PackageReference Include="Microsoft.Identity.Client" />
+    <PackageReference Include="Google.Apis.Auth" />
+    <PackageReference Include="DnsClient" />
+    <PackageReference Include="Ical.Net" />
+    <PackageReference Include="Polly" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Http" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Options" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" />
+  </ItemGroup>
 
 </Project>
