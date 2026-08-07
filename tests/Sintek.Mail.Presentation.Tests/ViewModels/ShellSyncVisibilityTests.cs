@@ -3,6 +3,7 @@ using Sintek.Mail.Application.Abstractions.Persistence;
 using Sintek.Mail.Domain.Entities;
 using Sintek.Mail.Domain.Enums;
 using Sintek.Mail.Domain.ValueObjects;
+using Sintek.Mail.Application.Sync;
 using Sintek.Mail.Presentation.ViewModels;
 
 namespace Sintek.Mail.Presentation.Tests.ViewModels;
@@ -270,6 +271,63 @@ public class ShellSyncVisibilityTests
         shell.ConnectivityDescription.Should().NotContain("Sem conexão");
         shell.ConnectivityDescription.Should().Contain("Ainda não sincronizado");
     }
+
+    // ----- Progresso da sincronização -------------------------------------------------
+
+    /// <summary>
+    /// A barra mede contas, e por isso nunca recua.
+    /// </summary>
+    /// <remarks>
+    /// Só a contagem de contas é conhecida de antemão — quantas mensagens uma pasta trará só
+    /// se sabe ao terminar de lê-la. Barra que recua quando o total aumenta é pior que barra
+    /// nenhuma: destrói a confiança em todas as outras barras da aplicação.
+    /// </remarks>
+    [Fact]
+    public void ProgressoDaSincronizacao_AoLongoDasEtapas_NuncaRecua()
+    {
+        var etapas = Enum.GetValues<SyncStage>();
+        var anterior = -1d;
+
+        foreach (var etapa in etapas)
+        {
+            var fracao = new SyncProgressReport(etapa, "Conta").Fraction;
+
+            fracao.Should().BeGreaterThanOrEqualTo(anterior, "a etapa {0} recuou", etapa);
+            fracao.Should().BeInRange(0, 1);
+            anterior = fracao;
+        }
+    }
+
+    /// <summary>Com várias contas, cada uma ocupa a sua fatia da barra.</summary>
+    [Fact]
+    public void ProgressoDaSincronizacao_ComVariasContas_DividePelaQuantidade()
+    {
+        var primeira = new SyncProgressReport(
+            SyncStage.Done, "A", AccountIndex: 1, AccountCount: 4).Fraction;
+
+        var ultima = new SyncProgressReport(
+            SyncStage.Done, "D", AccountIndex: 4, AccountCount: 4).Fraction;
+
+        primeira.Should().BeApproximately(0.25, 0.001);
+        ultima.Should().Be(1);
+    }
+
+    /// <summary>O texto diz a conta e a pasta — é o que responde "está travado?".</summary>
+    [Fact]
+    public void ProgressoDaSincronizacao_LendoPasta_NomeiaContaEPasta()
+    {
+        var report = new SyncProgressReport(
+            SyncStage.ReadingFolder, "Contato", "Caixa de Entrada", ProcessedMessages: 37);
+
+        report.Description.Should().Contain("Contato");
+        report.Description.Should().Contain("Caixa de Entrada");
+        report.Description.Should().Contain("37");
+    }
+
+    /// <summary>Zero contas não divide por zero.</summary>
+    [Fact]
+    public void ProgressoDaSincronizacao_SemContas_NaoDividePorZero()
+        => new SyncProgressReport(SyncStage.Done, "—", AccountCount: 0).Fraction.Should().Be(0);
 
     /// <summary>O ícone do botão muda com o estado, e não só a dica.</summary>
     /// <remarks>

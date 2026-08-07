@@ -290,6 +290,42 @@
                  Message="{x:Bind Shell.StatusMessage, Mode=OneWay}"
                  IsClosable="True" />
 
+        <!--
+            Progresso da sincronização manual. Fica na própria janela, e não num diálogo
+            modal: sincronizar não impede ler o que já chegou, e prender a tela atrás de uma
+            caixa seria tirar do usuário o aplicativo enquanto ele espera.
+
+            A barra mede contas, que é o único total conhecido de antemão; o texto ao lado traz
+            a pasta e a contagem de mensagens, que podem crescer sem fazer a barra recuar.
+        -->
+        <Grid Grid.Row="1"
+              Padding="12,6"
+              ColumnSpacing="12"
+              Background="{ThemeResource LayerFillColorDefaultBrush}"
+              Visibility="{x:Bind Shell.IsSyncing, Mode=OneWay}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Grid.Column="0" Spacing="4">
+                <TextBlock Text="{x:Bind Shell.SyncProgressDescription, Mode=OneWay}"
+                           Style="{ThemeResource CaptionTextBlockStyle}"
+                           TextTrimming="CharacterEllipsis" />
+
+                <ProgressBar Value="{x:Bind Shell.SyncProgressPercent, Mode=OneWay}"
+                             Minimum="0"
+                             Maximum="100"
+                             AutomationProperties.Name="Progresso da sincronização" />
+            </StackPanel>
+
+            <TextBlock Grid.Column="1"
+                       Text="Sincronizando…"
+                       VerticalAlignment="Center"
+                       Style="{ThemeResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+        </Grid>
+
         <Grid Grid.Row="2">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="280" MinWidth="200" />

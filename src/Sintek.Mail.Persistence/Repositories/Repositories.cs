@@ -123,10 +123,32 @@ public sealed class FolderRepository : IFolderRepository
             .ConfigureAwait(false);
 
     /// <inheritdoc />
+    /// <remarks>
+    /// <para>
+    /// A ordem não é detalhe. Uma conta pode ter <b>duas</b> pastas do mesmo papel: a padrão,
+    /// criada no cadastro com <c>RemotePath</c> adivinhado, e a espelhada, criada quando o
+    /// servidor anunciou o caminho real. Só "INBOX" é padronizado pela RFC 3501 — "Sent",
+    /// "Trash" e "Drafts" são chutes que o Gmail não atende.
+    /// </para>
+    /// <para>
+    /// Sem ordenação, a consulta devolvia a padrão: <c>Guid.CreateVersion7()</c> é ordenado no
+    /// tempo, então ela tem o menor identificador e o menor rowid, e os três planos possíveis
+    /// chegavam nela. Excluir uma mensagem enfileirava movimentação para uma pasta que não
+    /// existe no servidor, e a fila travava inteira (D-050).
+    /// </para>
+    /// <para>
+    /// A viva vem primeiro; o desempate por <c>Id</c> existe para a consulta ser determinística
+    /// mesmo quando as duas estão ligadas — resultado que muda entre execuções é a pior forma
+    /// de um defeito se esconder.
+    /// </para>
+    /// </remarks>
     public Task<Folder?> GetByTypeAsync(
         Guid accountId, FolderType folderType, CancellationToken cancellationToken = default)
         => _context.Folders
-            .FirstOrDefaultAsync(f => f.AccountId == accountId && f.FolderType == folderType, cancellationToken);
+            .Where(f => f.AccountId == accountId && f.FolderType == folderType)
+            .OrderByDescending(f => f.SyncEnabled)
+            .ThenBy(f => f.Id)
+            .FirstOrDefaultAsync(cancellationToken);
 
     /// <inheritdoc />
     public async Task AddAsync(Folder folder, CancellationToken cancellationToken = default)

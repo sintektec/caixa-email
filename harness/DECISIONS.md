@@ -1305,3 +1305,62 @@ terceiro ícone para o estado mais efêmero da aplicação só acrescentaria ru�
 apurado" sempre que o valor padrão for um estado com significado. Sem ele, o padrão mente
 durante toda a janela entre abrir e apurar — e essa janela é justamente quando o usuário está
 olhando.
+
+---
+
+## D-050 — Pasta padrão nasce com caminho remoto adivinhado, e isso travava a fila inteira
+
+**Data:** 2026-08-07
+**Contexto:** a fila do usuário mostrou o motivo, depois que D-046 passou a exibi-lo:
+**"The requested folder could not be found."** É a confirmação exata da segunda raiz que a
+investigação de cinco frentes havia identificado.
+
+`AddAccountHandler.CreateDefaultFolders` fixa `"INBOX"`, `"Sent"`, `"Drafts"`, `"Trash"`,
+`"Junk"`, `"Archive"`. **Só o primeiro é padronizado** (RFC 3501). Os outros são chutes, e o
+Gmail usa `[Gmail]/Trash`, `[Gmail]/Sent Mail`. `FolderMirrorService` casa exclusivamente por
+`RemotePath`, então nenhum casa: nasce a pasta espelhada ao lado, e a padrão fica com a
+sincronização desligada — **visível na árvore**, porque desligar não a esconde.
+
+`FolderRepository.GetByTypeAsync` era `FirstOrDefault` sem ordenação, e `Guid.CreateVersion7()`
+é ordenado no tempo: a padrão tem o menor identificador e o menor rowid, e todos os planos
+possíveis chegavam nela. Excluir uma mensagem enfileirava movimentação para um caminho que o
+servidor não conhece, o `MOVE` estourava, e — como a fila é sequencial e para na primeira
+falha (D-046) — **as dezoito operações seguintes ficavam presas atrás dela**, incluindo todas
+as exclusões que o usuário achava terem sido aplicadas.
+
+**Decisão, em duas partes:**
+
+1. `GetByTypeAsync` ordena por `SyncEnabled` decrescente e desempata por `Id`. A pasta viva
+   vem primeiro; o desempate existe para o resultado não mudar entre execuções, que é a pior
+   forma de um defeito se esconder.
+2. `OutboxProcessor.ApplyMoveAsync` trata destino ou origem com `SyncEnabled == false` como
+   trata pasta local: movimentação puramente local, sem comando IMAP. É honesto — pasta que
+   não está espelhada não tem contrapartida no servidor — e **drena sozinha a fila já
+   travada**, sem o usuário precisar descartar nada.
+
+**O que fica pendente, e por quê:** a raiz mais profunda é a adoção da pasta espelhada pelo
+`FolderType`, preservando o `Id` — e com ele mensagens, regras e operações já enfileiradas.
+Exige separar o que `Folder.Rename` faz hoje (nome de rede e rótulo de exibição no mesmo
+método) e critério estrito para adotar. Não entrou nesta rodada porque as duas correções acima
+devolvem o uso, e a adoção mexe em identidade de pasta — mudança que merece rodada própria.
+
+---
+
+## D-051 — A sincronização manual mostra o que está fazendo
+
+**Data:** 2026-08-07
+
+Uma sincronização silenciosa de dois minutos é indistinguível de uma travada. O usuário
+clicava e não recebia sinal nenhum — nem qual conta, nem qual pasta, nem quanto falta.
+
+`SyncProgressReport` é registro imutável e atravessa a fronteira entre a thread do laço e a da
+interface; objeto mutável ali seria lido no meio de uma alteração. O `IProgress<T>` é
+**opcional** no caso de uso: o laço de segundo plano não o passa, porque ninguém está olhando.
+
+**A barra mede contas, não mensagens.** Só a contagem de contas é conhecida de antemão —
+quantas mensagens uma pasta trará só se sabe ao terminar de lê-la. Barra que recua quando o
+total aumenta é pior que barra nenhuma: destrói a confiança em todas as outras barras da
+aplicação. O detalhe fino vai no texto ao lado, que pode crescer sem mentir.
+
+**Na janela, não em diálogo modal.** Sincronizar não impede ler o que já chegou, e prender a
+tela atrás de uma caixa seria tirar do usuário o aplicativo enquanto ele espera.

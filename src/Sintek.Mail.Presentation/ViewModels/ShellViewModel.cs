@@ -102,6 +102,22 @@ public sealed partial class ShellViewModel : ScopedViewModel
     [NotifyCanExecuteChangedFor(nameof(SyncNowCommand))]
     private bool _isSyncing;
 
+    /// <summary>Quanto da sincronização manual já passou, de 0 a 100.</summary>
+    /// <remarks>
+    /// Em porcentagem, e não fração, porque é o que o <c>ProgressBar</c> do WinUI espera com
+    /// <c>Maximum="100"</c>. A conversão fica aqui, uma vez, e não espalhada pelo XAML.
+    /// </remarks>
+    [ObservableProperty]
+    private double _syncProgressPercent;
+
+    /// <summary>O que a sincronização está fazendo agora, em texto.</summary>
+    /// <remarks>
+    /// Vazio, nunca nulo: alimenta um <c>TextBlock</c>, e o WinUI lança ao receber nulo em
+    /// propriedade de texto.
+    /// </remarks>
+    [ObservableProperty]
+    private string _syncProgressDescription = string.Empty;
+
     /// <summary>Monta a árvore a partir do banco local.</summary>
     /// <remarks>
     /// A árvore inteira — diretórios, contas, pastas, pesquisas salvas e o contador da fila —
@@ -538,6 +554,8 @@ public sealed partial class ShellViewModel : ScopedViewModel
         IsSyncing = true;
         Connectivity = ConnectivityState.Syncing;
         StatusMessage = null;
+        SyncProgressPercent = 0;
+        SyncProgressDescription = "Preparando…";
 
         try
         {
@@ -564,10 +582,30 @@ public sealed partial class ShellViewModel : ScopedViewModel
 
                     var worst = ConnectivityState.Online;
                     string? firstError = null;
+                    var indice = 0;
 
                     foreach (var accountId in accountIds)
                     {
-                        var result = await syncAccount.HandleAsync(accountId, cancellationToken).ConfigureAwait(true);
+                        indice++;
+
+                        // O Progress<T> captura o contexto de sincronização de quem o cria —
+                        // aqui, a thread da interface. É o que permite ao caso de uso relatar
+                        // de onde estiver sem que o ViewModel precise despachar nada.
+                        var posicao = indice;
+                        var relator = new Progress<SyncProgressReport>(report =>
+                        {
+                            var comPosicao = report with
+                            {
+                                AccountIndex = posicao,
+                                AccountCount = accountIds.Count,
+                            };
+
+                            SyncProgressPercent = comPosicao.Fraction * 100;
+                            SyncProgressDescription = comPosicao.Description;
+                        });
+
+                        var result = await syncAccount
+                            .HandleAsync(accountId, cancellationToken, relator).ConfigureAwait(true);
 
                         if (result.Succeeded)
                         {
@@ -611,6 +649,8 @@ public sealed partial class ShellViewModel : ScopedViewModel
         finally
         {
             IsSyncing = false;
+            SyncProgressPercent = 0;
+            SyncProgressDescription = string.Empty;
         }
     }
 

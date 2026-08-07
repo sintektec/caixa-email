@@ -223,7 +223,18 @@ public sealed class OutboxProcessor : IOutboxDrainer
 
         // Pastas locais — pendências, caixa de saída — não existem no servidor. Mover
         // para elas é uma decisão puramente local e não gera comando IMAP.
-        if (target.IsLocalOnly || source.IsLocalOnly)
+        //
+        // Pasta com sincronização desligada cai no mesmo caso, e por um motivo que custou
+        // caro: as pastas padrão nascem com RemotePath adivinhado ("Sent", "Trash",
+        // "Drafts"), e só "INBOX" é padronizado pela RFC 3501. Num Gmail — cujos caminhos
+        // reais são "[Gmail]/Trash", "[Gmail]/Sent Mail" — nenhum dos chutes casa, e o
+        // espelhamento desliga a sincronização delas por não as encontrar no servidor.
+        //
+        // Emitir o MOVE para esse caminho inexistente rendia FolderNotFoundException. E como
+        // a fila é sequencial e para na primeira falha, a operação travava todas as seguintes
+        // indefinidamente: dezoito movimentações presas, e a exclusão nunca chegando ao
+        // servidor (D-050).
+        if (target.IsLocalOnly || source.IsLocalOnly || !target.SyncEnabled || !source.SyncEnabled)
         {
             message.MarkSynced(_timeProvider.GetUtcNow());
             return;

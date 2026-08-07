@@ -102,8 +102,15 @@ public sealed class SyncAccountHandler
     }
 
     /// <summary>Sincroniza uma conta.</summary>
+    /// <remarks>
+    /// O <c>progress</c> é opcional: o laço de segundo plano não o passa, porque ninguém está
+    /// olhando. Quem o passa é a sincronização manual, que nasceu de um clique e precisa
+    /// mostrar ao usuário o que está acontecendo.
+    /// </remarks>
     public async Task<SyncAccountResult> HandleAsync(
-        Guid accountId, CancellationToken cancellationToken = default)
+        Guid accountId,
+        CancellationToken cancellationToken = default,
+        IProgress<SyncProgressReport>? progress = null)
     {
         var account = await _accounts.GetByIdAsync(accountId, cancellationToken).ConfigureAwait(false);
 
@@ -122,7 +129,7 @@ public sealed class SyncAccountHandler
 
         try
         {
-            return await RunCycleAsync(account, cancellationToken).ConfigureAwait(false);
+            return await RunCycleAsync(account, progress, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -173,8 +180,18 @@ public sealed class SyncAccountHandler
         }
     }
 
-    private async Task<SyncAccountResult> RunCycleAsync(Account account, CancellationToken cancellationToken)
+    private async Task<SyncAccountResult> RunCycleAsync(
+        Account account, IProgress<SyncProgressReport>? progress, CancellationToken cancellationToken)
     {
+        var nome = string.IsNullOrWhiteSpace(account.DisplayName)
+            ? account.EmailAddress.Value
+            : account.DisplayName;
+
+        void Report(SyncStage stage, string? folder = null, int processed = 0)
+            => progress?.Report(new SyncProgressReport(stage, nome, folder, ProcessedMessages: processed));
+
+        Report(SyncStage.Connecting);
+
         var connection = await _imapClient.ConnectAsync(account, cancellationToken).ConfigureAwait(false);
 
         if (!connection.Succeeded)
@@ -199,7 +216,10 @@ public sealed class SyncAccountHandler
                 connection.ErrorMessage, connection.IsAuthenticationFailure);
         }
 
+        Report(SyncStage.DrainingOutbox);
         var drained = await _outboxDrainer.DrainAsync(account, cancellationToken).ConfigureAwait(false);
+
+        Report(SyncStage.MirroringFolders);
 
         var remoteFolders = await _imapClient.ListFoldersAsync(cancellationToken).ConfigureAwait(false);
         var mirrored = await _folderMirror.MirrorAsync(account.Id, remoteFolders, cancellationToken)
@@ -215,7 +235,12 @@ public sealed class SyncAccountHandler
         {
             cancellationToken.ThrowIfCancellationRequested();
 
+            Report(SyncStage.ReadingFolder, folder.DisplayName);
+
             var result = await _messageSync.SyncFolderAsync(folder, cancellationToken).ConfigureAwait(false);
+
+            // Depois de ler, e não antes: o total da pasta só existe quando ela termina.
+            Report(SyncStage.ReadingFolder, folder.DisplayName, result.Added + result.Updated);
 
             added += result.Added;
             updated += result.Updated;
@@ -230,6 +255,7 @@ public sealed class SyncAccountHandler
 
         try
         {
+            Report(SyncStage.Calendar);
             calendar = await _calendarSync.SyncAsync(account, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
