@@ -27,4 +27,26 @@ public interface IUnitOfWork
     Task ExecuteInTransactionAsync(
         Func<CancellationToken, Task> operation,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Abandona tudo o que estava pendente de gravação.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Existe para o caminho de tratamento de falha. Quando um <c>SaveChanges</c> falha, o que
+    /// causou a falha <b>continua pendente</b> — e a próxima gravação, mesmo de outra entidade
+    /// e por outro motivo, arrasta a entrada ofensora junto e falha de novo.
+    /// </para>
+    /// <para>
+    /// O efeito prático foi cruel: o <c>catch</c> que registra o motivo da falha na conta era
+    /// ele próprio derrubado pela falha anterior. O motivo nunca era gravado, o log nem
+    /// chegava a sair, e a interface mostrava "a última sincronização falhou" sem dizer por
+    /// quê — exatamente a informação que existe para ser dita (D-048).
+    /// </para>
+    /// <para>
+    /// <b>Só no tratamento de falha.</b> Usar isto para "resolver" um conflito no caminho
+    /// normal descartaria trabalho do usuário sem ele saber.
+    /// </para>
+    /// </remarks>
+    void DiscardPendingChanges();
 }

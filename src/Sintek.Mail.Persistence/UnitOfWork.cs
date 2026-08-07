@@ -45,6 +45,9 @@ public sealed class UnitOfWork : IUnitOfWork
     }
 
     /// <inheritdoc />
+    public void DiscardPendingChanges() => _context.ChangeTracker.Clear();
+
+    /// <inheritdoc />
     public async Task<TResult> ExecuteInTransactionAsync<TResult>(
         Func<CancellationToken, Task<TResult>> operation,
         CancellationToken cancellationToken = default)

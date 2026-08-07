@@ -252,6 +252,25 @@ public class ShellSyncVisibilityTests
     public void DescreverUltimaSincronizacao_NenhumaContaSincronizou_DizIsso()
         => ShellViewModel.DescribeLastSync(null, Now).Should().Contain("Nenhuma conta");
 
+    /// <summary>
+    /// O aplicativo não afirma estar sem conexão antes de tentar conectar.
+    /// </summary>
+    /// <remarks>
+    /// O estado inicial era <c>Offline</c>, e a dica dizia "Sem conexão. As alterações serão
+    /// sincronizadas quando a internet voltar." — na abertura, com a internet funcionando.
+    /// Não é um estado impreciso, é informação falsa, e das que mandam o usuário procurar
+    /// defeito no roteador (D-049).
+    /// </remarks>
+    [Fact]
+    public void EstadoInicial_AntesDeQualquerTentativa_NaoAfirmaEstarSemConexao()
+    {
+        var shell = CreateShell();
+
+        shell.Connectivity.Should().Be(ConnectivityState.Unknown);
+        shell.ConnectivityDescription.Should().NotContain("Sem conexão");
+        shell.ConnectivityDescription.Should().Contain("Ainda não sincronizado");
+    }
+
     /// <summary>O ícone do botão muda com o estado, e não só a dica.</summary>
     /// <remarks>
     /// Estado que só existe na dica é estado que ninguém lê: exige parar o mouse em cima, e

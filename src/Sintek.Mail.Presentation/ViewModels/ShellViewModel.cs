@@ -16,6 +16,17 @@ namespace Sintek.Mail.Presentation.ViewModels;
 /// <summary>Estado de conectividade exibido na barra superior.</summary>
 public enum ConnectivityState
 {
+    /// <summary>
+    /// Ainda não se sabe: nenhuma sincronização foi tentada nesta sessão.
+    /// </summary>
+    /// <remarks>
+    /// É o estado inicial, e precisa existir. Antes o padrão era <see cref="Offline"/>, e o
+    /// aplicativo abria <b>afirmando estar sem conexão</b> — antes de ter tentado conectar uma
+    /// única vez. Com a internet funcionando, isso não é um estado impreciso: é uma
+    /// informação falsa, e das que fazem o usuário ir procurar defeito no roteador (D-049).
+    /// </remarks>
+    Unknown,
+
     /// <summary>Sem conexão. A aplicação continua utilizável com os dados locais.</summary>
     Offline,
 
@@ -56,7 +67,7 @@ public sealed partial class ShellViewModel : ScopedViewModel
 
     /// <summary>Estado de conectividade exibido na barra superior.</summary>
     [ObservableProperty]
-    private ConnectivityState _connectivity = ConnectivityState.Offline;
+    private ConnectivityState _connectivity = ConnectivityState.Unknown;
 
     /// <summary>Quantas operações aguardam sincronização.</summary>
     [ObservableProperty]
@@ -687,6 +698,7 @@ public sealed partial class ShellViewModel : ScopedViewModel
     /// <summary>Descrição textual do estado de conectividade, para leitores de tela.</summary>
     public string ConnectivityDescription => Connectivity switch
     {
+        ConnectivityState.Unknown => "Ainda não sincronizado. Clique para sincronizar todas as contas.",
         ConnectivityState.Offline => "Sem conexão. As alterações serão sincronizadas quando a internet voltar.",
         ConnectivityState.Online => LastSyncDescription,
         ConnectivityState.Syncing => "Sincronizando mensagens.",
@@ -710,6 +722,9 @@ public sealed partial class ShellViewModel : ScopedViewModel
         ConnectivityState.Syncing => "\uE895",
         ConnectivityState.Error => "\uE783",
         ConnectivityState.Offline => "\uEB5E",
+
+        // Unknown e Online usam o mesmo glifo de sincronizar: nenhum dos dois é alerta, e
+        // inventar um terceiro ícone para "ainda não tentei" só acrescentaria ruído.
         _ => "\uE895",
     };
 

@@ -1253,3 +1253,55 @@ investigação: `ValueGeneratedNever()` no mapeamento, e `Entry(filho).State = A
 nulo para sempre: o curto-circuito de idempotência nunca passa a valer, todo clique refaz o
 `FETCH` pela rede, e ao reabrir o aplicativo não há corpo nenhum. O índice FTS também nunca é
 alimentado — a busca era a terceira vítima, silenciosa.
+
+---
+
+## D-048 — O registro da falha não pode ser derrubado pela falha que ele registra
+
+**Data:** 2026-08-06
+**Contexto:** a faixa dizia "srmitter - Gmail: a última sincronização falhou" **sem o motivo**,
+que era justamente o que D-038 existia para mostrar.
+
+O `catch` de `SyncAccountHandler.HandleAsync` fazia, nesta ordem: `MarkSyncFailed`,
+`SaveChangesAsync`, e **só então** o `_logger.LogError`. Quando a gravação também falha — e
+ela falha sempre que o rastreador ficou sujo, porque o que causou a falha continua pendente e
+a próxima gravação o arrasta junto — a exceção nova substitui a original antes de o log sair.
+Resultado: sem log, sem `LastSyncError`, e uma faixa que anuncia falha sem dizer qual.
+
+**Decisão, em três partes:**
+1. **Log primeiro.** É a única coisa que não depende do banco.
+2. `IUnitOfWork.DiscardPendingChanges()` antes de registrar. A porta é da Aplicação e a
+   implementação usa `ChangeTracker.Clear()` na fronteira — a Aplicação não conhece o EF Core.
+3. A conta é **relida** depois do descarte. Limpar o rastreador desanexa a instância anterior,
+   e alterá-la passaria a não gravar nada, em silêncio — trocaríamos um defeito barulhento por
+   um mudo.
+
+E a gravação do motivo tem `catch` próprio: falhar ao registrar a falha não pode virar uma
+segunda falha que ninguém trata.
+
+**`DiscardPendingChanges` só no tratamento de falha.** Usá-lo para "resolver" conflito no
+caminho normal descartaria trabalho do usuário sem ele saber.
+
+---
+
+## D-049 — O estado inicial é "ainda não sei", não "sem conexão"
+
+**Data:** 2026-08-06
+
+`ShellViewModel.Connectivity` nascia `Offline`, e a dica do botão dizia "Sem conexão. As
+alterações serão sincronizadas quando a internet voltar." — na abertura, antes de qualquer
+tentativa, com a internet funcionando.
+
+Isso não é imprecisão: é afirmação falsa, e das caras. Manda o usuário procurar defeito no
+roteador, e desqualifica o indicador para quando ele estiver certo.
+
+**Decisão:** `ConnectivityState.Unknown` como estado inicial, com texto que diz o que é e o
+que fazer: "Ainda não sincronizado. Clique para sincronizar todas as contas."
+
+**O ícone continua o mesmo de `Online`.** Nem "ainda não tentei" nem "em dia" são alerta, e um
+terceiro ícone para o estado mais efêmero da aplicação só acrescentaria ruído.
+
+**Regra geral que este caso ilustra:** enum de estado precisa de um membro para "ainda não
+apurado" sempre que o valor padrão for um estado com significado. Sem ele, o padrão mente
+durante toda a janela entre abrir e apurar — e essa janela é justamente quando o usuário está
+olhando.

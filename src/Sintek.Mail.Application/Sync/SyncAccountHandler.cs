@@ -132,12 +132,42 @@ public sealed class SyncAccountHandler
         }
         catch (Exception ex)
         {
-            // A mensagem entra em LastSyncError, que a interface exibe. Ela não pode conter
-            // credencial nem conteúdo de mensagem — daí só ex.Message, nunca o objeto todo.
-            account.MarkSyncFailed(ex.Message, isAuthenticationFailure: false, _timeProvider.GetUtcNow());
-            await _unitOfWork.SaveChangesAsync(CancellationToken.None).ConfigureAwait(false);
-
+            // O log vem PRIMEIRO. Ele estava depois da gravação, e quando a gravação também
+            // falhava — o que acontece sempre que o rastreador ficou sujo — a exceção original
+            // se perdia inteira: sem log, sem LastSyncError, sem nada. O diagnóstico do
+            // usuário virava "falhou" sem motivo (D-048).
             _logger.LogError(ex, "A sincronização da conta {AccountId} falhou.", accountId);
+
+            // Descartar antes de registrar. O que causou a falha continua pendente, e sem
+            // isto a própria gravação do motivo arrasta a entrada ofensora junto e falha de
+            // novo — o registro da falha derrubado pela falha que ele existe para registrar.
+            _unitOfWork.DiscardPendingChanges();
+
+            // A conta foi lida pelo contexto que acabou de ser limpo, então precisa ser lida
+            // de novo para ficar rastreada. Sem isso, MarkSyncFailed altera um objeto que o
+            // contexto não conhece mais e a gravação não faz nada — em silêncio.
+            var tracked = await _accounts.GetByIdAsync(accountId, CancellationToken.None)
+                .ConfigureAwait(false);
+
+            if (tracked is not null)
+            {
+                // A mensagem entra em LastSyncError, que a interface exibe. Ela não pode conter
+                // credencial nem conteúdo de mensagem — daí só ex.Message, nunca o objeto todo.
+                tracked.MarkSyncFailed(
+                    ex.Message, isAuthenticationFailure: false, _timeProvider.GetUtcNow());
+
+                try
+                {
+                    await _unitOfWork.SaveChangesAsync(CancellationToken.None).ConfigureAwait(false);
+                }
+                catch (Exception gravacao)
+                {
+                    // Falhar ao registrar a falha não pode virar uma segunda falha que ninguém
+                    // trata. O log acima já preservou o que importa.
+                    _logger.LogError(
+                        gravacao, "O motivo da falha da conta {AccountId} não pôde ser gravado.", accountId);
+                }
+            }
 
             return Failure(ex.Message);
         }
