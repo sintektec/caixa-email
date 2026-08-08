@@ -1,16 +1,25 @@
 {
-  "$schema": "https://json.schemastore.org/claude-code-settings.json",
-  "hooks": {
-    "SessionStart": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash .claude/bootstrap-skills.sh"
-          }
-        ]
-      }
-    ]
-  }
+    "$schema":  "https://json.schemastore.org/claude-code-settings.json",
+    "hooks":  {
+                  "SessionStart":  [
+                                       {
+                                           "matcher":  "",
+                                           "hooks":  [
+                                                         {
+                                                             "type":  "command",
+                                                             "command":  "bash .claude/bootstrap-skills.sh"
+                                                         }
+                                                     ]
+                                       },
+                                       {
+                                           "matcher":  "",
+                                           "hooks":  [
+                                                         {
+                                                             "type":  "command",
+                                                             "command":  "bash \"$CLAUDE_PROJECT_DIR/.claude/bootstrap-skills.sh\""
+                                                         }
+                                                     ]
+                                       }
+                                   ]
+              }
 }
