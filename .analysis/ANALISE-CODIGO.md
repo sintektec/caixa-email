@@ -2,7 +2,7 @@
 
 **Data:** 11/08/2026 · **Escopo:** todo o código em `src/` e `tests/` no branch `claude/caixa-postal-code-analysis-hknmn7`
 
-> **Limitação da análise:** não foi possível compilar. O container não tem SDK .NET e o proxy nega `builds.dotnet.microsoft.com` (403 no CONNECT). Tudo abaixo é leitura estática. Os itens de erro de compilação (A10, A11) são inferência; os bugs de lógica e runtime não dependem de compilar para serem verdadeiros.
+> **Como esta análise foi feita:** não foi possível compilar localmente — o container não tem SDK .NET e o proxy nega `builds.dotnet.microsoft.com` (403 no CONNECT). A leitura do código é estática. **Mas o build real foi recuperado do CI** (run [31237494762](https://github.com/sintektec/caixa-email/actions/runs/31237494762), push em `main`, 08/08/2026), o que confirma parte dos achados com saída de compilador de verdade — ver seção 1.1.
 
 ---
 
@@ -16,11 +16,45 @@ O `STATUS.md` afirma que Domain, Application, Persistence, Infrastructure e App 
 
 E o diferencial do produto — a validação por Diretório de Domínio — **não funciona para nenhuma mensagem sincronizada**, por dois defeitos independentes no mapeamento IMAP (B7).
 
-Ordem de trabalho recomendada: B1–B8 antes de qualquer coisa, depois A1–A11. Os itens M são dívida real, mas não bloqueiam.
+Ordem de trabalho recomendada: B0–B8 antes de qualquer coisa, depois A1–A11. Os itens M são dívida real, mas não bloqueiam.
 
----
+### 1.1 O que o build real diz
+
+O CI **existe e roda** (76 execuções). O último build de `main` é de 08/08/2026 e **falhou com 2 erros — não 54**:
+
+```
+error CS0103: The name 'InitializeComponent' does not exist in the current context
+    src/Sintek.Mail.App/MainPage.xaml.cs(12,9)
+
+error MSB3073: The command "...microsoft.windowsappsdk\1.6.240923002\...\net472\XamlCompiler.exe
+    obj\x86\Release\net10.0-windows10.0.19041.0\input.json ..." exited with code 1
+    src/Sintek.Mail.App/Sintek.Mail.App.csproj
+
+Build FAILED.    21 Warning(s)    2 Error(s)
+```
+
+Três fatos importantes saem daí:
+
+1. **Os dois erros são o mesmo problema.** `InitializeComponent` é gerado pelo compilador de XAML; quando o `XamlCompiler.exe` morre, o partial não existe e o C# reclama em seguida. Há um único ponto de falha: a compilação de XAML do projeto App (ver B0).
+2. **Todos os outros 5 projetos de `src/` e os 8 de `tests/` compilam.** Domain, Application, Infrastructure, Infrastructure.Windows e Persistence geram DLL sem erro. Não existem erros de compilação nos testes — os problemas deles são de asserção (A9/A10), e nunca foram executados porque o passo `dotnet test` usa `--no-build` e o job morre antes.
+3. **O CI está vermelho em `main` desde pelo menos 08/08 e ninguém agiu.** Não é falta de CI; é CI ignorado (P3).
+
+O log também traz 21 warnings, e alguns são achados por si (ver B0 e M2).
 
 ## 2. Bloqueadores
+
+### B0 — O build quebra: Windows App SDK 1.6 contra .NET 10
+
+`src/Sintek.Mail.App/Sintek.Mail.App.csproj:19` — `Microsoft.WindowsAppSDK 1.6.240923002` com `TargetFramework=net10.0-windows10.0.19041.0`.
+
+O `XamlCompiler.exe` que vem no 1.6 é distribuído em `tools\net472\` e é anterior ao suporte a .NET 10; ele sai com código 1 e derruba o build do App inteiro. D-001 registrou explicitamente **2.3.1** como consequência da escolha do .NET 10, e o `PARECER-VALIDACAO.md` §2.4 confirmou essa numeração contra a fonte oficial. O csproj ficou em 1.6.
+
+Duas outras coisas contribuem para a falha de XAML e precisam ser corrigidas junto — qual delas o compilador reclama primeiro só um build local diz:
+
+- `MainWindow.xaml:32,44` usam `x:DataType="local:DomainDirectoryDto"` e `local:MessageDto`, mas o elemento raiz (linhas 3-6) declara apenas `xmlns` e `xmlns:x`. **Não existe `xmlns:local`.** E os DTOs estão em `Sintek.Mail.Application.DTOs`, outro assembly.
+- `MainPage.xaml` / `MainPageViewModel` são resto de template (`"Hello, WinUI!"`, contador com botão), não são usados por nada, e são exatamente o arquivo que aparece no `CS0103`. Apagar os dois resolve o erro e remove código morto (M7).
+
+**Correção:** subir para Windows App SDK 2.3.1, declarar `xmlns:local` (ou o namespace correto dos DTOs) em `MainWindow.xaml`, e apagar `MainPage.*` e `MainPageViewModel`.
 
 ### B1 — A chave de criptografia do banco é sorteada a cada inicialização
 
@@ -45,6 +79,15 @@ Além disso, `Guid.NewGuid()` não é material de chave: são 122 bits úteis co
 `src/Sintek.Mail.Persistence/Sintek.Mail.Persistence.csproj:10-12`
 
 O projeto referencia `Microsoft.EntityFrameworkCore.Sqlite` **e** `SQLitePCLRaw.bundle_e_sqlcipher`. O primeiro traz `SQLitePCLRaw.bundle_e_sqlite3` como dependência transitiva — o bundle **sem** criptografia. Com dois bundles na mesma aplicação, qual provider registra primeiro é indeterminado. Se vencer o `e_sqlite3`, o `PRAGMA key` vira um pragma desconhecido, e o SQLite **ignora pragmas desconhecidos sem erro**. Banco em texto plano, zero sinal de que algo deu errado.
+
+**Isto não é hipótese — o log do CI mostra o bundle errado sendo restaurado:**
+
+```
+src/Sintek.Mail.Persistence/Sintek.Mail.Persistence.csproj : warning NU1903:
+Package 'SQLitePCLRaw.lib.e_sqlite3' 2.1.11 has a known high severity vulnerability
+```
+
+`lib.e_sqlite3` é a biblioteca nativa **sem** criptografia. Ela está entrando em `Sintek.Mail.Persistence` (e em `App`, e em `PersistenceTests`) exatamente pela dependência transitiva descrita acima. De quebra, tem vulnerabilidade de severidade **alta** conhecida ([GHSA-2m69-gcr7-jv3q](https://github.com/advisories/GHSA-2m69-gcr7-jv3q)).
 
 Agravantes:
 - Não existe nenhuma chamada a `SQLitePCL.Batteries_V2.Init()` no código (`grep -rn "Batteries" src/` não retorna nada), apesar de D-004 exigir explicitamente.
@@ -245,9 +288,7 @@ Parte deles falha duas vezes: `"user@.com"`, `".com"`, `"example."` e `"invalid"
 
 Correlato: `EmailAddress.TryParse` (`EmailAddress.cs:41-53`) captura apenas `InvalidEmailAddressException` e deixa `InvalidEmailDomainException` escapar. Um `TryParse` que lança é uma armadilha; capture a base `DomainException`.
 
-### A11 — XAML não compila: prefixo `local:` não declarado
-
-`src/Sintek.Mail.App/MainWindow.xaml:32` e `:44` usam `x:DataType="local:DomainDirectoryDto"` e `local:MessageDto`, mas o elemento raiz (linhas 3-6) declara só `xmlns` e `xmlns:x`. Não há `xmlns:local`. E os DTOs estão em `Sintek.Mail.Application.DTOs`, em outro assembly — o namespace precisa apontar para lá.
+Nenhum desses testes jamais rodou: o job do CI morre no `dotnet build` e o passo `dotnet test --no-build` nunca chega a executar.
 
 ---
 
@@ -255,19 +296,24 @@ Correlato: `EmailAddress.TryParse` (`EmailAddress.cs:41-53`) captura apenas `Inv
 
 **M1 — Oito projetos de teste, quatro vazios.** `tests/Sintek.Mail.{Domain,Application,Persistence,Infrastructure}.Tests` (com ponto) são stubs de `dotnet new xunit` com um `Test1` vazio; `tests/Sintek.Mail.{...}Tests` (sem ponto) têm os testes reais. Duas convenções de nome, dois conjuntos de versão de xunit/Test.Sdk, e `AwesomeAssertions` declarado **só nos vazios** — os testes reais usam `Assert` puro, contrariando D-005. Apagar um dos conjuntos.
 
-**M2 — As versões de pacote contradizem o plano validado.** O `PARECER-VALIDACAO.md` §2.2 verificou versões contra a api.nuget.org; o código usa outras, mais antigas, em todos os casos:
+**M2 — As versões de pacote contradizem o plano validado, e 5 delas têm vulnerabilidade conhecida.** O `PARECER-VALIDACAO.md` §2.2 verificou versões contra a api.nuget.org; o código usa outras, mais antigas, em todos os casos:
 
-| Pacote | Plano validado | No código |
-|---|---|---|
-| Microsoft.WindowsAppSDK | 2.3.1 | **1.6.240923002** |
-| MailKit | 4.17.0 | 4.14.1 |
-| CommunityToolkit.Mvvm | 8.4.2 | 8.2.2 |
-| Microsoft.Identity.Client | 4.87.0 | 4.78.0 |
-| Google.Apis.Auth | 1.75.0 | 1.71.0 |
-| HtmlSanitizer | 9.1.97x | 9.0.886 |
-| EF Core Sqlite | 10.0.10 | 10.0.0 |
+| Pacote | Plano validado | No código | Aviso no CI |
+|---|---|---|---|
+| Microsoft.WindowsAppSDK | 2.3.1 | **1.6.240923002** | quebra o build (B0) |
+| MailKit | 4.17.0 | 4.14.1 | NU1902 moderada |
+| MimeKit | 4.17.0 | 4.14.0 (transitivo) | NU1902 moderada |
+| HtmlSanitizer | 9.1.97x | 9.0.886 | NU1902 moderada |
+| AngleSharp | — | 0.17.1 (transitivo) | NU1902 moderada |
+| SQLitePCLRaw.lib.e_sqlite3 | não deveria existir | 2.1.11 (transitivo) | **NU1903 alta** |
+| CommunityToolkit.Mvvm | 8.4.2 | 8.2.2 | — |
+| Microsoft.Identity.Client | 4.87.0 | 4.78.0 | — |
+| Google.Apis.Auth | 1.75.0 | 1.71.0 | — |
+| EF Core Sqlite | 10.0.10 | 10.0.0 | — |
 
-O Windows App SDK é o caso grave: 1.6 é anterior ao suporte a .NET 10 e o projeto tem `TargetFramework=net10.0-windows10.0.19041.0`. D-001 registrou 2.3.1 como consequência da decisão. Dentro do mesmo `Persistence.csproj` convivem `Microsoft.Data.Sqlite.Core 10.0.10` e `EntityFrameworkCore.Sqlite 10.0.0`. E `PersistenceTests` usa `EntityFrameworkCore.InMemory 9.0.0` contra EF Core 10 na camada testada. Não há `Directory.Packages.props` para manter nada alinhado.
+O build de `main` emite 21 warnings, a maioria deles NU1902/NU1903. O `lib.e_sqlite3` acumula os dois problemas: severidade alta **e** é a prova de que o bundle sem criptografia está entrando no projeto (B2).
+
+Dentro do mesmo `Persistence.csproj` convivem `Microsoft.Data.Sqlite.Core 10.0.10` e `EntityFrameworkCore.Sqlite 10.0.0`. E `PersistenceTests` usa `EntityFrameworkCore.InMemory 9.0.0` contra EF Core 10 na camada testada. Não há `Directory.Packages.props` para manter nada alinhado, nem `NuGetAudit` tratado como erro para que esses avisos parem de ser ignorados.
 
 **M3 — `Update()` em entidade já rastreada.** `MailRepository` e `SyncQueue` chamam `_context.X.Update(entity)` em entidades vindas do mesmo contexto. Isso marca **todas** as propriedades (e o grafo inteiro) como modificadas, anula o change tracking e aumenta a janela de lost update.
 
@@ -277,11 +323,11 @@ O Windows App SDK é o caso grave: 1.6 é anterior ao suporte a .NET 10 e o proj
 
 **M6 — Erros de rede em texto livre no banco.** `account.LastSyncError = ex.Message` e `OutboxOperation.LastError` guardam mensagens de exceção cruas, que podem carregar resposta de servidor e endereços — o CONTEXT.md diz que logs nunca registram conteúdo sigiloso. O `catch (Exception)` genérico também engole `OperationCanceledException` e registra cancelamento como falha de sincronização.
 
-**M7 — Restos de template em produção.** `Class1.cs` em Domain, Application, Infrastructure e Persistence; `MainPage.xaml` + `MainPageViewModel` ("Hello, WinUI!", contador com botão) sem uso; `Package.appxmanifest` ainda com `Publisher="CN=AppPublisher"`; e `build-output.txt`, `dotnet-path.txt` (com caminho `C:\Program Files\...`) e `sdks.txt` vazio versionados na raiz.
+**M7 — Restos de template em produção, um deles quebrando o build.** `MainPage.xaml` + `MainPageViewModel` ("Hello, WinUI!", contador com botão) não são usados por nada e são exatamente o arquivo do `CS0103` (ver B0). Além deles: `Class1.cs` em Domain, Application, Infrastructure e Persistence; `Package.appxmanifest` ainda com `Publisher="CN=AppPublisher"`; e `build-output.txt`, `dotnet-path.txt` (com caminho `C:\Program Files\...`) e `sdks.txt` vazio versionados na raiz.
 
 **M8 — Reparse de domínio por endereço.** `DomainMembershipEvaluator.IsAddressInDomain` chama `EmailDomain.Parse(_domain.DomainName)` a cada invocação, dentro de laços por endereço, e reparseia todos os aliases junto. Parse uma vez no construtor. Os métodos privados `Evaluate*` também recebem `targetDomain` e `allowSubdomains` e não usam nenhum dos dois.
 
-**M9 — `CredentialManagerStore`: vazamento no erro e desvio de D-003.** `Marshal.FreeCoTaskMem` (`CredentialManagerStore.cs:32`) está fora de `finally`: se `CredWrite` falhar e lançar, vaza o buffer não gerenciado — que contém o segredo em texto plano. Além disso, D-003 decidiu CsWin32 e a implementação é P/Invoke manual, sem que DECISIONS.md fosse atualizado. O projeto ainda tem `TargetFramework=net10.0` em vez de `net10.0-windows`, então o analisador de plataforma não consegue apontar chamadas Windows-only.
+**M9 — `CredentialManagerStore`: vazamento no erro, nulabilidade e desvio de D-003.** `Marshal.FreeCoTaskMem` (`CredentialManagerStore.cs:32`) está fora de `finally`: se `CredWrite` falhar e lançar, vaza o buffer não gerenciado — que contém o segredo em texto plano. O build também acusa `warning CS8619` em `CredentialManagerStore.cs(47,20)` (`Task<string>` devolvido onde se espera `Task<string?>`), sinal de que a anulabilidade do retorno de `Marshal.PtrToStringUni` não foi tratada. Além disso, D-003 decidiu CsWin32 e a implementação é P/Invoke manual, sem que DECISIONS.md fosse atualizado. O projeto ainda tem `TargetFramework=net10.0` em vez de `net10.0-windows`, então o analisador de plataforma não consegue apontar chamadas Windows-only.
 
 **M10 — A UI é uma casca.** Todos os comandos de ViewModel são TODO. `LoadDomainsCommand` não é disparado por nada — nem `Loaded`, nem construtor — então a lista de domínios nunca é preenchida. `AddAccountHandler` está registrado no DI e nenhum caminho de UI chega nele. `MainViewModel.LoadDomainsAsync` ainda mapeia `AccountCount` como `0` fixo.
 
@@ -306,7 +352,12 @@ E o script não limpa clone parcial. Depois da primeira falha, `$CLONE` existe s
 
 Correções: remover o bloco duplicado do settings.json; fazer `rm -rf "$CLONE"` quando `.git` estiver ausente antes de re-clonar; e proteger com lock (`mkdir` atômico ou `flock`).
 
-**P3 — O CI nunca rodou.** `.github/workflows/ci.yml` dispara apenas em push/PR para `main`. Todo o trabalho está em branch de feature e não há PR aberto. A alegação dos 54 erros nunca foi confrontada com um build real porque nenhum build real aconteceu. Adicionar `workflow_dispatch` e cobrir os branches `claude/**`.
+**P3 — O CI roda, está vermelho, e ninguém age.** São 76 execuções registradas. O build de `main` falha desde pelo menos 08/08/2026 com os 2 erros da seção 1.1, e nenhum commit desde então tentou corrigi-los. O problema não é falta de sinal — o sinal existe, é confiável, aponta o arquivo e a linha, e está sendo ignorado. Enquanto isso o `STATUS.md` seguia repetindo um número ("54 erros") de uma execução manual antiga que o CI já tinha contradito.
+
+Três ajustes que valem no `ci.yml`:
+- `workflow_dispatch` e gatilho em `claude/**`, para não depender de PR aberto para ter feedback.
+- `dotnet test` com `--no-build` faz o passo de teste nunca rodar quando o build falha. Como o App é o único projeto que quebra, vale separar o job: `dotnet test` sobre os projetos de teste (que compilam hoje) daria sinal real sobre A9/A10 mesmo com o App vermelho.
+- `<TreatWarningsAsErrors>` para NU1902/NU1903, ou `dotnet list package --vulnerable --include-transitive` como passo dedicado — os 5 pacotes vulneráveis de M2 já aparecem no log e passam batido no meio de 21 warnings.
 
 ---
 

@@ -125,3 +125,10 @@
 
 **Próxima sessão:**
 - Atacar B1–B8 na ordem. Antes disso, decidir se o alvo é fazer a Fase 1 funcionar de ponta a ponta (uma conta, um sync, uma leitura) ou continuar ampliando superfície.
+
+**Correção durante a sessão (build real do CI):**
+Após a primeira versão da análise, recuperei o log do CI (run 31237494762, `main`, 08/08) e corrigi dois achados:
+- O build falha com **2 erros, não 54**, e nenhuma das 4 causas listadas no STATUS antigo. A causa real é o Windows App SDK **1.6** contra `net10.0-windows`: o `XamlCompiler.exe` morre e o `InitializeComponent` de `MainPage.xaml.cs` deixa de existir. Promovido a **B0** — é o único item entre o repositório e um build verde. Os outros 5 projetos de `src/` e os 8 de `tests/` compilam.
+- **P3 estava errado.** O CI não é inexistente: são 76 execuções, ele roda em PR, e está vermelho em `main` desde 08/08 sem que ninguém agisse. Reescrito.
+- Ganho: o log prova B2. `SQLitePCLRaw.lib.e_sqlite3 2.1.11` (bundle **sem** criptografia, e com vulnerabilidade de severidade alta) está sendo restaurado em `Persistence` — o conflito de bundles não é hipótese.
+- Novo em M2: 5 pacotes com vulnerabilidade conhecida no log (MailKit, MimeKit, HtmlSanitizer, AngleSharp moderadas; `lib.e_sqlite3` alta).
