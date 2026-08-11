@@ -58,3 +58,6 @@ src/Sintek.Mail.App/Properties/PublishProfiles/
 launchSettings.json
 .claude/skills-globais-repo/
 .claude/bootstrap-skills.log
+.claude/skills-globais-repo.tmp.*
+.claude/bootstrap-skills.log.old
+.claude/.bootstrap-skills.lock/
