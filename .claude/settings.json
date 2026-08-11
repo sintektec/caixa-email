@@ -7,15 +7,6 @@
                                            "hooks":  [
                                                          {
                                                              "type":  "command",
-                                                             "command":  "bash .claude/bootstrap-skills.sh"
-                                                         }
-                                                     ]
-                                       },
-                                       {
-                                           "matcher":  "",
-                                           "hooks":  [
-                                                         {
-                                                             "type":  "command",
                                                              "command":  "bash \"$CLAUDE_PROJECT_DIR/.claude/bootstrap-skills.sh\""
                                                          }
                                                      ]
