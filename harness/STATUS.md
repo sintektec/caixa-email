@@ -65,12 +65,12 @@ Detalhe completo em `.analysis/ANALISE-CODIGO.md`.
 3. Corrigir B1–B8 na ordem acima.
 4. Corrigir A1–A10 (outbox preso em `Processing`, pasta de origem errada no payload de move, herança de restrição não aplicada, duplicação de mensagens no sync).
 5. Desduplicar os projetos de teste e alinhar versões de pacote com o `PARECER-VALIDACAO.md` — 5 pacotes têm vulnerabilidade conhecida, 1 de severidade alta (M1, M2).
-6. Consertar o hook de bootstrap de skills (P2) e ajustar o `ci.yml` (P3).
+6. Ajustar o `ci.yml` (P3). ~~Consertar o hook de bootstrap de skills (P2)~~ — **feito em `main` (105819a)**.
 
 ## Bloqueios
 
 - Não é possível compilar neste container: sem SDK .NET e o proxy nega `builds.dotnet.microsoft.com` (403 no CONNECT). Para build local é preciso máquina Windows; para sinal automático, o CI já serve.
-- `.claude/skills/` está vazio: o hook `SessionStart` está duplicado no `settings.json` e as duas instâncias competem pelo mesmo clone (P2).
+- ~~`.claude/skills/` está vazio por causa do hook duplicado (P2)~~ — corrigido em `main` (105819a): hook único, lock atômico, clone auto-reparável. O bootstrap ainda precisa que `sintektec/skills-globais` esteja anexado ao ambiente para clonar em container remoto; sem isso ele registra o erro e sai com 0, sem impedir a sessão.
 
 ## Notas
 

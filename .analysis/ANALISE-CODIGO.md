@@ -339,18 +339,27 @@ Dentro do mesmo `Persistence.csproj` convivem `Microsoft.Data.Sqlite.Core 10.0.1
 
 **P1 — `STATUS.md` desinforma.** Afirma "Build falhou com 54 erros" e lista quatro causas, três já corrigidas no código. Declara todas as camadas "completas" enquanto `Sanitize`, `ICredentialStore` e `IOAuthProvider` não têm consumidor. Não menciona nenhum dos B1–B8. E cita `Sintek.Mail.sln` quando o repositório tem `Sintek.Mail.slnx`. Alguém lendo esse arquivo para retomar o trabalho começa pelo lugar errado.
 
-**P2 — O hook de bootstrap de skills está quebrado — por isso `/claude-doctor` não existe.**
+**P2 — O hook de bootstrap de skills estava quebrado — por isso `/claude-doctor` não existia. ✅ CORRIGIDO em `main` (105819a).**
 
-O `.claude/settings.json` registra **o mesmo hook SessionStart duas vezes** (dois blocos `matcher: ""` idênticos chamando `bootstrap-skills.sh`). As duas instâncias rodam concorrentes e disputam o mesmo diretório de clone. O log desta sessão mostra as duas falhando de formas diferentes na mesma corrida:
+O diagnóstico original: `.claude/settings.json` registrava **o mesmo hook SessionStart duas vezes** (dois blocos `matcher: ""` idênticos chamando `bootstrap-skills.sh`). As duas instâncias rodavam concorrentes e disputavam o mesmo diretório de clone. O log mostrava as duas falhando de formas diferentes na mesma corrida:
 
 ```
 .git/hooks/: No such file or directory                  (instância A)
 fatal: cannot copy '.../templates/description' ... File exists   (instância B)
 ```
 
-E o script não limpa clone parcial. Depois da primeira falha, `$CLONE` existe sem `.git`, então a execução seguinte volta pelo ramo `git clone` e falha para sempre com "already exists and is not an empty directory". A falha se auto-perpetua. As duas instâncias também fazem `exec > >(tee "$LOG")` no mesmo arquivo, o que explica o log truncado no meio da frase.
+E o script não limpava clone parcial: depois da primeira falha, `$CLONE` existia sem `.git`, então toda execução seguinte voltava pelo ramo `git clone` e falhava com "already exists and is not an empty directory", para sempre. As duas instâncias também faziam `exec > >(tee "$LOG")` no mesmo arquivo, truncando o próprio diagnóstico.
 
-Correções: remover o bloco duplicado do settings.json; fazer `rm -rf "$CLONE"` quando `.git` estiver ausente antes de re-clonar; e proteger com lock (`mkdir` atômico ou `flock`).
+**A correção em `main` fecha os quatro pontos**, e é mais completa do que o que estava recomendado aqui:
+
+| Defeito | Correção em 105819a |
+|---|---|
+| Hook duplicado | `settings.json` com uma única entrada `SessionStart` |
+| Instâncias concorrentes | lock por `mkdir` atômico, com quebra de lock órfão decidida por vivacidade do dono (`kill -0` no PID) e TTL só como rede de segurança |
+| Clone parcial auto-perpetuante | `clone_ok()` valida o clone e, se inválido, `rm -rf` + re-clone; o clone vai para `$CLONE.tmp.$$` e só então é movido, então o caminho final nunca contém um clone pela metade |
+| Log truncado pelo `tee` | `log()` append-only, com rotação em 256 KiB |
+
+Vale destacar um acerto que esta análise não tinha previsto: `clone_ok()` não se contenta com "existe `.git`" — exige que `git rev-parse --show-toplevel` devolva exatamente o caminho do clone. Sem isso, um `.git` parcial dentro de um projeto que é ele próprio um repositório git faria a descoberta de repositório **subir na árvore**, e o `git pull` seguinte atualizaria o repositório do usuário em vez do catálogo. Era um modo de falha pior do que o que estava sendo consertado.
 
 **P3 — O CI roda, está vermelho, e ninguém age.** São 76 execuções registradas. O build de `main` falha desde pelo menos 08/08/2026 com os 2 erros da seção 1.1, e nenhum commit desde então tentou corrigi-los. O problema não é falta de sinal — o sinal existe, é confiável, aponta o arquivo e a linha, e está sendo ignorado. Enquanto isso o `STATUS.md` seguia repetindo um número ("54 erros") de uma execução manual antiga que o CI já tinha contradito.
 

@@ -132,3 +132,8 @@ Após a primeira versão da análise, recuperei o log do CI (run 31237494762, `m
 - **P3 estava errado.** O CI não é inexistente: são 76 execuções, ele roda em PR, e está vermelho em `main` desde 08/08 sem que ninguém agisse. Reescrito.
 - Ganho: o log prova B2. `SQLitePCLRaw.lib.e_sqlite3 2.1.11` (bundle **sem** criptografia, e com vulnerabilidade de severidade alta) está sendo restaurado em `Persistence` — o conflito de bundles não é hipótese.
 - Novo em M2: 5 pacotes com vulnerabilidade conhecida no log (MailKit, MimeKit, HtmlSanitizer, AngleSharp moderadas; `lib.e_sqlite3` alta).
+
+**Atualização 23:25 — P2 corrigido em `main`:**
+`main` avançou para `105819a` ("Update the skills bootstrap: single instance, self-healing clone"), que fecha os quatro pontos de P2: hook `SessionStart` único, lock por `mkdir` atômico com quebra de órfão por vivacidade do dono, clone em caminho temporário com `clone_ok()` validando o resultado, e log append-only com rotação. A correção vai além do recomendado: `clone_ok()` exige que `git rev-parse --show-toplevel` seja exatamente o clone, evitando que a descoberta de repositório suba na árvore e o `git pull` acabe atualizando o repositório do usuário.
+
+`main` continua vermelha — a mudança é ortogonal a B0 (Windows App SDK 1.6 vs `net10.0-windows`), que segue de pé. Merge de `main` no branch feito; análise e STATUS atualizados.
