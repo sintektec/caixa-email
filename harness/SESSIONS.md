@@ -100,3 +100,28 @@
 
 **Próxima sessão:**
 - Retomar a Sessão 3: Corrigir 54 erros de compilação da Solution.
+
+---
+
+## 2026-08-11 21:30 — Sessão 7: Análise de código
+
+**Objetivo:** Analisar o código de `src/` e `tests/` (pedido: "analise o codigo").
+
+**O que foi feito:**
+- Leitura estática completa das 6 camadas de `src/` e dos 8 projetos de `tests/`.
+- Produzido `.analysis/ANALISE-CODIGO.md`: 8 bloqueadores, 11 bugs de correção, 11 itens de dívida, 3 de processo.
+- Corrigido o `STATUS.md`, que estava desatualizado: os "54 erros de compilação" não existem mais (3 das 4 causas listadas já estavam corrigidas no código), e as camadas marcadas como "completas" têm portas registradas no DI sem nenhum consumidor.
+- **Não foi possível compilar:** o container não tem SDK .NET e o proxy nega `builds.dotnet.microsoft.com` (403 no CONNECT). A análise é estática.
+
+**Principais achados (detalhe em `.analysis/ANALISE-CODIGO.md`):**
+- B1: chave de criptografia do banco sorteada a cada start e nunca persistida (`App.xaml.cs:54`).
+- B2: `EntityFrameworkCore.Sqlite` + `bundle_e_sqlcipher` = dois bundles; `PRAGMA key` pode virar no-op silencioso. O `PARECER-VALIDACAO.md` §2.3 já tinha avisado.
+- B4/B5: `ICredentialStore` e `IOAuthProvider` registrados no DI e injetados em lugar nenhum; `GetPasswordAsync` devolve string vazia — nenhuma conta autentica.
+- B6: `Sanitize()` nunca é chamado e o `WebView2` renderiza HTML cru; o sanitizador de regex é inseguro e o pacote `HtmlSanitizer` já é dependência sem uso.
+- B7: `FromAddress` guarda `"Nome" <a@b.com>` e `Message.Addresses` nunca é populado no sync — os 5 `ValidationMode` falham para mensagens reais.
+- B8: não existem migrations nem chamada de `Migrate()`.
+- A2: a fila do outbox nunca é drenada e fica presa em `Processing` para sempre.
+- P2: o hook `SessionStart` está duplicado no `settings.json`; as duas instâncias competem pelo mesmo clone e o script não limpa clone parcial — é por isso que `.claude/skills/` está vazio.
+
+**Próxima sessão:**
+- Atacar B1–B8 na ordem. Antes disso, decidir se o alvo é fazer a Fase 1 funcionar de ponta a ponta (uma conta, um sync, uma leitura) ou continuar ampliando superfície.
