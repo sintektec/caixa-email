@@ -44,7 +44,7 @@ public sealed class CredentialManagerStore : ICredentialStore
         {
             var credential = Marshal.PtrToStructure<NativeMethods.CREDENTIAL>(credentialPtr);
             var secret = Marshal.PtrToStringUni(credential.CredentialBlob, (int)credential.CredentialBlobSize / 2);
-            return Task.FromResult(secret);
+            return Task.FromResult<string?>(secret);
         }
         finally
         {
