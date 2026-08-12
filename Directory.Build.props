@@ -1,0 +1,55 @@
+<Project>
+
+  <!--
+    Propriedades comuns a todos os projetos. Antes disto cada csproj repetia
+    TargetFramework, Nullable e ImplicitUsings, e nenhum tinha analisador
+    ligado: o build passava 21 warnings sem que ninguem olhasse.
+  -->
+
+  <PropertyGroup>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Analisadores">
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <AnalysisMode>Recommended</AnalysisMode>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Avisos promovidos a erro">
+    <!--
+      Promocao seletiva, nao TreatWarningsAsErrors global. O codigo ainda tem
+      divida que geraria centenas de avisos de estilo, e um build que falha em
+      tudo e um build que ninguem consegue destravar. Aqui ficam so os avisos
+      que representam defeito ou risco real:
+
+        NU1902/NU1903  pacote com vulnerabilidade conhecida (a razao pela qual
+                       um CVE de severidade alta passou meses despercebido)
+        NU1605         downgrade de pacote (foi o caso do InMemory 9 contra
+                       EF Core 10)
+        CS8600-8625    nulabilidade: o projeto declara Nullable=enable e depois
+                       ignorava os avisos, o que anula a garantia
+        CA2007         await sem ConfigureAwait em biblioteca
+        CA1063/CA2213  IDisposable implementado errado / campo nao descartado
+    -->
+    <!-- Uma linha so: MSBuild nao apara o espaco em branco em torno das
+         quebras, e "      CS8600" nao casa com nenhum codigo de aviso. -->
+    <WarningsAsErrors>NU1902;NU1903;NU1605;CS8600;CS8602;CS8603;CS8604;CS8618;CS8619;CS8625;CA2007;CA1063;CA2213</WarningsAsErrors>
+    <!-- Auditoria de pacote ligada explicitamente, incluindo transitivos:
+         o CVE de severidade alta deste projeto era transitivo. -->
+    <NuGetAudit>true</NuGetAudit>
+    <NuGetAuditMode>all</NuGetAuditMode>
+    <NuGetAuditLevel>low</NuGetAuditLevel>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Projetos de teste" Condition="$(MSBuildProjectName.Contains('Tests'))">
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <!-- CA2007 em teste e ruido: xunit ja gerencia o contexto de sincronizacao. -->
+    <NoWarn>$(NoWarn);CA2007</NoWarn>
+  </PropertyGroup>
+
+</Project>
