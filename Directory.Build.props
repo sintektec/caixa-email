@@ -35,7 +35,7 @@
         CA1063/CA2213  IDisposable implementado errado / campo nao descartado
 
       CA2007 (await sem ConfigureAwait) ficou de fora de proposito. A regra
-      vale para este codigo -- o WinUI tem SynchronizationContext, entao um
+      vale para este codigo - o WinUI tem SynchronizationContext, entao um
       await sem ConfigureAwait(false) nas camadas de biblioteca e risco real
       de deadlock quando chamado da UI thread. Mas sao 42 pontos so na
       Application, e promove-la a erro no mesmo commit que liga o analisador
