@@ -43,7 +43,21 @@ O log também traz 21 warnings, e alguns são achados por si (ver B0 e M2).
 
 ## 2. Bloqueadores
 
-### B0 — O build quebra: Windows App SDK 1.6 contra .NET 10
+### B0 — O build quebra: Windows App SDK 1.6 contra .NET 10 ✅ RESOLVIDO
+
+> **Encerrado em 12/08/2026.** O `Sintek.Mail.App` compila. A prova está nos
+> warnings do build: o analisador emitiu `CA2007` em `AccountListViewModel`,
+> `DomainListViewModel`, `MainViewModel` e `ComposeViewModel` — para haver
+> diagnóstico nesses arquivos, o projeto precisou compilar. Nenhum `MSB3073`,
+> nenhum `CS0103`. Correções aplicadas: WASDK para 2.3.1, `xmlns:dto` no
+> `MainWindow.xaml`, e remoção de `MainPage.*` + `MainPageViewModel`.
+>
+> Diagnóstico refinado durante a correção: a causa direta do `CS0103` não era
+> só a versão do SDK. O `MainPage.xaml` declarava `x:Class="Sintek_Mail_App.MainPage"`
+> enquanto o code-behind estava em `namespace Sintek.Mail.App` — namespaces
+> diferentes, então o partial gerado nunca encontrava o code-behind.
+
+
 
 `src/Sintek.Mail.App/Sintek.Mail.App.csproj:19` — `Microsoft.WindowsAppSDK 1.6.240923002` com `TargetFramework=net10.0-windows10.0.19041.0`.
 
@@ -79,6 +93,15 @@ Além disso, `Guid.NewGuid()` não é material de chave: são 122 bits úteis co
 `src/Sintek.Mail.Persistence/Sintek.Mail.Persistence.csproj:10-12`
 
 O projeto referencia `Microsoft.EntityFrameworkCore.Sqlite` **e** `SQLitePCLRaw.bundle_e_sqlcipher`. O primeiro traz `SQLitePCLRaw.bundle_e_sqlite3` como dependência transitiva — o bundle **sem** criptografia. Com dois bundles na mesma aplicação, qual provider registra primeiro é indeterminado. Se vencer o `e_sqlite3`, o `PRAGMA key` vira um pragma desconhecido, e o SQLite **ignora pragmas desconhecidos sem erro**. Banco em texto plano, zero sinal de que algo deu errado.
+
+> **Parcialmente resolvido em 12/08/2026.** O pacote foi trocado para
+> `Microsoft.EntityFrameworkCore.Sqlite.Core` e o `Batteries_V2.Init()` entrou
+> em `AddPersistence`, conforme D-004 sempre exigiu. O `lib.e_sqlite3` sumiu do
+> grafo e o job de audit passa. **Mas o B2 não está encerrado:** nada ainda
+> prova que o arquivo `.db` gerado está de fato cifrado. Falta o teste que abre
+> o arquivo e afirma que os nomes de tabela não aparecem em texto plano — sem
+> ele, essa regressão volta sem ninguém notar, que é exatamente o modo de falha
+> descrito abaixo.
 
 **Isto não é hipótese — o log do CI mostra o bundle errado sendo restaurado:**
 
