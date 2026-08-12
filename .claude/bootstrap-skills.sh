@@ -42,6 +42,15 @@ LOCK_TTL_MIN=10
 
 mkdir -p "$SKILLS_DIR" 2>/dev/null || true
 
+# A descoberta de repositorio do git SOBE na arvore. Com um .git parcial dentro
+# de um projeto que e ele proprio um repositorio, qualquer comando git rodado no
+# clone resolveria para o repositorio DO USUARIO -- e um `git pull` ali faria
+# fast-forward do working tree dele no meio do SessionStart. O teto barra a
+# subida: em vez de acertar o repo errado, o git responde "not a git repository".
+# Precisa do caminho fisico: o git nao resolve symlinks nas entradas do teto.
+GIT_CEILING_DIRECTORIES=$(cd "$ROOT/.claude" 2>/dev/null && pwd -P) || GIT_CEILING_DIRECTORIES="$ROOT/.claude"
+export GIT_CEILING_DIRECTORIES
+
 # Log SEMPRE anexa. A versao anterior usava `exec > >(tee "$LOG")`, que trunca:
 # com duas instancias concorrentes uma zerava o arquivo da outra e o
 # diagnostico da falha desaparecia junto com ele.
@@ -155,11 +164,23 @@ fi
 # do catalogo, mexendo no working tree dele.
 #
 # O unico teste seguro e exigir que a raiz encontrada seja exatamente o clone.
+#
+# Duas defesas, porque uma so nao basta:
+#
+#   O teto (GIT_CEILING_DIRECTORIES, definido acima) impede a subida. Sem ele o
+#   git responde com o repositorio do projeto e o erro fica invisivel.
+#
+#   A comparacao por caminho FISICO impede o falso negativo. `--show-toplevel`
+#   resolve symlinks; comparar com "$CLONE" literal falha sempre que houver um
+#   symlink no caminho do projeto, e ai o clone e refeito e REPROVADO de novo a
+#   cada sessao -- o guard final aborta e nenhuma skill e linkada. Verificado:
+#   sob caminho com symlink, a versao com comparacao literal nunca funcionava.
 clone_ok() {
   [ -d "$CLONE/.git" ] || return 1
-  local top
+  local top esperado
   top=$(git -C "$CLONE" rev-parse --show-toplevel 2>/dev/null) || return 1
-  [ "$top" = "$CLONE" ]
+  esperado=$(cd "$CLONE" 2>/dev/null && pwd -P) || return 1
+  [ "$top" = "$esperado" ]
 }
 
 # Restos de tentativas interrompidas (o clone acontece fora do caminho final).
