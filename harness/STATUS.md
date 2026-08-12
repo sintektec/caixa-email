@@ -1,6 +1,6 @@
 # STATUS.md — Sintek.Mail
 
-> Última atualização: 2026-08-12 17:40
+> Última atualização: 2026-08-12 18:00
 
 ---
 
@@ -10,7 +10,9 @@
 
 ## Marco atual
 
-**O repositório compila pela primeira vez.** B0 encerrado. Os 5 pacotes com vulnerabilidade conhecida foram eliminados e o job de audit confirma por ferramenta. Os testes executaram pela primeira vez na história do repositório.
+**CI verde pela primeira vez na história do repositório.** Os 9 checks passam: Build (solution), Test, Dependency audit, Analyze (csharp), CodeQL e GitGuardian.
+
+B0 encerrado, os 5 pacotes vulneráveis eliminados, e **a suíte de testes passa inteira** — as 9 falhas que apareceram na primeira execução foram fechadas por D-007, D-008 e D-009.
 
 O esqueleto das 6 camadas existe e a modelagem de domínio é sólida, mas a fiação entre elas não foi feita: credenciais, OAuth, sanitização de HTML e drenagem da fila offline estão registradas no DI e não têm nenhum consumidor. **Nada funciona de ponta a ponta ainda.**
 
@@ -51,7 +53,7 @@ Detalhe completo em `.analysis/ANALISE-CODIGO.md`.
 
 ## Próximos passos
 
-1. Ler o resultado dos testes que agora rodam — A9/A10 (asserções esperando `ArgumentException` contra `DomainException`, e `EmailDomain.Parse` sem validação de formato) devem aparecer.
+1. **B1** — a chave de criptografia sorteada a cada start é o próximo bloqueador em severidade, e a peça para resolvê-lo (`ICredentialStore`) já existe implementada e registrada.
 2. Decidir o alvo da Fase 1: fazer **um** caminho funcionar de ponta a ponta (adicionar conta → sync → ler mensagem) em vez de continuar ampliando superfície.
 3. Fechar B2 com o teste de criptografia, depois B1, B4, B5, B6, B7, B8.
 4. Corrigir A1–A10 (outbox preso em `Processing`, pasta de origem errada no payload de move, herança de restrição não aplicada, duplicação de mensagens no sync).

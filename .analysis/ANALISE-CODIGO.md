@@ -68,7 +68,7 @@ Duas outras coisas contribuem para a falha de XAML e precisam ser corrigidas jun
 - `MainWindow.xaml:32,44` usam `x:DataType="local:DomainDirectoryDto"` e `local:MessageDto`, mas o elemento raiz (linhas 3-6) declara apenas `xmlns` e `xmlns:x`. **Não existe `xmlns:local`.** E os DTOs estão em `Sintek.Mail.Application.DTOs`, outro assembly.
 - `MainPage.xaml` / `MainPageViewModel` são resto de template (`"Hello, WinUI!"`, contador com botão), não são usados por nada, e são exatamente o arquivo que aparece no `CS0103`. Apagar os dois resolve o erro e remove código morto (M7).
 
-**Correção:** subir para Windows App SDK 2.3.1, declarar `xmlns:local` (ou o namespace correto dos DTOs) em `MainWindow.xaml`, e apagar `MainPage.*` e `MainPageViewModel`.
+**Correção aplicada:** Windows App SDK 2.3.1, `xmlns:dto` apontando para `Sintek.Mail.Application.DTOs` em `MainWindow.xaml`, e remoção de `MainPage.*` + `MainPageViewModel`.
 
 ### B1 — A chave de criptografia do banco é sorteada a cada inicialização
 
@@ -291,7 +291,10 @@ E sem teto no expoente, passando de ~40 tentativas o `AddMinutes` estoura o rang
 
 `ISyncQueue` não tem método de unidade de trabalho. `CompleteAsync`, `FailAsync` e `RetryFailedAsync` mutam entidades rastreadas e dependem de alguém chamar `IMailRepository.SaveChangesAsync` no mesmo escopo. Chamados isoladamente, são no-ops silenciosos. O acoplamento implícito entre as duas portas pelo `DbContext` compartilhado deveria ser explícito.
 
-### A9 — `EmailDomain.Parse` não valida domínio nenhum
+### A9 — `EmailDomain.Parse` não valida domínio nenhum ✅ RESOLVIDO (por decisão, não por correção)
+
+> **Encerrado em 12/08/2026 — D-008.** A ausência de validação virou decisão explícita: o Diretório de Domínio aceita qualquer rótulo. A regra que o produto impõe não é o formato do nome do Diretório, e sim a igualdade entre o domínio da conta e o do Diretório. Validar rótulos rejeitaria `intranet` e `localhost`, legítimos em ambiente corporativo. Os três testes que afirmavam o contrário foram substituídos por `Parse_QualquerRotulo_EAceito`, que documenta a decisão.
+
 
 `src/Sintek.Mail.Domain/ValueObjects/EmailDomain.cs:17-31`
 
@@ -299,7 +302,12 @@ As únicas rejeições são vazio e presença de `@`. Passam como domínios vál
 
 Três testes existentes afirmam que esses casos deveriam lançar. Eles falham hoje.
 
-### A10 — Testes esperam `ArgumentException`, o código lança `DomainException`
+### A10 — Testes esperam `ArgumentException`, o código lança `DomainException` ✅ RESOLVIDO
+
+> **Encerrado em 12/08/2026 — D-007.** `DomainException` passou a derivar de `ArgumentException`. Descoberta do CI que a leitura estática não anteciparia: o `Assert.Throws<T>` do xunit exige tipo **exato**, então a herança sozinha não bastava — as asserções viraram `ThrowsAny`/`ThrowsAnyAsync`.
+>
+> **Achado novo que esta análise não tinha:** `EmailAddress.Parse` normalizava o domínio mas não a parte local. Como `EmailAddress` é um `record`, a igualdade comparava a parte local ordinalmente — `USER@example.com` e `user@example.com` eram valores distintos, e o mesmo endereço viraria duas entidades ao deduplicar contas ou destinatários. Corrigido por D-009 (parte local em MAIÚSCULA). Só apareceu quando a suíte rodou.
+
 
 `DomainException` deriva de `Exception`, não de `ArgumentException`. Falham por incompatibilidade de tipo:
 
@@ -319,7 +327,7 @@ Nenhum desses testes jamais rodou: o job do CI morre no `dotnet build` e o passo
 
 **M1 — Oito projetos de teste, quatro vazios.** `tests/Sintek.Mail.{Domain,Application,Persistence,Infrastructure}.Tests` (com ponto) são stubs de `dotnet new xunit` com um `Test1` vazio; `tests/Sintek.Mail.{...}Tests` (sem ponto) têm os testes reais. Duas convenções de nome, dois conjuntos de versão de xunit/Test.Sdk, e `AwesomeAssertions` declarado **só nos vazios** — os testes reais usam `Assert` puro, contrariando D-005. Apagar um dos conjuntos.
 
-**M2 — As versões de pacote contradizem o plano validado, e 5 delas têm vulnerabilidade conhecida.** O `PARECER-VALIDACAO.md` §2.2 verificou versões contra a api.nuget.org; o código usa outras, mais antigas, em todos os casos:
+**M2 — ✅ RESOLVIDO em 12/08/2026.** ~~As versões de pacote contradizem o plano validado, e 5 delas têm vulnerabilidade conhecida.~~ `Directory.Packages.props` com gerenciamento central alinhado ao parecer; o job `Dependency audit` passa. Registro do que era: O `PARECER-VALIDACAO.md` §2.2 verificou versões contra a api.nuget.org; o código usa outras, mais antigas, em todos os casos:
 
 | Pacote | Plano validado | No código | Aviso no CI |
 |---|---|---|---|
@@ -384,7 +392,7 @@ E o script não limpava clone parcial: depois da primeira falha, `$CLONE` existi
 
 Vale destacar um acerto que esta análise não tinha previsto: `clone_ok()` não se contenta com "existe `.git`" — exige que `git rev-parse --show-toplevel` devolva exatamente o caminho do clone. Sem isso, um `.git` parcial dentro de um projeto que é ele próprio um repositório git faria a descoberta de repositório **subir na árvore**, e o `git pull` seguinte atualizaria o repositório do usuário em vez do catálogo. Era um modo de falha pior do que o que estava sendo consertado.
 
-**P3 — O CI roda, está vermelho, e ninguém age.** São 76 execuções registradas. O build de `main` falha desde pelo menos 08/08/2026 com os 2 erros da seção 1.1, e nenhum commit desde então tentou corrigi-los. O problema não é falta de sinal — o sinal existe, é confiável, aponta o arquivo e a linha, e está sendo ignorado. Enquanto isso o `STATUS.md` seguia repetindo um número ("54 erros") de uma execução manual antiga que o CI já tinha contradito.
+**P3 — ✅ RESOLVIDO em 12/08/2026.** O CI está **verde**: Build, Test, Dependency audit, CodeQL e GitGuardian. Registro do que era: **o CI rodava, estava vermelho, e ninguém agia.** São 76 execuções registradas. O build de `main` falha desde pelo menos 08/08/2026 com os 2 erros da seção 1.1, e nenhum commit desde então tentou corrigi-los. O problema não é falta de sinal — o sinal existe, é confiável, aponta o arquivo e a linha, e está sendo ignorado. Enquanto isso o `STATUS.md` seguia repetindo um número ("54 erros") de uma execução manual antiga que o CI já tinha contradito.
 
 Três ajustes que valem no `ci.yml`:
 - `workflow_dispatch` e gatilho em `claude/**`, para não depender de PR aberto para ter feedback.

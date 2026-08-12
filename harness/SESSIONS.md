@@ -168,3 +168,10 @@ Após a primeira versão da análise, recuperei o log do CI (run 31237494762, `m
 - Confirmar o CI verde. Se estiver, B0 encerrado e os testes rodam pela primeira vez — aí A9/A10 finalmente dão sinal.
 - B2 não está encerrado: falta o teste que prova que o arquivo `.db` está cifrado.
 - Seguir para B1, B4, B5, B6, B7, B8.
+
+**Fecho da sessão 8 — CI verde.**
+Os 9 checks passam no `5b5012f`. A suíte de testes roda e passa inteira pela primeira vez. As 9 falhas da primeira execução real foram resolvidas por três decisões do dono do projeto, registradas como D-007 (exceções derivam de `ArgumentException`), D-008 (o Diretório aceita qualquer rótulo) e D-009 (parte local em MAIÚSCULA).
+
+Achado que só apareceu com os testes rodando: `EmailAddress.Parse` normalizava o domínio mas não a parte local, e como o tipo é `record`, `USER@example.com` e `user@example.com` eram valores distintos — o mesmo endereço viraria duas entidades ao deduplicar. A leitura estática não pegou.
+
+Resolvidos nesta sessão: **B0**, **M2**, **P3**, **A9**, **A10**, **P2** (este em `main`). **B2 pela metade** — falta o teste que prova que o `.db` está cifrado.
