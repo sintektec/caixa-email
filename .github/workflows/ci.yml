@@ -67,6 +67,11 @@ jobs:
     - name: Resumo dos testes
       if: always()
       shell: bash
+      # O Python no Windows usa cp1252 no stdout por padrao, e as mensagens de
+      # falha do xunit trazem setas Unicode nos diffs (U+2193). Sem isto o
+      # proprio resumo morre com UnicodeEncodeError ao imprimir a falha.
+      env:
+        PYTHONIOENCODING: utf-8
       run: |
         python -c '
         import glob, xml.etree.ElementTree as ET, os
