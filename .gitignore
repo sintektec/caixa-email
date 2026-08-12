@@ -1,4 +1,4 @@
-.claude/skills/
+﻿.claude/skills/*
 
 # --- .NET ---
 bin/
@@ -33,14 +33,14 @@ BundleArtifacts/
 *.msixupload
 Generated Files/
 
-# Certificados de assinatura NUNCA entram no repositório.
+# Certificados de assinatura NUNCA entram no repositÃ³rio.
 *.pfx
 *.snk
 *.p12
 
 # --- Dados locais do cliente de e-mail ---
-# A base local é criptografada com SQLCipher, mas nem ela nem os anexos baixados
-# podem ser versionados: contêm mensagens reais dos usuários.
+# A base local Ã© criptografada com SQLCipher, mas nem ela nem os anexos baixados
+# podem ser versionados: contÃªm mensagens reais dos usuÃ¡rios.
 *.db
 *.db-shm
 *.db-wal
@@ -50,10 +50,10 @@ Attachments/
 appsettings.Local.json
 oauth-clients.json
 
-# Gerados pelas ferramentas do WinUI ao abrir o projeto, não por nós. O CI publica
-# passando o RID na linha de comando (`dotnet restore -r win-x64`), então nada no
-# repositório depende deles. Se algum dia um perfil precisar valer para todo mundo,
-# a saída é versioná-lo e tirar esta linha — não deixá-lo entrar por acidente.
+# Gerados pelas ferramentas do WinUI ao abrir o projeto, nÃ£o por nÃ³s. O CI publica
+# passando o RID na linha de comando (`dotnet restore -r win-x64`), entÃ£o nada no
+# repositÃ³rio depende deles. Se algum dia um perfil precisar valer para todo mundo,
+# a saÃ­da Ã© versionÃ¡-lo e tirar esta linha â€” nÃ£o deixÃ¡-lo entrar por acidente.
 src/Sintek.Mail.App/Properties/PublishProfiles/
 launchSettings.json
 .claude/skills-globais-repo/
@@ -61,3 +61,4 @@ launchSettings.json
 .claude/skills-globais-repo.tmp.*
 .claude/bootstrap-skills.log.old
 .claude/.bootstrap-skills.lock/
+!.claude/skills/catalogo/
