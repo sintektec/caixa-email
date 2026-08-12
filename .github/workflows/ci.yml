@@ -61,6 +61,33 @@ jobs:
         done
         exit $rc
 
+    # Sem isto, achar QUAL teste falhou exige paginar milhares de linhas de log
+    # do fim para o comeco -- com 8 projetos o resumo de cada um fica soterrado.
+    # Le os .trx e escreve os nomes dos testes falhos no summary do job.
+    - name: Resumo dos testes
+      if: always()
+      shell: bash
+      run: |
+        python -c '
+        import glob, xml.etree.ElementTree as ET, os
+        NS = {"t": "http://microsoft.com/schemas/VisualStudio/TeamTest/2010"}
+        out, total, failed = [], 0, 0
+        for f in sorted(glob.glob("**/TestResults/*.trx", recursive=True)):
+            tree = ET.parse(f)
+            for r in tree.iterfind(".//t:UnitTestResult", NS):
+                total += 1
+                if r.get("outcome") != "Passed":
+                    failed += 1
+                    msg = r.findtext(".//t:Message", default="", namespaces=NS) or ""
+                    out.append("- **{}** — {}".format(r.get("testName"), msg.strip().replace(chr(10), " ")[:300]))
+        head = "## Testes: {} de {} falharam\n\n".format(failed, total) if failed else "## Testes: {} passaram\n".format(total)
+        body = head + ("\n".join(out) if out else "")
+        print(body)
+        p = os.environ.get("GITHUB_STEP_SUMMARY")
+        if p:
+            open(p, "a", encoding="utf-8").write(body + "\n")
+        '
+
     - name: Upload test results
       if: always()
       uses: actions/upload-artifact@v4
