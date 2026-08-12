@@ -32,12 +32,19 @@
                        EF Core 10)
         CS8600-8625    nulabilidade: o projeto declara Nullable=enable e depois
                        ignorava os avisos, o que anula a garantia
-        CA2007         await sem ConfigureAwait em biblioteca
         CA1063/CA2213  IDisposable implementado errado / campo nao descartado
+
+      CA2007 (await sem ConfigureAwait) ficou de fora de proposito. A regra
+      vale para este codigo -- o WinUI tem SynchronizationContext, entao um
+      await sem ConfigureAwait(false) nas camadas de biblioteca e risco real
+      de deadlock quando chamado da UI thread. Mas sao 42 pontos so na
+      Application, e promove-la a erro no mesmo commit que liga o analisador
+      trava o build atras de um refactor que ninguem revisou. Fica como
+      warning: visivel, contado, sem bloquear. Ver .editorconfig.
     -->
     <!-- Uma linha so: MSBuild nao apara o espaco em branco em torno das
          quebras, e "      CS8600" nao casa com nenhum codigo de aviso. -->
-    <WarningsAsErrors>NU1902;NU1903;NU1605;CS8600;CS8602;CS8603;CS8604;CS8618;CS8619;CS8625;CA2007;CA1063;CA2213</WarningsAsErrors>
+    <WarningsAsErrors>NU1902;NU1903;NU1605;CS8600;CS8602;CS8603;CS8604;CS8618;CS8619;CS8625;CA1063;CA2213</WarningsAsErrors>
     <!-- Auditoria de pacote ligada explicitamente, incluindo transitivos:
          o CVE de severidade alta deste projeto era transitivo. -->
     <NuGetAudit>true</NuGetAudit>

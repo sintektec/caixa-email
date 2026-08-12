@@ -78,6 +78,19 @@ dotnet_naming_style.underscore_camel_style.capitalization = camel_case
 # um .Result aqui trava a UI thread do WinUI.
 dotnet_diagnostic.CA1849.severity = warning
 
+# await sem ConfigureAwait(false) em biblioteca. Risco real aqui: o WinUI
+# tem SynchronizationContext, entao capturar o contexto nas camadas de
+# biblioteca pode dar deadlock quando chamado da UI thread. Sao 42 pontos
+# so na Application -- fica warning ate alguem fazer a passada completa,
+# nao erro, para nao travar o build atras de um refactor nao revisado.
+dotnet_diagnostic.CA2007.severity = warning
+
+# Nome de tipo terminando em 'Queue' e parametro chamado 'error'. Ambos
+# apareceram em ISyncQueue quando o analisador foi ligado. Renomear uma
+# porta publica e mudanca de contrato: fica silenciado ate a decisao.
+dotnet_diagnostic.CA1711.severity = none
+dotnet_diagnostic.CA1716.severity = none
+
 # Comparacao de string sensivel a cultura. O dominio inteiro compara
 # dominios de e-mail: precisa ser ordinal, nunca dependente de cultura.
 dotnet_diagnostic.CA1310.severity = warning
