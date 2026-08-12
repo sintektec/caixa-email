@@ -15,13 +15,33 @@ public class EmailDomainTests
         Assert.Equal(expected, domain.Value);
     }
 
+    // ThrowsAny, nao Throws: o xunit exige tipo EXATO em Assert.Throws<T>, e
+    // InvalidEmailDomainException deriva de ArgumentException (D-007). O que
+    // este teste afirma e o contrato -- "e um ArgumentException" -- nao a
+    // classe concreta.
     [Theory]
     [InlineData("")]
-    [InlineData(".com")]
-    [InlineData("example.")]
+    [InlineData("   ")]
+    [InlineData("user@example.com")]
     public void Parse_InvalidDomain_ThrowsException(string input)
     {
-        Assert.Throws<ArgumentException>(() => EmailDomain.Parse(input));
+        Assert.ThrowsAny<ArgumentException>(() => EmailDomain.Parse(input));
+    }
+
+    // D-008: o Diretorio de Dominio aceita qualquer rotulo. A regra que o
+    // produto realmente impoe nao e o formato do nome do Diretorio, e sim a
+    // igualdade entre o dominio da conta e o do Diretorio -- ver
+    // DomainDirectory.ValidateAccount. Validar formato aqui restringiria nomes
+    // legitimos (intranets, TLDs novos, hosts sem ponto) sem ganho.
+    [Theory]
+    [InlineData(".com")]
+    [InlineData("example.")]
+    [InlineData("intranet")]
+    [InlineData("localhost")]
+    public void Parse_QualquerRotulo_EAceito(string input)
+    {
+        var domain = EmailDomain.Parse(input);
+        Assert.Equal(input.ToLowerInvariant(), domain.Value);
     }
 
     [Fact]
