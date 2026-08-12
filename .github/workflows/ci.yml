@@ -2,12 +2,14 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, 'claude/**' ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   build:
+    name: Build (solution)
     runs-on: windows-latest
 
     steps:
@@ -24,5 +26,67 @@ jobs:
     - name: Build
       run: dotnet build --no-restore --configuration Release
 
+  test:
+    # Roda independente do build da solution: o projeto WinUI e o unico que
+    # pode quebrar, e os 8 projetos de teste nao dependem dele. Antes, o
+    # `--no-build` acoplado ao job unico fazia com que nenhum teste jamais
+    # executasse enquanto o App estivesse vermelho.
+    name: Test
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.x'
+
     - name: Test
-      run: dotnet test --no-build --configuration Release --verbosity normal
+      run: >
+        dotnet test tests
+        --configuration Release
+        --verbosity normal
+        --logger "trx;LogFileName=test-results.trx"
+        --collect:"XPlat Code Coverage"
+
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results
+        path: '**/TestResults/**'
+        if-no-files-found: ignore
+
+  audit:
+    # Falha o pipeline quando ha pacote vulneravel. Sem isto os avisos
+    # NU1902/NU1903 se perdem no meio das dezenas de warnings do build --
+    # foi assim que um pacote de severidade alta ficou meses sem ser notado.
+    name: Dependency audit
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.x'
+
+    - name: Restore
+      run: dotnet restore
+
+    - name: Check for vulnerable packages
+      shell: bash
+      run: |
+        dotnet list package --vulnerable --include-transitive 2>&1 | tee audit.log
+        if grep -qE '\b(Low|Moderate|High|Critical)\b' audit.log; then
+          echo "::error::Pacote(s) com vulnerabilidade conhecida. Veja o log acima."
+          exit 1
+        fi
+        echo "Nenhum pacote vulneravel."
+
+    - name: Check for deprecated packages
+      shell: bash
+      continue-on-error: true
+      run: dotnet list package --deprecated --include-transitive

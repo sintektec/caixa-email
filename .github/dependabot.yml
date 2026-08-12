@@ -1,0 +1,36 @@
+version: 2
+
+updates:
+  - package-ecosystem: nuget
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/Sao_Paulo
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps"
+    groups:
+      # Agrupado porque EF Core, Microsoft.Data.Sqlite e os pacotes .NET
+      # avancam em lockstep: PRs separados quebrariam o alinhamento de versao
+      # que o Directory.Packages.props existe para manter.
+      dotnet-runtime:
+        patterns:
+          - "Microsoft.EntityFrameworkCore*"
+          - "Microsoft.Data.Sqlite*"
+          - "Microsoft.Extensions.*"
+      test-stack:
+        patterns:
+          - "xunit*"
+          - "Microsoft.NET.Test.Sdk"
+          - "coverlet.*"
+          - "AwesomeAssertions"
+          - "Moq"
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "ci"
