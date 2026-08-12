@@ -6,7 +6,7 @@ using Xunit;
 
 namespace Sintek.Mail.PersistenceTests;
 
-public class MailDbContextTests : IDisposable
+public sealed class MailDbContextTests : IDisposable
 {
     private readonly MailDbContext _context;
 
