@@ -33,7 +33,7 @@ Depois das correções de 12/08: `Sintek.Mail.App` compila (o analisador emite d
 - [x] **Infrastructure** — transporte MailKit, sanitizador, 2 providers OAuth. Sanitizador e OAuth não são chamados por ninguém.
 - [x] **Infrastructure.Windows** — `CredentialManagerStore` implementado. Nenhum consumidor.
 - [x] **App WinUI 3** — janela e 4 ViewModels. Compila. Todos os comandos ainda são TODO.
-- [x] **Testes** — 4 projetos com testes reais, 4 stubs vazios. Executam; A9/A10 devem falhar.
+- [x] **Testes** — 4 projetos com testes reais, 4 stubs vazios. Executam e **passam**.
 - [x] **CI** — build, test, `Dependency audit` (falha em pacote vulnerável), CodeQL e Dependabot.
 - [x] **Build** — `Directory.Packages.props` (CPM), `Directory.Build.props` (analisadores), `.editorconfig`.
 
