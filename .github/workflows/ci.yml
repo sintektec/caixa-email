@@ -42,13 +42,24 @@ jobs:
       with:
         dotnet-version: '10.0.x'
 
+    # Um `dotnet test` por projeto: o comando nao aceita diretorio (MSB1003),
+    # e rodar pela solution reintroduziria a dependencia do App WinUI que este
+    # job existe justamente para evitar. O laco nao para no primeiro erro --
+    # com 8 projetos, esconder 7 resultados para mostrar 1 falha nao ajuda.
     - name: Test
-      run: >
-        dotnet test tests
-        --configuration Release
-        --verbosity normal
-        --logger "trx;LogFileName=test-results.trx"
-        --collect:"XPlat Code Coverage"
+      shell: bash
+      run: |
+        rc=0
+        for proj in tests/*/*.csproj; do
+          echo "::group::$proj"
+          dotnet test "$proj" \
+            --configuration Release \
+            --verbosity normal \
+            --logger "trx;LogFileName=$(basename "$proj" .csproj).trx" \
+            --collect:"XPlat Code Coverage" || rc=1
+          echo "::endgroup::"
+        done
+        exit $rc
 
     - name: Upload test results
       if: always()
@@ -64,6 +75,14 @@ jobs:
     # foi assim que um pacote de severidade alta ficou meses sem ser notado.
     name: Dependency audit
     runs-on: ubuntu-latest
+
+    # O App WinUI tem TargetFramework net10.0-windows e o restore falha em
+    # Linux com NETSDK1100. Esta propriedade e o mecanismo do proprio SDK
+    # para restaurar/analisar projeto Windows fora do Windows -- nao compila
+    # nada, e aqui so precisamos do assets file para auditar os pacotes.
+    # Via env: para valer tanto no `restore` quanto no `list package`.
+    env:
+      EnableWindowsTargeting: true
 
     steps:
     - uses: actions/checkout@v4

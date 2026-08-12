@@ -69,7 +69,15 @@
   </ItemGroup>
 
   <ItemGroup Label="Infraestrutura .NET">
-    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
+    <!--
+      10.0.10, nao 10.0.0. Com CentralPackageTransitivePinningEnabled a versao
+      central tambem fixa os transitivos, e o grafo exige mais que 10.0.0:
+        EntityFrameworkCore.Sqlite.Core 10.0.10
+          -> Microsoft.Extensions.Logging 10.0.10
+            -> Microsoft.Extensions.DependencyInjection (>= 10.0.10)
+      Fixar em 10.0.0 era downgrade e o restore falhava com NU1109.
+    -->
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.10" />
   </ItemGroup>
 
   <ItemGroup Label="Testes">

@@ -137,3 +137,34 @@ Após a primeira versão da análise, recuperei o log do CI (run 31237494762, `m
 `main` avançou para `105819a` ("Update the skills bootstrap: single instance, self-healing clone"), que fecha os quatro pontos de P2: hook `SessionStart` único, lock por `mkdir` atômico com quebra de órfão por vivacidade do dono, clone em caminho temporário com `clone_ok()` validando o resultado, e log append-only com rotação. A correção vai além do recomendado: `clone_ok()` exige que `git rev-parse --show-toplevel` seja exatamente o clone, evitando que a descoberta de repositório suba na árvore e o `git pull` acabe atualizando o repositório do usuário.
 
 `main` continua vermelha — a mudança é ortogonal a B0 (Windows App SDK 1.6 vs `net10.0-windows`), que segue de pé. Merge de `main` no branch feito; análise e STATUS atualizados.
+
+---
+
+## 2026-08-12 17:30 — Sessão 8: Skills de varredura e correções de infraestrutura
+
+**Objetivo:** listar e executar as skills de verificação/segurança/performance/estruturação sobre o projeto.
+
+**Desbloqueio:** o catálogo `skills-globais` nunca esteve acessível neste ambiente — o bootstrap falhava porque o repositório não estava anexado. Anexado via `add_repo`, clonado em `/workspace/skills-globais` (1.369 skills) e 11 instaladas em `.claude/skills/`.
+
+**Diagnóstico (claude-doctor):** maturidade **Growing**, score **24%** — 6 ✅ / 2 ⚠️ / 17 ❌ em 25 checks aplicáveis. As falhas são de infraestrutura e processo, distintas dos defeitos de código B0–B8 já mapeados.
+
+**Achados novos desta rodada:**
+- Não existe logging: zero `ILogger` em todo o `src/`. A restrição do CONTEXT.md ("logs nunca registram conteúdo sigiloso") é vacuamente satisfeita porque não há log.
+- `App.xaml.cs:32` chama `AddInfrastructure()` sem argumentos e todos os parâmetros são opcionais — **nenhum `IOAuthProvider` chega a ser registrado**. Agrava o B5.
+- Três `catch` sem filtro que retornam `false` (`MailKitTransport.cs:25`, `MsalOAuthProvider.cs:85`, `GoogleOAuthProvider.cs:81`).
+- `MainPage.xaml` declarava `x:Class="Sintek_Mail_App.MainPage"` com code-behind em `namespace Sintek.Mail.App` — namespaces diferentes. Era a origem direta do `CS0103`, mais precisa que "WASDK velho".
+- `README.md` descreve o template SINTEK, não o Sintek.Mail.
+- Sem `CLAUDE.md`, sem `.editorconfig`, sem analisadores, sem lock file, sem Dependabot.
+- `SecurityProtocol.None` permite IMAP/SMTP em texto claro sem trava nem aviso.
+
+**Correções aplicadas (3 commits):**
+1. `d6d76f1` — CI: job de audit que falha em pacote vulnerável, CodeQL (csharp, security-extended), Dependabot, e **teste promovido a job próprio** (antes o `--no-build` acoplava os testes ao build da solution, então nenhum teste jamais executou neste repositório).
+2. `429fcd5` — `Directory.Packages.props` com as versões do parecer. Elimina os 5 CVEs, troca `EntityFrameworkCore.Sqlite` por `.Sqlite.Core` (+ `Batteries_V2.Init()`), sobe WASDK para 2.3.1, corrige o `xmlns` do `MainWindow.xaml` e remove os restos de template.
+3. `01c6714` — `.editorconfig` + `Directory.Build.props` com analisadores e promoção seletiva de aviso a erro.
+
+**Correção do próprio diagnóstico:** o check C0-9 (scan de secrets) foi marcado ❌, mas o repositório tem **GitGuardian** rodando em PR — é ⚠️ parcial, não ausente. O que falta de fato é o hook local (pre-commit/gitleaks).
+
+**Próxima sessão:**
+- Confirmar o CI verde. Se estiver, B0 encerrado e os testes rodam pela primeira vez — aí A9/A10 finalmente dão sinal.
+- B2 não está encerrado: falta o teste que prova que o arquivo `.db` está cifrado.
+- Seguir para B1, B4, B5, B6, B7, B8.
