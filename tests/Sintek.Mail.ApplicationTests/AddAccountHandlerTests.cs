@@ -37,7 +37,9 @@ public class AddAccountHandlerTests
             AuthenticationType.Basic);
         var result = await _handler.HandleAsync(command);
 
-        Assert.Equal("user@example.com", result.EmailAddress);
+        // Parte local em maiuscula por D-009: o handler grava
+        // EmailAddress.FullAddress, ja normalizado.
+        Assert.Equal("USER@example.com", result.EmailAddress);
     }
 
     [Fact]

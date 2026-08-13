@@ -2,12 +2,14 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, 'claude/**' ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   build:
+    name: Build (solution)
     runs-on: windows-latest
 
     steps:
@@ -24,5 +26,118 @@ jobs:
     - name: Build
       run: dotnet build --no-restore --configuration Release
 
+  test:
+    # Roda independente do build da solution: o projeto WinUI e o unico que
+    # pode quebrar, e os 8 projetos de teste nao dependem dele. Antes, o
+    # `--no-build` acoplado ao job unico fazia com que nenhum teste jamais
+    # executasse enquanto o App estivesse vermelho.
+    name: Test
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.x'
+
+    # Um `dotnet test` por projeto: o comando nao aceita diretorio (MSB1003),
+    # e rodar pela solution reintroduziria a dependencia do App WinUI que este
+    # job existe justamente para evitar. O laco nao para no primeiro erro --
+    # com 8 projetos, esconder 7 resultados para mostrar 1 falha nao ajuda.
     - name: Test
-      run: dotnet test --no-build --configuration Release --verbosity normal
+      shell: bash
+      run: |
+        rc=0
+        for proj in tests/*/*.csproj; do
+          echo "::group::$proj"
+          dotnet test "$proj" \
+            --configuration Release \
+            --verbosity normal \
+            --logger "trx;LogFileName=$(basename "$proj" .csproj).trx" \
+            --collect:"XPlat Code Coverage" || rc=1
+          echo "::endgroup::"
+        done
+        exit $rc
+
+    # Sem isto, achar QUAL teste falhou exige paginar milhares de linhas de log
+    # do fim para o comeco -- com 8 projetos o resumo de cada um fica soterrado.
+    # Le os .trx e escreve os nomes dos testes falhos no summary do job.
+    - name: Resumo dos testes
+      if: always()
+      shell: bash
+      # O Python no Windows usa cp1252 no stdout por padrao, e as mensagens de
+      # falha do xunit trazem setas Unicode nos diffs (U+2193). Sem isto o
+      # proprio resumo morre com UnicodeEncodeError ao imprimir a falha.
+      env:
+        PYTHONIOENCODING: utf-8
+      run: |
+        python -c '
+        import glob, xml.etree.ElementTree as ET, os
+        NS = {"t": "http://microsoft.com/schemas/VisualStudio/TeamTest/2010"}
+        out, total, failed = [], 0, 0
+        for f in sorted(glob.glob("**/TestResults/*.trx", recursive=True)):
+            tree = ET.parse(f)
+            for r in tree.iterfind(".//t:UnitTestResult", NS):
+                total += 1
+                if r.get("outcome") != "Passed":
+                    failed += 1
+                    msg = r.findtext(".//t:Message", default="", namespaces=NS) or ""
+                    out.append("- **{}** — {}".format(r.get("testName"), msg.strip().replace(chr(10), " ")[:300]))
+        head = "## Testes: {} de {} falharam\n\n".format(failed, total) if failed else "## Testes: {} passaram\n".format(total)
+        body = head + ("\n".join(out) if out else "")
+        print(body)
+        p = os.environ.get("GITHUB_STEP_SUMMARY")
+        if p:
+            open(p, "a", encoding="utf-8").write(body + "\n")
+        '
+
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results
+        path: '**/TestResults/**'
+        if-no-files-found: ignore
+
+  audit:
+    # Falha o pipeline quando ha pacote vulneravel. Sem isto os avisos
+    # NU1902/NU1903 se perdem no meio das dezenas de warnings do build --
+    # foi assim que um pacote de severidade alta ficou meses sem ser notado.
+    name: Dependency audit
+    runs-on: ubuntu-latest
+
+    # O App WinUI tem TargetFramework net10.0-windows e o restore falha em
+    # Linux com NETSDK1100. Esta propriedade e o mecanismo do proprio SDK
+    # para restaurar/analisar projeto Windows fora do Windows -- nao compila
+    # nada, e aqui so precisamos do assets file para auditar os pacotes.
+    # Via env: para valer tanto no `restore` quanto no `list package`.
+    env:
+      EnableWindowsTargeting: true
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.x'
+
+    - name: Restore
+      run: dotnet restore
+
+    - name: Check for vulnerable packages
+      shell: bash
+      run: |
+        dotnet list package --vulnerable --include-transitive 2>&1 | tee audit.log
+        if grep -qE '\b(Low|Moderate|High|Critical)\b' audit.log; then
+          echo "::error::Pacote(s) com vulnerabilidade conhecida. Veja o log acima."
+          exit 1
+        fi
+        echo "Nenhum pacote vulneravel."
+
+    - name: Check for deprecated packages
+      shell: bash
+      continue-on-error: true
+      run: dotnet list package --deprecated --include-transitive

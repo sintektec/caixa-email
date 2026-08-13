@@ -1,6 +1,6 @@
 # STATUS.md — Sintek.Mail
 
-> Última atualização: 2026-08-03 18:20
+> Última atualização: 2026-08-12 18:00
 
 ---
 
@@ -10,81 +10,63 @@
 
 ## Marco atual
 
-Build falhou com 54 erros. Corrigindo erros de compilação.
+**CI verde pela primeira vez na história do repositório.** Os 9 checks passam: Build (solution), Test, Dependency audit, Analyze (csharp), CodeQL e GitGuardian.
 
-## O que foi feito
+B0 encerrado, os 5 pacotes vulneráveis eliminados, e **a suíte de testes passa inteira** — as 9 falhas que apareceram na primeira execução foram fechadas por D-007, D-008 e D-009.
 
-- [x] Especificação unificada (`spec/01-especificacao-unificada.md`)
-- [x] Plano de implementação (`spec/02-plano-sintek-mail.md`)
+O esqueleto das 6 camadas existe e a modelagem de domínio é sólida, mas a fiação entre elas não foi feita: credenciais, OAuth, sanitização de HTML e drenagem da fila offline estão registradas no DI e não têm nenhum consumidor. **Nada funciona de ponta a ponta ainda.**
+
+## Build atual (fonte: CI, não estimativa)
+
+Antes de 12/08 o CI estava vermelho desde 08/08 com 2 erros — não os "54" que este arquivo alegava. Os dois eram o mesmo problema: o `XamlCompiler.exe` do Windows App SDK 1.6 não lida com `net10.0-windows`, morre, e sem ele o `InitializeComponent` não é gerado.
+
+Depois das correções de 12/08: `Sintek.Mail.App` compila (o analisador emite diagnóstico nos ViewModels, o que só acontece se o projeto compilar), `Dependency audit` verde, e o job `Test` roda de fato — antes ele usava `--no-build` acoplado ao build da solution, então nenhum teste jamais executava.
+
+## O que existe
+
+- [x] Especificação (`spec/01`), plano (`spec/02`), parecer (`.analysis/PARECER-VALIDACAO.md`), análise de código (`.analysis/ANALISE-CODIGO.md`)
 - [x] Harness de memória (AGENTS.md + harness/)
-- [x] Solution `Sintek.Mail.sln` com 6 projetos src + 4 testes
-- [x] **Domain** — completo:
-  - 17 enums (ValidationMode, InvalidEmailAction, AuthenticationType, FolderType, SyncState, Importance, AddressKind, AccountSyncStatus, BodyDownloadPolicy, OAuthProvider, SecurityProtocol, OutboxOperationType, OutboxOperationStatus, RuleMatchType, RuleActionType)
-  - 2 VOs (EmailAddress, EmailDomain) com parsing, normalização, subdomain matching
-  - 6 exceções (DomainException, InvalidEmailAddressException, InvalidEmailDomainException, DomainMismatchException, MessageDomainViolationException, FolderAlreadyRestrictedException)
-  - 20 entidades (Entity base, DomainDirectory, DomainAlias, Account, Folder, Message, MessageAddress, MessageBody, Attachment, Category, MessageCategory, Rule, RuleCondition, RuleAction, OutboxOperation, SavedSearch, Signature, MessageTemplate, AppSettings, AuditLog)
-  - 2 serviços de domínio (DomainMembershipEvaluator, FolderDomainValidator)
-- [x] **Application** — completo:
-  - 6 portas (IMailRepository, IMailTransport, ICredentialStore, ISyncQueue, IHtmlSanitizer, IOAuthProvider)
-  - 8 DTOs (AccountDto, DomainDirectoryDto, FolderDto, MessageDto, MessageAddressDto, MessageBodyDto, AttachmentDto, OutboxOperationDto)
-  - 6 handlers (CreateDomainDirectoryHandler, AddAccountHandler, MoveMessageHandler, ChangeDomainNameHandler, SendMessageHandler, SyncAccountHandler)
-- [x] **Persistence** — completo:
-  - MailDbContext com 19 DbSets
-  - 15 configurations (DomainDirectory, Account, Folder, Message, MessageAddress, OutboxOperation, + 9 em RemainingConfigurations)
-  - SqlCipherInterceptor (PRAGMA key)
-  - MailRepository (implementa IMailRepository)
-  - SyncQueue (implementa ISyncQueue com exponential backoff)
-  - DependencyInjection (AddPersistence)
-- [x] **Infrastructure** — completo:
-  - MailKitTransport (IMAP/SMTP com MailKit, fetch folders/messages, send, move, delete, flags)
-  - HtmlSanitizerService (remove tags/attrs perigosos, detecta remote content, extrai texto)
-  - MsalOAuthProvider (Microsoft OAuth com MSAL.NET)
-  - GoogleOAuthProvider (Google OAuth com Google.Apis.Auth)
-  - DependencyInjection (AddInfrastructure)
-- [x] **Infrastructure.Windows** — completo:
-  - CredentialManagerStore (P/Invoke CredWrite/CredRead/CredDelete/CredFree)
-  - DependencyInjection (AddWindowsInfrastructure)
-- [x] **App WinUI 3** — completo:
-  - App.xaml + App.xaml.cs (DI com ServiceCollection, GetOrCreateEncryptionKey)
-  - MainWindow.xaml + MainWindow.xaml.cs (3 colunas: Domains, Messages, ReadingPane)
-  - 5 ViewModels (MainViewModel, DomainListViewModel, AccountListViewModel, MessageListViewModel, ComposeViewModel)
-  - Sintek.Mail.App.csproj (WinUI 3, net10.0-windows, CommunityToolkit.Mvvm)
-- [x] **Testes** — completo:
-  - DomainTests: EmailAddressTests, EmailDomainTests, DomainMembershipEvaluatorTests, FolderDomainValidatorTests
-  - ApplicationTests: CreateDomainDirectoryHandlerTests, AddAccountHandlerTests
-  - PersistenceTests: MailDbContextTests (InMemory)
-  - InfrastructureTests: HtmlSanitizerServiceTests
-- [x] **CI** — completo:
-  - .github/workflows/ci.yml (build + test no Windows)
+- [x] Solution `Sintek.Mail.slnx` com 6 projetos src + 8 de teste (4 deles vazios — ver M1)
+- [x] **Domain** — 17 enums, 2 VOs, 6 exceções, 20 entidades, 2 serviços. A parte mais sólida do código.
+- [x] **Application** — 6 portas, 8 DTOs, 6 handlers. Portas definidas; três delas sem implementação conectada.
+- [x] **Persistence** — DbContext, 15 configurations, interceptor, repositório, fila. **Sem migrations** (B8).
+- [x] **Infrastructure** — transporte MailKit, sanitizador, 2 providers OAuth. Sanitizador e OAuth não são chamados por ninguém.
+- [x] **Infrastructure.Windows** — `CredentialManagerStore` implementado. Nenhum consumidor.
+- [x] **App WinUI 3** — janela e 4 ViewModels. Compila. Todos os comandos ainda são TODO.
+- [x] **Testes** — 4 projetos com testes reais, 4 stubs vazios. Executam e **passam**.
+- [x] **CI** — build, test, `Dependency audit` (falha em pacote vulnerável), CodeQL e Dependabot.
+- [x] **Build** — `Directory.Packages.props` (CPM), `Directory.Build.props` (analisadores), `.editorconfig`.
 
-## Próximos passos (em ordem)
+## Bloqueadores (ordem de ataque)
 
-1. **Corrigir erros de compilação** — 54 erros identificados:
-   - Testes usam APIs incorretas (DomainMembershipEvaluator, FolderDomainValidator, handlers)
-   - Falta Microsoft.Extensions.DependencyInjection em Infrastructure e Infrastructure.Windows
-   - Ambiguidade IMailTransport (MailKit vs Application.Ports)
-   - DbConnectionEventData não encontrado em SqlCipherInterceptor
-2. **Build e validação** — dotnet build, dotnet test
-3. **Commit e push** — sincronizar com GitHub
-4. **Fase 2** — Implementar funcionalidades avançadas (regras, categorias, busca)
+Detalhe completo em `.analysis/ANALISE-CODIGO.md`.
+
+0. ~~**B0** — Windows App SDK 1.6 contra `net10.0-windows` quebrava o build.~~ **✅ RESOLVIDO em 12/08.** WASDK 2.3.1, `xmlns:dto` no `MainWindow.xaml`, e remoção de `MainPage.*` — que declarava `x:Class="Sintek_Mail_App.MainPage"` com code-behind em `namespace Sintek.Mail.App`, a causa direta do `CS0103`.
+1. **B1** — Chave de criptografia do banco sorteada a cada start, nunca persistida (`App.xaml.cs:54`). Perda total de dados a cada reinicialização se o SQLCipher estiver ativo. **É o próximo.**
+2. **B2** — ⚠️ **metade feito.** Trocado para `.Sqlite.Core` + `Batteries_V2.Init()`, e o `lib.e_sqlite3` sumiu do grafo. **Falta o teste que prova que o `.db` está cifrado** — sem ele a regressão volta sem ninguém notar, que é exatamente o modo de falha do achado.
+3. **B3** — `PRAGMA key` montado por interpolação de string.
+4. **B4** — `GetPasswordAsync` retorna `string.Empty`; `ICredentialStore` nunca é injetado. Nenhuma conta autentica.
+5. **B5** — `IOAuthProvider` nunca é usado pelo transporte. Pior: `App.xaml.cs:32` chama `AddInfrastructure()` sem argumentos e todos os parâmetros são opcionais, então **nenhum provider chega a ser registrado**. D-006 não está implementado.
+6. **B6** — `Sanitize()` nunca é chamado; `WebView2` renderiza HTML cru. O sanitizador de regex é inseguro e o pacote `HtmlSanitizer` já é dependência sem uso.
+7. **B7** — `FromAddress` guarda o endereço formatado e `Message.Addresses` nunca é populado no sync: os 5 `ValidationMode` falham para mensagens reais. É o diferencial do produto.
+8. **B8** — Não há migrations nem chamada de `Migrate()`. A primeira query lança.
+
+## Próximos passos
+
+1. **B1** — a chave de criptografia sorteada a cada start é o próximo bloqueador em severidade, e a peça para resolvê-lo (`ICredentialStore`) já existe implementada e registrada.
+2. Decidir o alvo da Fase 1: fazer **um** caminho funcionar de ponta a ponta (adicionar conta → sync → ler mensagem) em vez de continuar ampliando superfície.
+3. Fechar B2 com o teste de criptografia, depois B1, B4, B5, B6, B7, B8.
+4. Corrigir A1–A10 (outbox preso em `Processing`, pasta de origem errada no payload de move, herança de restrição não aplicada, duplicação de mensagens no sync).
+5. Desduplicar os 8 projetos de teste (M1) e decidir sobre `ISyncQueue` (CA1711/CA1716 silenciados: nome termina em "Queue", parâmetro chamado `error` — renomear porta pública é mudança de contrato).
+6. Introduzir logging: **não existe `ILogger` em lugar nenhum** do `src/`, e o CONTEXT.md tem uma restrição de segurança sobre o que os logs podem registrar.
+7. Passada de `ConfigureAwait(false)` nas camadas de biblioteca — 42 pontos só na Application (CA2007, hoje warning).
 
 ## Bloqueios
 
-Nenhum.
+- Não é possível compilar neste container: sem SDK .NET e o proxy nega `builds.dotnet.microsoft.com` (403 no CONNECT). Para build local é preciso máquina Windows; para sinal automático, o CI serve.
 
 ## Notas
 
-- Context window em 74% — salvando estado para continuação em nova sessão.
-- Build falhou com 54 erros de compilação.
-- Próxima sessão deve começar por corrigir erros de compilação.
-- Erros principais:
-  1. Testes usam construtores/métodos incorretos (DomainMembershipEvaluator, FolderDomainValidator, handlers)
-  2. Falta package Microsoft.Extensions.DependencyInjection em Infrastructure e Infrastructure.Windows
-  3. Ambiguidade IMailTransport entre MailKit e Application.Ports
-  4. DbConnectionEventData não encontrado em SqlCipherInterceptor
-- TODOs pendentes:
-  - Corrigir 54 erros de compilação
-  - Integrar ICredentialStore no MailKitTransport
-  - Implementar GetOrCreateEncryptionKey com DPAPI
-  - Completar ViewModels com lógica real
-  - Adicionar app.manifest e Package.appxmanifest
+- O `.analysis/PARECER-VALIDACAO.md` §2.3 avisou sobre o conflito de bundles do SQLCipher **antes** da implementação, e o aviso não foi seguido por meses. O log do CI mostrou o bundle errado entrando.
+- O catálogo `skills-globais` precisa estar **anexado ao ambiente** para o bootstrap funcionar em container remoto. Sem isso o script registra o erro e sai com 0.
+- Lição da rodada de 12/08: três das quatro falhas de CI foram causadas por decisões minhas tomadas "por cautela" (deixar uma versão de pacote como estava, promover `CA2007` a erro). Cautela sem verificar o grafo de dependências é palpite.

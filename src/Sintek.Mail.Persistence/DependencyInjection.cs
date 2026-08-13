@@ -10,6 +10,13 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddPersistence(this IServiceCollection services, string databasePath, string encryptionKey)
     {
+        // Obrigatorio com Microsoft.Data.Sqlite.Core: sem provider registrado,
+        // a primeira query lanca "You need to call SQLitePCL.raw.SetProvider()".
+        // Registra o bundle_e_sqlcipher -- o unico bundle do projeto desde que
+        // EntityFrameworkCore.Sqlite (que arrastava o e_sqlite3 sem
+        // criptografia) foi trocado por .Sqlite.Core. Exigido por D-004.
+        SQLitePCL.Batteries_V2.Init();
+
         services.AddDbContext<MailDbContext>(options =>
         {
             options.UseSqlite($"Data Source={databasePath}");

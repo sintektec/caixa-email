@@ -85,3 +85,45 @@
 **Alternativas rejeitadas:** Só senha básica (exclui M365/Gmail modernos); só OAuth (exclui servidores corporativos legados).
 
 **Consequências:** `AuthenticationType` enum em `Accounts`; `OAuthProvider?` opcional; dois pacotes de OAuth.
+
+---
+
+## D-007 — Exceções de domínio derivam de `ArgumentException` (2026-08-12)
+
+**Status:** aceita
+
+**Decisão:** `DomainException` passa a herdar de `ArgumentException` em vez de `Exception`.
+
+**Motivo:** toda violação deste domínio nasce de um argumento inválido vindo da borda — endereço mal formado, domínio que não casa, pasta já restrita. Alinhar com o tipo do BCL deixa o contrato legível para quem chama sem conhecer estas classes. Os testes já assumiam isso e falhavam.
+
+**Alternativas rejeitadas:** manter `Exception` e ajustar as asserções (esconde o contrato de quem consome a API).
+
+**Consequências:** `Assert.Throws<ArgumentException>` do xunit exige tipo **exato** e continua falhando com as derivadas — os testes usam `Assert.ThrowsAny<ArgumentException>`. Isso foi descoberto pelo CI, não por leitura.
+
+---
+
+## D-008 — O Diretório de Domínio aceita qualquer rótulo (2026-08-12)
+
+**Status:** aceita
+
+**Decisão:** `EmailDomain.Parse` não valida formato. Rejeita apenas vazio/branco e presença de `@`. `".com"`, `"example."`, `"intranet"` e `"localhost"` são nomes válidos de Diretório.
+
+**Motivo:** a regra que o produto realmente impõe não é o formato do nome do Diretório, e sim a **igualdade** entre o domínio da conta e o do Diretório (`DomainDirectory.ValidateAccount`). Validar formato restringiria nomes legítimos — intranets, TLDs novos, hosts sem ponto — sem ganho de segurança, já que o casamento exato continua sendo exigido.
+
+**Alternativas rejeitadas:** validação de rótulos separados por ponto (rejeitaria `intranet` e `localhost`, usados em ambiente corporativo).
+
+**Consequências:** três testes que afirmavam o contrário foram substituídos por `Parse_QualquerRotulo_EAceito`, que documenta a decisão. `"user@.com"` saiu da lista de endereços inválidos.
+
+---
+
+## D-009 — Parte local do e-mail normalizada para MAIÚSCULA (2026-08-12)
+
+**Status:** aceita
+
+**Decisão:** `EmailAddress.Parse` normaliza a parte local com `ToUpperInvariant()`. O domínio segue em minúscula.
+
+**Motivo:** sem normalização, `EmailAddress` é um `record` cuja igualdade compara a parte local ordinalmente — `USER@example.com` e `user@example.com` eram **valores distintos**, e o mesmo endereço viraria duas entidades ao deduplicar contas ou destinatários. Defeito real, encontrado quando a suíte rodou pela primeira vez.
+
+**Alternativas rejeitadas:** minúscula (era o que os testes assumiam, mas a escolha da caixa é arbitrária desde que consistente); manter sensível a caixa conforme RFC 5321 (nenhum provedor relevante trata assim, e quebra a deduplicação).
+
+**Consequências:** desvio consciente da RFC 5321, que declara a parte local sensível a caixa. `FullAddress` passa a render `USER@empresa.com`, então endereços exibidos na UI aparecem com a parte local em maiúscula — se isso incomodar, a saída é um campo de exibição separado, não desfazer a normalização.

@@ -45,10 +45,31 @@ public class CreateDomainDirectoryHandlerTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => _handler.HandleAsync(command));
     }
 
-    [Fact]
-    public async Task HandleAsync_InvalidDomain_Throws()
+    // "invalid" saiu daqui: por D-008 o Diretorio aceita qualquer rotulo, entao
+    // esse nome e valido. So vazio/branco continua sendo recusado.
+    // ThrowsAnyAsync porque InvalidEmailDomainException deriva de
+    // ArgumentException (D-007) e ThrowsAsync exige tipo exato.
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task HandleAsync_DominioVazio_Throws(string domainName)
     {
-        var command = new CreateDomainDirectoryCommand("invalid", "Test domain");
-        await Assert.ThrowsAsync<ArgumentException>(() => _handler.HandleAsync(command));
+        var command = new CreateDomainDirectoryCommand(domainName, "Test domain");
+        await Assert.ThrowsAnyAsync<ArgumentException>(() => _handler.HandleAsync(command));
+    }
+
+    [Theory]
+    [InlineData("intranet")]
+    [InlineData("localhost")]
+    public async Task HandleAsync_RotuloSemPonto_ECriado(string domainName)
+    {
+        _repositoryMock.Setup(r => r.GetDomainByNameAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((DomainDirectory?)null);
+        _repositoryMock.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(1);
+
+        var result = await _handler.HandleAsync(new CreateDomainDirectoryCommand(domainName));
+
+        Assert.Equal(domainName, result.DomainName);
     }
 }

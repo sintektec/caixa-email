@@ -1,0 +1,97 @@
+<Project>
+
+  <!--
+    Gerenciamento central de versoes (CPM).
+
+    Antes deste arquivo cada csproj declarava a sua propria versao, e elas
+    divergiram de tudo que o `.analysis/PARECER-VALIDACAO.md` havia verificado
+    contra a api.nuget.org: 7 pacotes atrasados, 5 deles com vulnerabilidade
+    conhecida (um de severidade alta), e dois conflitos internos - EF Core
+    10.0.0 convivendo com Microsoft.Data.Sqlite.Core 10.0.10 no mesmo projeto,
+    e InMemory 9.0.0 testando uma camada que roda em EF Core 10.
+
+    As versoes abaixo sao as do parecer (secao 2.2).
+    Nao edite pontualmente: mova aqui e o repositorio inteiro acompanha.
+  -->
+
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+
+  <ItemGroup Label="UI — WinUI 3 / Windows App SDK">
+    <!--
+      2.3.1, nao 1.6.240923002. O XamlCompiler.exe que vem no 1.6 e distribuido
+      em tools\net472\ e nao lida com net10.0-windows: ele sai com codigo 1, o
+      partial gerado nunca aparece, e o C# reclama de InitializeComponent logo
+      depois. Era a causa dos 2 erros que mantinham o CI vermelho.
+      D-001 ja registrava 2.3.1 como consequencia da escolha do .NET 10.
+    -->
+    <PackageVersion Include="Microsoft.WindowsAppSDK" Version="2.3.1" />
+    <PackageVersion Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.1742" />
+    <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+  </ItemGroup>
+
+  <ItemGroup Label="Persistencia — SQLite + SQLCipher">
+    <!--
+      Sqlite.Core, nao Sqlite. O pacote `Microsoft.EntityFrameworkCore.Sqlite`
+      arrasta `SQLitePCLRaw.bundle_e_sqlite3` - o bundle SEM criptografia -
+      junto com o bundle_e_sqlcipher. Com dois bundles na aplicacao, qual
+      provider registra primeiro e indeterminado; se vencer o e_sqlite3, o
+      `PRAGMA key` vira pragma desconhecido e o SQLite ignora SEM ERRO. Banco
+      em texto plano, zero sinal.
+
+      O `.analysis/PARECER-VALIDACAO.md` secao 2.3 avisou disso antes da
+      implementacao. O bundle errado tambem carregava o unico CVE de
+      severidade alta do projeto (GHSA-2m69-gcr7-jv3q).
+
+      ATENCAO: esta troca exige `SQLitePCL.Batteries_V2.Init()` explicito no
+      startup - ver App.xaml.cs. Sem ele o Sqlite.Core nao tem provider e
+      falha em runtime.
+    -->
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite.Core" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Data.Sqlite.Core" Version="10.0.10" />
+    <PackageVersion Include="SQLitePCLRaw.bundle_e_sqlcipher" Version="2.1.11" />
+  </ItemGroup>
+
+  <ItemGroup Label="E-mail — IMAP/SMTP">
+    <!-- 4.17.0: 4.14.1 tem GHSA-9j88-vvj5-vhgr, e arrastava MimeKit 4.14.0
+         com GHSA-g7hc-96xr-gvvx. -->
+    <PackageVersion Include="MailKit" Version="4.17.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Seguranca — sanitizacao e OAuth">
+    <!-- 9.1.982: 9.0.886 tem GHSA-j92c-7v7g-gj3f e arrastava AngleSharp
+         0.17.1 com GHSA-pgww-w46g-26qg. -->
+    <PackageVersion Include="HtmlSanitizer" Version="9.1.982" />
+    <PackageVersion Include="Microsoft.Identity.Client" Version="4.87.0" />
+    <PackageVersion Include="Google.Apis.Auth" Version="1.75.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Infraestrutura .NET">
+    <!--
+      10.0.10, nao 10.0.0. Com CentralPackageTransitivePinningEnabled a versao
+      central tambem fixa os transitivos, e o grafo exige mais que 10.0.0:
+        EntityFrameworkCore.Sqlite.Core 10.0.10
+          -> Microsoft.Extensions.Logging 10.0.10
+            -> Microsoft.Extensions.DependencyInjection (>= 10.0.10)
+      Fixar em 10.0.0 era downgrade e o restore falhava com NU1109.
+    -->
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.10" />
+  </ItemGroup>
+
+  <ItemGroup Label="Testes">
+    <!-- Os 8 projetos de teste usavam dois conjuntos de versao diferentes
+         (xunit 2.9.2 vs 2.9.3, Test.Sdk 17.11.1 vs 17.14.1). Unificado no
+         mais novo. InMemory sai de 9.0.0 para 10.0.10: testar uma camada
+         EF Core 10 com o provider da 9 e conflito de versao, nao cobertura. -->
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.4" />
+    <PackageVersion Include="coverlet.collector" Version="6.0.4" />
+    <PackageVersion Include="AwesomeAssertions" Version="9.5.0" />
+    <PackageVersion Include="Moq" Version="4.20.72" />
+  </ItemGroup>
+
+</Project>

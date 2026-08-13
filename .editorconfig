@@ -1,0 +1,115 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = crlf
+insert_final_newline = true
+indent_style = space
+indent_size = 4
+trim_trailing_whitespace = true
+
+[*.{json,yml,yaml,xml,csproj,props,targets,slnx}]
+indent_size = 2
+
+[*.sh]
+end_of_line = lf
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.cs]
+indent_size = 4
+
+# --- Organizacao de usings ---
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = false
+csharp_using_directive_placement = outside_namespace:suggestion
+
+# --- Estilo de namespace ---
+# O codigo ja usa file-scoped em todos os arquivos; fixa a convencao.
+csharp_style_namespace_declarations = file_scoped:warning
+
+# --- this. desnecessario ---
+dotnet_style_qualification_for_field = false:suggestion
+dotnet_style_qualification_for_property = false:suggestion
+dotnet_style_qualification_for_method = false:suggestion
+
+# --- Expressoes modernas ---
+csharp_style_var_when_type_is_apparent = true:suggestion
+csharp_style_expression_bodied_methods = when_on_single_line:suggestion
+csharp_style_expression_bodied_properties = true:suggestion
+csharp_style_pattern_matching_over_is_with_cast_check = true:suggestion
+csharp_style_pattern_matching_over_as_with_null_check = true:suggestion
+csharp_style_prefer_switch_expression = true:suggestion
+csharp_style_prefer_pattern_matching = true:suggestion
+dotnet_style_object_initializer = true:suggestion
+dotnet_style_collection_initializer = true:suggestion
+dotnet_style_prefer_conditional_expression_over_assignment = true:silent
+
+# --- Nulabilidade e imutabilidade ---
+csharp_style_conditional_delegate_call = true:suggestion
+dotnet_style_readonly_field = true:suggestion
+csharp_prefer_static_local_function = true:suggestion
+
+# --- Chaves e blocos ---
+csharp_prefer_braces = true:suggestion
+csharp_new_line_before_open_brace = all
+
+# --- Nomenclatura: interface comeca com I ---
+dotnet_naming_rule.interfaces_start_with_i.severity = warning
+dotnet_naming_rule.interfaces_start_with_i.symbols = interface_symbol
+dotnet_naming_rule.interfaces_start_with_i.style = prefix_i_style
+dotnet_naming_symbols.interface_symbol.applicable_kinds = interface
+dotnet_naming_style.prefix_i_style.required_prefix = I
+dotnet_naming_style.prefix_i_style.capitalization = pascal_case
+
+# --- Nomenclatura: campo privado com _ ---
+dotnet_naming_rule.private_fields_underscore.severity = warning
+dotnet_naming_rule.private_fields_underscore.symbols = private_field_symbol
+dotnet_naming_rule.private_fields_underscore.style = underscore_camel_style
+dotnet_naming_symbols.private_field_symbol.applicable_kinds = field
+dotnet_naming_symbols.private_field_symbol.applicable_accessibilities = private
+dotnet_naming_style.underscore_camel_style.required_prefix = _
+dotnet_naming_style.underscore_camel_style.capitalization = camel_case
+
+# --- Regras de analise com severidade explicita ---
+
+# Chamada bloqueante em codigo async. O transporte IMAP e todo async;
+# um .Result aqui trava a UI thread do WinUI.
+dotnet_diagnostic.CA1849.severity = warning
+
+# await sem ConfigureAwait(false) em biblioteca. Risco real aqui: o WinUI
+# tem SynchronizationContext, entao capturar o contexto nas camadas de
+# biblioteca pode dar deadlock quando chamado da UI thread. Sao 42 pontos
+# so na Application -- fica warning ate alguem fazer a passada completa,
+# nao erro, para nao travar o build atras de um refactor nao revisado.
+dotnet_diagnostic.CA2007.severity = warning
+
+# Nome de tipo terminando em 'Queue' e parametro chamado 'error'. Ambos
+# apareceram em ISyncQueue quando o analisador foi ligado. Renomear uma
+# porta publica e mudanca de contrato: fica silenciado ate a decisao.
+dotnet_diagnostic.CA1711.severity = none
+dotnet_diagnostic.CA1716.severity = none
+
+# Comparacao de string sensivel a cultura. O dominio inteiro compara
+# dominios de e-mail: precisa ser ordinal, nunca dependente de cultura.
+dotnet_diagnostic.CA1310.severity = warning
+dotnet_diagnostic.CA1862.severity = warning
+
+# Nao capturar excecao generica. Ha 3 catch-all no projeto (transporte e
+# os dois providers OAuth) que engolem falha de rede, credencial errada e
+# bug de codigo no mesmo silencio.
+dotnet_diagnostic.CA1031.severity = suggestion
+
+# Passar CancellationToken adiante. As portas todas recebem ct; perde-lo
+# no meio do caminho torna o cancelamento decorativo.
+dotnet_diagnostic.CA2016.severity = warning
+
+# URI hardcoded / validacao de entrada
+dotnet_diagnostic.CA2234.severity = suggestion
+
+# Membro pode ser static
+dotnet_diagnostic.CA1822.severity = silent
+
+# Documentacao XML publica: divida grande demais para virar erro agora.
+dotnet_diagnostic.CS1591.severity = none

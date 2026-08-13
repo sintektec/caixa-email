@@ -1,0 +1,51 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Segunda-feira 06:00 UTC — pega CVE novo em codigo que nao mudou.
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+jobs:
+  analyze:
+    name: Analyze (csharp)
+    runs-on: windows-latest
+    permissions:
+      security-events: write
+      packages: read
+      actions: read
+      contents: read
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.x'
+
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v3
+      with:
+        languages: csharp
+        queries: security-extended
+
+    # O App WinUI depende de tooling que o CodeQL nao precisa analisar, e uma
+    # falha nele derrubaria a analise das outras 5 camadas. Build so do que
+    # carrega logica de dominio, aplicacao, persistencia e infraestrutura.
+    - name: Build for analysis
+      run: |
+        dotnet build src/Sintek.Mail.Domain --configuration Release
+        dotnet build src/Sintek.Mail.Application --configuration Release
+        dotnet build src/Sintek.Mail.Persistence --configuration Release
+        dotnet build src/Sintek.Mail.Infrastructure --configuration Release
+        dotnet build src/Sintek.Mail.Infrastructure.Windows --configuration Release
+
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v3
+      with:
+        category: /language:csharp
