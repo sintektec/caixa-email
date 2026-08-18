@@ -116,7 +116,7 @@ O script adiciona ao `skills-ativas.txt` e cria o link na hora.
 
 ### Caso B — catalogo indisponivel
 
-Acontece quando `sintektec/skills-globais` **nao esta anexado ao ambiente** desta
+Acontece quando `centurionarx-cp/skills-globais` **nao esta anexado ao ambiente** desta
 sessao remota, ou nao ha rede. **Diga isso ao usuario em vez de falhar mudo**, e
 de as duas saidas:
 
