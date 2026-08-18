@@ -1,6 +1,6 @@
 # SINTEK Claude Code Project Template
 
-Template para iniciar um novo projeto Claude Code ja configurado para consumir as skills globais SINTEK (sintektec/skills-globais).
+Template para iniciar um novo projeto Claude Code ja configurado para consumir as skills globais SINTEK (centurionarx-cp/skills-globais).
 
 ## Como usar
 
@@ -25,5 +25,5 @@ Use os comandos do git clone direto deste repo, remova o .git e refaca git init.
 
 ## Refs
 
-- Skills: https://github.com/sintektec/skills-globais
-- Catalogo: https://github.com/sintektec/skills-globais/blob/main/INDEX.md
+- Skills: https://github.com/centurionarx-cp/skills-globais
+- Catalogo: https://github.com/centurionarx-cp/skills-globais/blob/main/INDEX.md

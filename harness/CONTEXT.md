@@ -2,7 +2,7 @@
 
 ## O que é
 
-Cliente de e-mail desktop corporativo, instalável e **nativo para Windows 11**, inspirado no Microsoft Outlook e baseado no Fluent Design System. Repositório: `sintektec/caixa-email`.
+Cliente de e-mail desktop corporativo, instalável e **nativo para Windows 11**, inspirado no Microsoft Outlook e baseado no Fluent Design System. Repositório: `centurionarx-cp/caixa-email`.
 
 ## Diferencial obrigatório
 

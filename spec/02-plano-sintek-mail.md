@@ -2,7 +2,7 @@
 
 ## Context
 
-O repositório `sintektec/caixa-email` está vazio (apenas o template SINTEK de skills). A especificação anexa define um cliente de e-mail corporativo nativo para Windows 11, estilo Outlook, com um diferencial obrigatório: **organização rigorosa por Diretório de Domínio** (`Domínio → Conta → Pastas`), operação **offline-first** e base local criptografada.
+O repositório `centurionarx-cp/caixa-email` está vazio (apenas o template SINTEK de skills). A especificação anexa define um cliente de e-mail corporativo nativo para Windows 11, estilo Outlook, com um diferencial obrigatório: **organização rigorosa por Diretório de Domínio** (`Domínio → Conta → Pastas`), operação **offline-first** e base local criptografada.
 
 Dois pontos da especificação exigem decisão de engenharia antes de começar:
 

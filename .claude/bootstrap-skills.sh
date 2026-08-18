@@ -13,7 +13,7 @@
 #   para resolver. Um original so elimina essa classe de defeito.
 #
 # PLACEHOLDERS trocados na instalacao:
-#   https://github.com/sintektec/skills-globais.git   URL do catalogo
+#   https://github.com/centurionarx-cp/skills-globais.git   URL do catalogo
 #   "${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"  expressao shell que resolve a raiz (projeto ou $HOME)
 #   bootstrap-skills.log   nome do arquivo de log dentro de .claude/
 #   projeto       "projeto" ou "global"
@@ -27,7 +27,7 @@
 
 set -uo pipefail
 
-REPO_URL="https://github.com/sintektec/skills-globais.git"
+REPO_URL="https://github.com/centurionarx-cp/skills-globais.git"
 MODO="projeto"
 ROOT="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 CLONE="$ROOT/.claude/skills-globais-repo"
@@ -242,7 +242,7 @@ if [ "$git_rc" -ne 0 ]; then
       log "ERRO: sem acesso a $REPO_URL."
       if [ "$MODO" = "projeto" ]; then
         log "  Em container remoto o git so alcanca repositorios ANEXADOS ao"
-        log "  ambiente. Anexe sintektec/skills-globais e reabra a sessao."
+        log "  ambiente. Anexe centurionarx-cp/skills-globais e reabra a sessao."
       fi
       log "  Fora de container: gh auth login && gh auth setup-git"
       ;;
